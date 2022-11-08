@@ -61,6 +61,8 @@ void init_motor_timer(const motor_info_t *motorInfo)
 	TIM_HandleTypeDef *htim = get_timer_handeler(motorInfo->timer);
 
 	if(HAL_TIM_Base_GetState(htim) != HAL_TIM_STATE_READY){
+		rcc_tim_clk_enable(motorInfo->timer);
+
 		TIM_ClockConfigTypeDef sClockSourceConfig = {0};
 		TIM_MasterConfigTypeDef sMasterConfig = {0};
 
