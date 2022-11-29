@@ -2,6 +2,9 @@
 #include "gpio.h"
 #include "motor.h"
 #include "usb_device.h"
+#include "encoder.h"
+
+#include <stdio.h>
 
 #define HAL_PCD_MODULE_ENABLED
 extern PCD_HandleTypeDef hpcd_USB_OTG_FS;
@@ -17,20 +20,27 @@ int main(void)
     // Init USB
     MX_USB_DEVICE_Init();
 
-/*
-    initialize_motor(0);
-    set_motor_speed(0, 0, 840);
-    HAL_Delay(2000);
-    set_motor_speed(0, 1, 840);
-    HAL_Delay(2000);
-    set_motor_speed(0, 0, 0);
-*/
-    HAL_Delay(2000);
-    while (1){
-      	uint8_t *data = "Hello World! I am working!\n";
-	      CDC_Transmit_FS((uint8_t*) data, strlen(data));
+    
 
-        HAL_Delay(1000);
+    int motorIndex = 3;
+
+    initialize_encoder(motorIndex);
+    initialize_motor(motorIndex);
+    set_motor_speed(motorIndex, 1, 840*0.3);
+
+    char str[128];
+    int previousEncoderValue = 0;
+    while (1){
+        int encoderValue = get_encoder_value(motorIndex);
+        if (encoderValue > previousEncoderValue + 10){
+          sprintf(str, "Encoder: %d\n", encoderValue);
+          CDC_Transmit_FS((uint8_t*) str, strlen(str));
+          previousEncoderValue = encoderValue;
+        }
+
+        if(encoderValue > 830.512 * 10){
+          set_motor_speed(motorIndex, 0, 0);
+        }
     }
 }
 
