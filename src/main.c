@@ -3,6 +3,8 @@
 #include "motor.h"
 #include "usb_device.h"
 #include "encoder.h"
+#include "commands.h"
+#include "main.h"
 
 #include <stdio.h>
 
@@ -22,27 +24,50 @@ int main(void)
 
     
 
-    int motorIndex = 3;
+  while (1)
+    {
+    if(commandBuffer[0] != '\0')
+      {
+      switch(commandBuffer[0])
+      {
+      case INITIALIZE_MOTOR:
+        initialize_motor(commandBuffer[1]);
+      break;
 
-    initialize_encoder(motorIndex);
-    initialize_motor(motorIndex);
-    set_motor_speed(motorIndex, 1, 840*0.3);
-
-    char str[128];
-    int previousEncoderValue = 0;
-    while (1){
-        int encoderValue = get_encoder_value(motorIndex);
-        if (encoderValue > previousEncoderValue + 10){
-          sprintf(str, "Encoder: %d\n", encoderValue);
-          CDC_Transmit_FS((uint8_t*) str, strlen(str));
-          previousEncoderValue = encoderValue;
+      case SET_MOTOR_SPEED:
+        {
+        signed short speed = commandBuffer[3] | commandBuffer[4]<<8;
+        signed short direction = commandBuffer[2];
+        set_motor_speed(commandBuffer[1], direction, speed);
         }
+      break;
 
-        if(encoderValue > 830.512 * 10){
-          set_motor_speed(motorIndex, 0, 0);
+      case INITIALIZE_ENCODER:
+        initialize_encoder(commandBuffer[1]);
+      break;
+
+      case GET_ENCODER_VALUE:
+        {
+        unsigned int value = get_encoder_value(commandBuffer[1]);
+        char buf[4];
+        buf[3] = (value >> 24) & 0xFF;
+        buf[2] = (value >> 16) & 0xFF;
+        buf[1] = (value >> 8) & 0xFF;
+        buf[0] = value & 0xFF;
+        CDC_Transmit_FS(buf, 4);
         }
+      break;
+
+      case STATUS_LED_TOGGLE:
+        gpio_toggle_status_led();
+      break;
+      }
+
+      // Reset command buffer
+      memset(commandBuffer, '\0', 64);
+      }
     }
-}
+  }
 
 void SysTick_Handler(void)
 {
