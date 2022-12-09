@@ -4,4 +4,4 @@
 
 #pragma once
 
-char commandBuffer[64];
+extern char commandBuffer[64];

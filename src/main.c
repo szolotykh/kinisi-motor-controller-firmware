@@ -15,11 +15,14 @@ extern PCD_HandleTypeDef hpcd_USB_OTG_FS;
 void SystemClock_Config(void);
 void OTG_FS_IRQHandler(void);
 
+char commandBuffer[64];
+
 int main(void)
 {
     HAL_Init();
     SystemClock_Config();
-    
+    initialize_gpio();
+
     // Init USB
     MX_USB_DEVICE_Init();
 
