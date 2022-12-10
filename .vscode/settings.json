@@ -1,6 +1,11 @@
 {
     "files.associations": {
         "stm32f4xx.h": "c",
-        "commands.h": "c"
+        "commands.h": "c",
+        "platform.h": "c",
+        "motor.h": "c",
+        "main.h": "c",
+        "testplatform.h": "c",
+        "controller.h": "c"
     }
 }
