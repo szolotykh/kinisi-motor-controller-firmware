@@ -21,8 +21,8 @@ mecanum_velocity_t get_mecanum_velocities(signed char x, signed char y, signed c
     nt = sing(nt) * nt * nt / l;
 
     mecanum_velocity_t velocities = {
-        .motor0 = -(nx + ny + nt),
-        .motor1 = -(nx - ny + nt),
+        .motor0 = nx + ny + nt,
+        .motor1 = nx - ny + nt,
         .motor2 = nx + ny - nt,
         .motor3 = nx - ny - nt
         };

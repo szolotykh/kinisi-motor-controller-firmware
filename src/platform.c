@@ -27,8 +27,8 @@ void init_platform()
 void set_velocity_input(signed char x, signed char y, signed char t)
 {
     mecanum_velocity_t velocities = get_mecanum_velocities(x, y, t);
-    SetMotorVelocity(MOTOR3, velocities.motor3);
-    SetMotorVelocity(MOTOR0, velocities.motor0);
+    SetMotorVelocity(MOTOR0, -velocities.motor0);
+    SetMotorVelocity(MOTOR1, -velocities.motor1);
     SetMotorVelocity(MOTOR2, velocities.motor2);
-    SetMotorVelocity(MOTOR1, velocities.motor1);
+    SetMotorVelocity(MOTOR3, velocities.motor3);
 }

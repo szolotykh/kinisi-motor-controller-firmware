@@ -12,8 +12,8 @@ void tearDown(void) {
 void test_Velocity_X_100(void)
 {
     mecanum_velocity_t velocities = get_mecanum_velocities(100, 0, 0);
-    TEST_ASSERT_EQUAL_INT(velocities.motor0, -100);
-    TEST_ASSERT_EQUAL_INT(velocities.motor1, -100);
+    TEST_ASSERT_EQUAL_INT(velocities.motor0, 100);
+    TEST_ASSERT_EQUAL_INT(velocities.motor1, 100);
     TEST_ASSERT_EQUAL_INT(velocities.motor2, 100);
     TEST_ASSERT_EQUAL_INT(velocities.motor3, 100);
 }
