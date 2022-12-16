@@ -5,7 +5,7 @@
 #pragma once
 
 #include "stm32f4xx_hal.h"
-#include "config_structs.h"
+#include "hw_config_structs.h"
 
 // Board version
 #define MP_V2

@@ -2,7 +2,7 @@
 // File name: timers.c
 //------------------------------------------------------------
 
-#include "vstimers.h"
+#include "hw_timers.h"
 
 TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim2;

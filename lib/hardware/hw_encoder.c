@@ -3,9 +3,9 @@
 //------------------------------------------------------------
 
 #include "stdbool.h"
-#include "encoder.h"
-#include "vstimers.h"
-#include "config.h"
+#include "hw_encoder.h"
+#include "hw_timers.h"
+#include "hw_config.h"
 #include "stm32f4xx_hal.h"
 
 typedef struct encoder_status_t

@@ -2,9 +2,9 @@
 // File name: motor.c
 //------------------------------------------------------------
 
-#include "motor.h"
-#include "vstimers.h"
-#include "config.h"
+#include "hw_motor.h"
+#include "hw_timers.h"
+#include "hw_config.h"
 #include "stm32f4xx_hal.h"
 #include "stdbool.h"
 

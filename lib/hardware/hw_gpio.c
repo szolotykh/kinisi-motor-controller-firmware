@@ -2,8 +2,8 @@
 // File name: gpio.c
 //------------------------------------------------------------
 
-#include "gpio.h"
-#include "config.h"
+#include "hw_gpio.h"
+#include "hw_config.h"
 #include "stm32f4xx_hal.h"
 
 void rcc_gpiox_clk_enable(GPIO_TypeDef* gpiox);

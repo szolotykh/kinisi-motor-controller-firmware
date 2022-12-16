@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <controller.h>
 #include "platform.h"
-#include "motor.h"
+#include "hw_motor.h"
 
 
 #define SPEED_RESOLUTION 840
