@@ -4,7 +4,7 @@
 
 #include "stdbool.h"
 #include "encoder.h"
-#include "timers.h"
+#include "vstimers.h"
 #include "config.h"
 #include "stm32f4xx_hal.h"
 
