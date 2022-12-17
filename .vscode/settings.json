@@ -6,6 +6,11 @@
         "motor.h": "c",
         "main.h": "c",
         "testplatform.h": "c",
-        "controller.h": "c"
+        "controller.h": "c",
+        "stm32f4xx_hal.h": "c",
+        "config.h": "c",
+        "timers.h": "c",
+        "hw_config_structs.h": "c",
+        "cmsis_os.h": "c"
     }
 }
