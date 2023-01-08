@@ -11,6 +11,7 @@
         "config.h": "c",
         "timers.h": "c",
         "hw_config_structs.h": "c",
-        "cmsis_os.h": "c"
+        "cmsis_os.h": "c",
+        "hw_motor.h": "c"
     }
 }

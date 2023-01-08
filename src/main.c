@@ -6,11 +6,14 @@
 #include "commands.h"
 #include "main.h"
 #include "platform.h"
+#include "utils.h"
 
 #include "cmsis_os.h"
 #include <FreeRTOS.h>
 #include "task.h"
 #include <stdio.h>
+
+#include <controller.h>
 
 #define HAL_PCD_MODULE_ENABLED
 extern PCD_HandleTypeDef hpcd_USB_OTG_FS;
@@ -18,6 +21,9 @@ extern PCD_HandleTypeDef hpcd_USB_OTG_FS;
 void OTG_FS_IRQHandler(void);
 
 char commandBuffer[64];
+
+mecanum_velocity_t CurrentVelocity = { .motor0 = 0, .motor1 = 0, .motor2 = 0, .motor3 = 0};
+mecanum_velocity_t TargetVelocity = { .motor0 = 0, .motor1 = 0, .motor2 = 0, .motor3 = 0};
 
 
 osThreadId_t CommandsTaskHandle;
@@ -30,23 +36,26 @@ const osThreadAttr_t CommandsTask_attributes = {
 osThreadId_t ControllerTaskHandle;
 const osThreadAttr_t ControllerTask_attributes = {
   .name = "ControllerTask",
+  .stack_size = 128 * 8,
+  .priority = (osPriority_t) osPriorityNormal,
+};
+
+osThreadId_t EncoderTaskHandle;
+const osThreadAttr_t EncoderTask_attributes = {
+  .name = "CommandsTask",
   .stack_size = 128 * 4,
   .priority = (osPriority_t) osPriorityNormal,
 };
+
 /* Definitions for CommandsQueue01 */
 osMessageQueueId_t CommandsQueue01Handle;
 const osMessageQueueAttr_t CommandsQueue01_attributes = {
   .name = "CommandsQueue01"
 };
-/* Definitions for myTimer01 */
-osTimerId_t myTimer01Handle;
-const osTimerAttr_t myTimer01_attributes = {
-  .name = "myTimer01"
-};
 
-void StartDefaultTask(void *argument);
-void StartTask02(void *argument);
-void Callback01(void *argument);
+void StartCommandTask(void *argument);
+void StartControllerTask(void *argument);
+void EncoderTaskFunction(void *argument);
 
 int main(void)
 {
@@ -56,19 +65,17 @@ int main(void)
 
     HAL_NVIC_SetPriority(PendSV_IRQn, 15, 0);
 
-    // Init USB
-    // MX_USB_DEVICE_Init();  ???
-
     osKernelInitialize();
-    myTimer01Handle = osTimerNew(Callback01, osTimerPeriodic, NULL, &myTimer01_attributes);
     CommandsQueue01Handle = osMessageQueueNew (16, sizeof(uint16_t), &CommandsQueue01_attributes);
-    CommandsTaskHandle = osThreadNew(StartDefaultTask, NULL, &CommandsTask_attributes);
-    ControllerTaskHandle = osThreadNew(StartTask02, NULL, &ControllerTask_attributes);
+
+    CommandsTaskHandle = osThreadNew(StartCommandTask, NULL, &CommandsTask_attributes);
+    EncoderTaskHandle = osThreadNew(EncoderTaskFunction, NULL, &EncoderTask_attributes);
+    ControllerTaskHandle = osThreadNew(StartControllerTask, NULL, &ControllerTask_attributes);
 
     osKernelStart();
 }
 
-void StartDefaultTask(void *argument)
+void StartCommandTask(void *argument)
 {
     MX_USB_DEVICE_Init();
     while(1)
@@ -114,7 +121,9 @@ void StartDefaultTask(void *argument)
             break;
 
             case PLATFORM_SET_VELOCITY_INPUT:
-                set_velocity_input(commandBuffer[1], commandBuffer[2], commandBuffer[3]);
+                taskENTER_CRITICAL();
+                TargetVelocity = get_mecanum_velocities(commandBuffer[1], commandBuffer[2], commandBuffer[3]);
+                taskEXIT_CRITICAL();
             break;
             }
 
@@ -124,18 +133,67 @@ void StartDefaultTask(void *argument)
     }
 }
 
-void StartTask02(void *argument)
+void EncoderTaskFunction(void *argument)
 {
+    initialize_encoder(ENCODER0);
+    initialize_encoder(ENCODER1);
+    initialize_encoder(ENCODER2);
+    initialize_encoder(ENCODER3);
+
+    const TickType_t xFrequency = pdMS_TO_TICKS(50);
+    TickType_t xLastWakeTime = xTaskGetTickCount();
     for(;;)
     {
-        //gpio_toggle_status_led();
-        osDelay(500);
+        vTaskDelayUntil(&xLastWakeTime, xFrequency);
+        taskENTER_CRITICAL();
+        encoder_update_state(ENCODER0, get_encoder_value(ENCODER0));
+        encoder_update_state(ENCODER1, get_encoder_value(ENCODER1));
+        encoder_update_state(ENCODER2, get_encoder_value(ENCODER2));
+        encoder_update_state(ENCODER3, get_encoder_value(ENCODER3));
+        taskEXIT_CRITICAL();
     }
 }
 
-/* Callback01 function */
-void Callback01(void *argument)
+void StartControllerTask(void *argument)
 {
+    unsigned int pwm_limit = 840;
+
+    int targetVelocity = 20; // ticks per 50 ms
+    double currentSpeed = 0;
+    double kp = 1;
+    double ki = 0.05 ;
+    double ierror = 0;
+    // Max ticks per sec 2,408.4848
+    initialize_motor(0);
+    const TickType_t xFrequency = pdMS_TO_TICKS(200);
+    TickType_t xLastWakeTime = xTaskGetTickCount();
+    unsigned int seq = 0;
+    for(;;)
+    {
+        vTaskDelayUntil(&xLastWakeTime, xFrequency);
+
+        taskENTER_CRITICAL();
+        unsigned int value = encoder_get_value(0);
+        int velocity = encoder_get_velocity(0);
+        taskEXIT_CRITICAL();
+
+        double error = targetVelocity - velocity;
+        ierror += error;
+
+        currentSpeed = currentSpeed + error*kp + ierror*ki;
+
+        if(currentSpeed > pwm_limit){
+            currentSpeed = pwm_limit;
+        }else if(currentSpeed < -pwm_limit){
+            currentSpeed = -pwm_limit;
+        }
+
+        set_motor_speed(0, currentSpeed > 0, abs(currentSpeed));
+
+        print_controller_state(seq, velocity, currentSpeed);
+        HAL_GPIO_TogglePin (GPIOC, GPIO_PIN_12);
+        seq++;
+    }
 }
 
 void NMI_Handler(void)
