@@ -50,7 +50,7 @@ static void initialize_encoder_timer(TIM_HandleTypeDef *htim, TIM_TypeDef *typeD
 	htim->Instance = typeDef;
 	htim->Init.Prescaler = 0;
 	htim->Init.CounterMode = TIM_COUNTERMODE_UP;
-	htim->Init.Period = 65535;
+	htim->Init.Period = 4294967295; // 65535
 	htim->Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
 	htim->Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
 	sConfig.EncoderMode = TIM_ENCODERMODE_TI1;

@@ -7,6 +7,36 @@
 signed char verify_range(signed char c);
 int sing(int c);
 
+
+Controller init_pid_controller(double kp, double ki, double kd)
+{
+    Controller controller = {
+        .kp = kp,
+        .ki = ki,
+        .kd = kd
+        };
+    return controller;
+}
+
+double update_pid_controller(Controller* controller, double currentVelocuty, double targetVelocity)
+{
+    double error = targetVelocity - currentVelocuty;
+    controller->ierror += error;
+    controller->motorPWM = controller->motorPWM + error * controller->kp + controller->ierror * controller->ki;
+
+    if(controller->motorPWM > PWM_LIMIT)
+    {
+        controller->motorPWM = PWM_LIMIT;
+    }
+    else if(controller->motorPWM < -PWM_LIMIT)
+    {
+        controller->motorPWM = -PWM_LIMIT;
+    }
+
+    return controller->motorPWM;
+}
+
+
 mecanum_velocity_t get_mecanum_velocities(signed char x, signed char y, signed char t)
 {
     // Adjust if needed velocity input components

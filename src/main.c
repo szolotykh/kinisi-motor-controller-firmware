@@ -7,6 +7,7 @@
 #include "main.h"
 #include "platform.h"
 #include "utils.h"
+#include "hw_config.h"
 
 #include "cmsis_os.h"
 #include <FreeRTOS.h>
@@ -32,7 +33,6 @@ void OTG_FS_IRQHandler(void);
 
 char commandBuffer[64];
 
-mecanum_velocity_t CurrentVelocity = { .motor0 = 0, .motor1 = 0, .motor2 = 0, .motor3 = 0};
 mecanum_velocity_t TargetVelocity = { .motor0 = 0, .motor1 = 0, .motor2 = 0, .motor3 = 0};
 
 
@@ -167,24 +167,25 @@ void EncoderTaskFunction(void *argument)
 void StartControllerTask(void *argument)
 {
 
-    TargetVelocity.motor0 = 30;
-    TargetVelocity.motor1 = 30;
-    TargetVelocity.motor2 = 30;
-    TargetVelocity.motor3 = 30;
+    TargetVelocity.motor0 = 0;
+    TargetVelocity.motor1 = 0;
+    TargetVelocity.motor2 = 0;
+    TargetVelocity.motor3 = 10;
 
     double max_encoder_velocity_per_capture = MAX_TICKS_PER_SEC * ENCODER_CAPTURE_INTERVAL / 1000;
 
-    int pwm_limit = 840;
+    double kp = 0.2f;
+    double ki = 0.1; // 0.05f;
+    double kd = 0;
+    Controller motorControllers[NUMBER_MOTORS] = {
+        init_pid_controller(kp, ki, kd),
+        init_pid_controller(kp, ki, kd),
+        init_pid_controller(kp, ki, kd),
+        init_pid_controller(kp, ki, kd),
+    };
 
-    double currentSpeed[4] = {0, 0, 0, 0};;
-    double kp = 0.5;
-    double ki = 0.05;
-    double ierror[4] = {0, 0, 0, 0};
-
-    initialize_motor(0);
-    initialize_motor(1);
-    initialize_motor(2);
-    initialize_motor(3);
+    // Initialize all motors
+    initialize_motor_all();
 
     const TickType_t xFrequency = pdMS_TO_TICKS(CONTROLLER_UPDATE_INTERVAL);
     TickType_t xLastWakeTime = xTaskGetTickCount();
@@ -195,43 +196,37 @@ void StartControllerTask(void *argument)
 
         // Get current velocity from encoder
         taskENTER_CRITICAL();
-        int velocity[4] = {
-            encoder_get_velocity(0),
-            encoder_get_velocity(1),
-            encoder_get_velocity(2),
-            encoder_get_velocity(3),
+        int currentVelocity[NUMBER_MOTORS] = {
+            encoder_get_velocity(ENCODER0),
+            encoder_get_velocity(ENCODER1),
+            encoder_get_velocity(ENCODER2),
+            encoder_get_velocity(ENCODER3),
         };
         taskEXIT_CRITICAL();
 
         // Convert input velocity from procent to ticks per encoder caputre interval
-        double targetEncoderVelocity[4] = {
+        double targetEncoderVelocity[NUMBER_MOTORS] = {
             TargetVelocity.motor0 * max_encoder_velocity_per_capture / 100,
             TargetVelocity.motor1 * max_encoder_velocity_per_capture / 100,
             TargetVelocity.motor2 * max_encoder_velocity_per_capture / 100,
             TargetVelocity.motor3 * max_encoder_velocity_per_capture / 100
         };
 
+        int motorPWM[NUMBER_MOTORS];
         // Calculate new velocity for motors
-        for(int i = 0; i < 4; i++)
+        for(int i = 0; i < NUMBER_MOTORS; i++)
         {
-            double error = targetEncoderVelocity[i] - velocity[i];
-            //ierror[i] += error;
-            currentSpeed[i] = currentSpeed[i] + error*kp; // + ierror[i]*ki;
-
-            if(currentSpeed[i] > pwm_limit){
-                currentSpeed[i] = pwm_limit;
-            }else if(currentSpeed[i] < -pwm_limit){
-                currentSpeed[i] = -pwm_limit;
-            }
+            motorPWM[i] = update_pid_controller(&motorControllers[i], currentVelocity[i], targetEncoderVelocity[i]);
         }
 
         // Set motors speed and direction
-        for(int i = 0; i < 4; i++)
+        for(int i = 0; i < NUMBER_MOTORS; i++)
         {
-            set_motor_speed(i, currentSpeed[i] > 0, abs(currentSpeed[i]));
+            set_motor_speed(i, motorPWM[i] > 0, abs(motorPWM[i]));
         }
 
-        print_controller_state(seq, velocity[3], (int)currentSpeed[3]);
+        int motorToMonitor = MOTOR3;
+        print_controller_state(seq, currentVelocity[motorToMonitor], (int)motorPWM[motorToMonitor]);
         HAL_GPIO_TogglePin (GPIOC, GPIO_PIN_12);
         seq++;
     }

@@ -28,6 +28,14 @@ void initialize_motor(motorIndex motorIndex)
 	}
 }
 
+void initialize_motor_all()
+{
+	initialize_motor(MOTOR0);
+	initialize_motor(MOTOR1);
+	initialize_motor(MOTOR2);
+	initialize_motor(MOTOR3);
+}
+
 void set_motor_speed(motorIndex motorIndex, unsigned short direction, unsigned speed)
 {
 	TIM_HandleTypeDef *htim = get_timer_handeler(motor_info[motorIndex].timer);
