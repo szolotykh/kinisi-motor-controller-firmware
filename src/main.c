@@ -15,6 +15,16 @@
 
 #include <controller.h>
 
+#define ENCDER_EVENT_PER_REV 1557.21f
+#define MAX_RPM 92.8f
+#define MAX_RPS MAX_RPM/60
+#define MAX_TICKS_PER_SEC MAX_RPS*ENCDER_EVENT_PER_REV
+// 116*4/5
+
+#define CONTROLLER_UPDATE_INTERVAL 200
+#define ENCODER_CAPTURE_INTERVAL 50
+
+
 #define HAL_PCD_MODULE_ENABLED
 extern PCD_HandleTypeDef hpcd_USB_OTG_FS;
 
@@ -140,7 +150,7 @@ void EncoderTaskFunction(void *argument)
     initialize_encoder(ENCODER2);
     initialize_encoder(ENCODER3);
 
-    const TickType_t xFrequency = pdMS_TO_TICKS(50);
+    const TickType_t xFrequency = pdMS_TO_TICKS(ENCODER_CAPTURE_INTERVAL);
     TickType_t xLastWakeTime = xTaskGetTickCount();
     for(;;)
     {
@@ -156,41 +166,72 @@ void EncoderTaskFunction(void *argument)
 
 void StartControllerTask(void *argument)
 {
-    unsigned int pwm_limit = 840;
 
-    int targetVelocity = 20; // ticks per 50 ms
-    double currentSpeed = 0;
-    double kp = 1;
-    double ki = 0.05 ;
-    double ierror = 0;
-    // Max ticks per sec 2,408.4848
+    TargetVelocity.motor0 = 30;
+    TargetVelocity.motor1 = 30;
+    TargetVelocity.motor2 = 30;
+    TargetVelocity.motor3 = 30;
+
+    double max_encoder_velocity_per_capture = MAX_TICKS_PER_SEC * ENCODER_CAPTURE_INTERVAL / 1000;
+
+    int pwm_limit = 840;
+
+    double currentSpeed[4] = {0, 0, 0, 0};;
+    double kp = 0.5;
+    double ki = 0.05;
+    double ierror[4] = {0, 0, 0, 0};
+
     initialize_motor(0);
-    const TickType_t xFrequency = pdMS_TO_TICKS(200);
+    initialize_motor(1);
+    initialize_motor(2);
+    initialize_motor(3);
+
+    const TickType_t xFrequency = pdMS_TO_TICKS(CONTROLLER_UPDATE_INTERVAL);
     TickType_t xLastWakeTime = xTaskGetTickCount();
     unsigned int seq = 0;
     for(;;)
     {
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
 
+        // Get current velocity from encoder
         taskENTER_CRITICAL();
-        unsigned int value = encoder_get_value(0);
-        int velocity = encoder_get_velocity(0);
+        int velocity[4] = {
+            encoder_get_velocity(0),
+            encoder_get_velocity(1),
+            encoder_get_velocity(2),
+            encoder_get_velocity(3),
+        };
         taskEXIT_CRITICAL();
 
-        double error = targetVelocity - velocity;
-        ierror += error;
+        // Convert input velocity from procent to ticks per encoder caputre interval
+        double targetEncoderVelocity[4] = {
+            TargetVelocity.motor0 * max_encoder_velocity_per_capture / 100,
+            TargetVelocity.motor1 * max_encoder_velocity_per_capture / 100,
+            TargetVelocity.motor2 * max_encoder_velocity_per_capture / 100,
+            TargetVelocity.motor3 * max_encoder_velocity_per_capture / 100
+        };
 
-        currentSpeed = currentSpeed + error*kp + ierror*ki;
+        // Calculate new velocity for motors
+        for(int i = 0; i < 4; i++)
+        {
+            double error = targetEncoderVelocity[i] - velocity[i];
+            //ierror[i] += error;
+            currentSpeed[i] = currentSpeed[i] + error*kp; // + ierror[i]*ki;
 
-        if(currentSpeed > pwm_limit){
-            currentSpeed = pwm_limit;
-        }else if(currentSpeed < -pwm_limit){
-            currentSpeed = -pwm_limit;
+            if(currentSpeed[i] > pwm_limit){
+                currentSpeed[i] = pwm_limit;
+            }else if(currentSpeed[i] < -pwm_limit){
+                currentSpeed[i] = -pwm_limit;
+            }
         }
 
-        set_motor_speed(0, currentSpeed > 0, abs(currentSpeed));
+        // Set motors speed and direction
+        for(int i = 0; i < 4; i++)
+        {
+            set_motor_speed(i, currentSpeed[i] > 0, abs(currentSpeed[i]));
+        }
 
-        print_controller_state(seq, velocity, currentSpeed);
+        print_controller_state(seq, velocity[3], (int)currentSpeed[3]);
         HAL_GPIO_TogglePin (GPIOC, GPIO_PIN_12);
         seq++;
     }

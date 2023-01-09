@@ -8,11 +8,6 @@
 #include <hw_motor.h>
 #include <hw_encoder.h>
 
-#define ENCDER_EVENT_PER_REV 1557.21f
-#define MAXRPM 92.8f
-#define MAXRPS MAXRPM/60
-// 116*4/5
-
 #define ENCODER_UPDATE_RATE 100
 
 void init_platform();

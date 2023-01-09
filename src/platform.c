@@ -14,7 +14,6 @@ typedef struct
 {
     unsigned int value_n0;
     unsigned int value_n1;
-    unsigned int value_n2;
     int velocity_n0;
     int velocity_n1;
     int acceleration_n0;
@@ -47,7 +46,6 @@ void set_velocity_input(const mecanum_velocity_t velocity)
 
 void encoder_update_state(encoder_index_t index, unsigned int value)
 {
-    encoder_state[index].value_n2 = encoder_state[index].value_n1;
     encoder_state[index].value_n1 = encoder_state[index].value_n0;
     encoder_state[index].value_n0 = value;
     encoder_state[index].velocity_n1 = encoder_state[index].velocity_n0;
