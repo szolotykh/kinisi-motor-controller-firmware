@@ -12,18 +12,21 @@
 #include "cmsis_os.h"
 #include <FreeRTOS.h>
 #include "task.h"
+#include <semphr.h>
 #include <stdio.h>
 
 #include <controller.h>
 
+
+
 #define ENCDER_EVENT_PER_REV 1557.21f
 #define MAX_RPM 92.8f
-#define MAX_RPS MAX_RPM/60
+#define MAX_RPS MAX_RPM/60.0f
 #define MAX_TICKS_PER_SEC MAX_RPS*ENCDER_EVENT_PER_REV
 // 116*4/5
 
 #define CONTROLLER_UPDATE_INTERVAL 200
-#define ENCODER_CAPTURE_INTERVAL 50
+#define ENCODER_CAPTURE_INTERVAL 100
 
 
 #define HAL_PCD_MODULE_ENABLED
@@ -34,6 +37,8 @@ void OTG_FS_IRQHandler(void);
 char commandBuffer[64];
 
 mecanum_velocity_t TargetVelocity = { .motor0 = 0, .motor1 = 0, .motor2 = 0, .motor3 = 0};
+
+static SemaphoreHandle_t mutex;
 
 
 osThreadId_t CommandsTaskHandle;
@@ -75,6 +80,7 @@ int main(void)
 
     HAL_NVIC_SetPriority(PendSV_IRQn, 15, 0);
 
+    mutex = xSemaphoreCreateMutex();
     osKernelInitialize();
     CommandsQueue01Handle = osMessageQueueNew (16, sizeof(uint16_t), &CommandsQueue01_attributes);
 
@@ -106,6 +112,10 @@ void StartCommandTask(void *argument)
                 }
             break;
 
+            case MOTOR_SET_CONTROLLER:
+                // SetMotorController 
+            break;
+
             case INITIALIZE_ENCODER:
                 initialize_encoder(commandBuffer[1]);
             break;
@@ -128,6 +138,10 @@ void StartCommandTask(void *argument)
 
             case PLATFORM_INITIALIZE:
                 init_platform();
+            break;
+
+            case PLATFORM_SET_CONTROLLER:
+                // SetController
             break;
 
             case PLATFORM_SET_VELOCITY_INPUT:
@@ -155,34 +169,59 @@ void EncoderTaskFunction(void *argument)
     for(;;)
     {
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
-        taskENTER_CRITICAL();
+
+        xSemaphoreTake(mutex, portMAX_DELAY);
         encoder_update_state(ENCODER0, get_encoder_value(ENCODER0));
         encoder_update_state(ENCODER1, get_encoder_value(ENCODER1));
         encoder_update_state(ENCODER2, get_encoder_value(ENCODER2));
         encoder_update_state(ENCODER3, get_encoder_value(ENCODER3));
-        taskEXIT_CRITICAL();
+        xSemaphoreGive(mutex);
     }
 }
 
 void StartControllerTask(void *argument)
 {
+    /*
+    MX_USB_DEVICE_Init();
+    int seq1 = 0;
+    const TickType_t xFrequency1 = pdMS_TO_TICKS(200);
+    TickType_t xLastWakeTime1 = xTaskGetTickCount();
+    int motorToMonitor = MOTOR3;
 
+    initialize_motor(motorToMonitor);
+    set_motor_speed(motorToMonitor, 1, 200);
+
+    for(;;)
+    {
+        vTaskDelayUntil(&xLastWakeTime1, xFrequency1);
+        xSemaphoreTake(mutex, portMAX_DELAY);
+        encoder_get_velocity(motorToMonitor),
+        xSemaphoreGive(mutex);
+        print_controller_state(seq1, encoder_get_velocity(motorToMonitor), 0);
+        seq1++;
+        //xSemaphoreGive(mutex);
+    }
+
+    return;
+    */
+    // ------------------------------------------------
     TargetVelocity.motor0 = 0;
     TargetVelocity.motor1 = 0;
     TargetVelocity.motor2 = 0;
-    TargetVelocity.motor3 = 10;
+    TargetVelocity.motor3 = 20;
 
     double max_encoder_velocity_per_capture = MAX_TICKS_PER_SEC * ENCODER_CAPTURE_INTERVAL / 1000;
 
-    double kp = 0.2f;
-    double ki = 0.1; // 0.05f;
-    double kd = 0;
+    double kp = 0.1f;
+    double ki = 0.01f; // 0.05f;
+    double kd = 0.1f;
     Controller motorControllers[NUMBER_MOTORS] = {
         init_pid_controller(kp, ki, kd),
         init_pid_controller(kp, ki, kd),
         init_pid_controller(kp, ki, kd),
         init_pid_controller(kp, ki, kd),
     };
+    motorControllers[3].motorPWM = 190;
 
     // Initialize all motors
     initialize_motor_all();
@@ -190,19 +229,25 @@ void StartControllerTask(void *argument)
     const TickType_t xFrequency = pdMS_TO_TICKS(CONTROLLER_UPDATE_INTERVAL);
     TickType_t xLastWakeTime = xTaskGetTickCount();
     unsigned int seq = 0;
+
+    //set_motor_speed(3, 240, 1);
+    //osDelay(2);
+    //set_motor_speed(0, 40, 1);
+    
+
     for(;;)
     {
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
 
         // Get current velocity from encoder
-        taskENTER_CRITICAL();
+        xSemaphoreTake(mutex, portMAX_DELAY);
         int currentVelocity[NUMBER_MOTORS] = {
             encoder_get_velocity(ENCODER0),
             encoder_get_velocity(ENCODER1),
             encoder_get_velocity(ENCODER2),
             encoder_get_velocity(ENCODER3),
         };
-        taskEXIT_CRITICAL();
+        xSemaphoreGive(mutex);
 
         // Convert input velocity from procent to ticks per encoder caputre interval
         double targetEncoderVelocity[NUMBER_MOTORS] = {
@@ -224,6 +269,8 @@ void StartControllerTask(void *argument)
         {
             set_motor_speed(i, motorPWM[i] > 0, abs(motorPWM[i]));
         }
+
+        //set_motor_speed(3, 35, 1);
 
         int motorToMonitor = MOTOR3;
         print_controller_state(seq, currentVelocity[motorToMonitor], (int)motorPWM[motorToMonitor]);

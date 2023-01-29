@@ -4,6 +4,7 @@
 // Motor commands
 #define INITIALIZE_MOTOR 0x01
 #define SET_MOTOR_SPEED 0x02
+#define MOTOR_SET_CONTROLLER 0x03
 
 // Encoder commands
 #define INITIALIZE_ENCODER 0x11
@@ -22,3 +23,4 @@
 // Platform
 #define PLATFORM_INITIALIZE 0x30
 #define PLATFORM_SET_VELOCITY_INPUT 0x31
+#define PLATFORM_SET_CONTROLLER 0x32

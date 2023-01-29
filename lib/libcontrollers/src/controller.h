@@ -21,8 +21,12 @@ typedef struct Controller
     double ki;
     double kd;
 
-    double ierror;
+    double integrator;
+    double previousError;
+    double previousVelocity;
     double motorPWM;
+    
+    double T;
 } Controller;
 
 Controller init_pid_controller(double kp, double ki, double kd);
