@@ -30,10 +30,7 @@ void SetMotorVelocity(motorIndex motorIndex, int velocity)
 
 void init_platform()
 {
-    initialize_motor(MOTOR0);
-    initialize_motor(MOTOR1);
-    initialize_motor(MOTOR2);
-    initialize_motor(MOTOR3);
+    initialize_motor_all();
 }
 
 void set_velocity_input(const mecanum_velocity_t velocity)

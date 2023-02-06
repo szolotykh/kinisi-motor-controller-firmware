@@ -9,15 +9,13 @@
 #include "utils.h"
 #include "hw_config.h"
 
-#include "cmsis_os.h"
+#include <cmsis_os.h>
 #include <FreeRTOS.h>
 #include "task.h"
 #include <semphr.h>
 #include <stdio.h>
 
 #include <controller.h>
-
-
 
 #define ENCDER_EVENT_PER_REV 1557.21f
 #define MAX_RPM 92.8f
@@ -34,9 +32,8 @@ extern PCD_HandleTypeDef hpcd_USB_OTG_FS;
 
 void OTG_FS_IRQHandler(void);
 
-char commandBuffer[64];
-
-mecanum_velocity_t TargetVelocity = { .motor0 = 0, .motor1 = 0, .motor2 = 0, .motor3 = 0};
+double TargetVelocity[4] = { 0 };
+Controller* motor_controllers[NUMBER_MOTORS];
 
 static SemaphoreHandle_t mutex;
 
@@ -48,7 +45,7 @@ const osThreadAttr_t CommandsTask_attributes = {
   .priority = (osPriority_t) osPriorityNormal,
 };
 /* Definitions for ControllerTask */
-osThreadId_t ControllerTaskHandle;
+osThreadId_t ControllerTaskHandles[4] = { NULL };
 const osThreadAttr_t ControllerTask_attributes = {
   .name = "ControllerTask",
   .stack_size = 128 * 8,
@@ -72,6 +69,13 @@ void StartCommandTask(void *argument);
 void StartControllerTask(void *argument);
 void EncoderTaskFunction(void *argument);
 
+typedef struct controller_task_paramerers_t
+{
+    motorIndex mIndex;
+    encoder_index_t eIndex;
+    Controller* controller;
+} controller_task_paramerers_t;
+
 int main(void)
 {
     HAL_Init();
@@ -85,8 +89,7 @@ int main(void)
     CommandsQueue01Handle = osMessageQueueNew (16, sizeof(uint16_t), &CommandsQueue01_attributes);
 
     CommandsTaskHandle = osThreadNew(StartCommandTask, NULL, &CommandsTask_attributes);
-    EncoderTaskHandle = osThreadNew(EncoderTaskFunction, NULL, &EncoderTask_attributes);
-    ControllerTaskHandle = osThreadNew(StartControllerTask, NULL, &ControllerTask_attributes);
+    //EncoderTaskHandle = osThreadNew(EncoderTaskFunction, NULL, &EncoderTask_attributes);
 
     osKernelStart();
 }
@@ -113,7 +116,42 @@ void StartCommandTask(void *argument)
             break;
 
             case MOTOR_SET_CONTROLLER:
-                // SetMotorController 
+                {
+                char motorIndex = commandBuffer[1];
+                if (ControllerTaskHandles[motorIndex] == NULL)
+                {
+                    // SetMotorController 
+                    Controller* controller = (Controller*) malloc(sizeof(Controller));
+                    controller->kp = 0.1f;
+                    controller->ki = 0.0f;
+                    controller->kd = 0.0f;
+                    controller->motorPWM = 190;
+
+                    controller_task_paramerers_t* parameters = (controller_task_paramerers_t*) malloc(sizeof(controller_task_paramerers_t));
+                    parameters->controller = controller;
+                    parameters->mIndex = motorIndex;
+                    parameters->eIndex = motorIndex;
+                    ControllerTaskHandles[motorIndex] = osThreadNew(StartControllerTask, (void*)parameters, &ControllerTask_attributes);
+                }
+                }
+            break;
+
+            case MOTOR_DEL_CONTROLLER:
+                {
+                osThreadId_t handler = ControllerTaskHandles[commandBuffer[1]];
+                osThreadFlagsSet(handler, 0x7);
+                // osThreadJoin is not implemented
+                //osThreadJoin(handler);
+                //free(handler);
+                }
+            break;
+
+            case MOTOR_SET_TARGET_VELOCITY:
+                {
+                signed short speed = commandBuffer[3] | commandBuffer[4]<<8;
+                signed short direction = commandBuffer[2];
+                TargetVelocity[commandBuffer[1]] = ((direction*2)-1) * speed;
+                }
             break;
 
             case INITIALIZE_ENCODER:
@@ -145,15 +183,19 @@ void StartCommandTask(void *argument)
             break;
 
             case PLATFORM_SET_VELOCITY_INPUT:
-                taskENTER_CRITICAL();
-                TargetVelocity = get_mecanum_velocities(commandBuffer[1], commandBuffer[2], commandBuffer[3]);
-                taskEXIT_CRITICAL();
+                {
+                mecanum_velocity_t mecanumVelocity = get_mecanum_velocities(commandBuffer[1], commandBuffer[2], commandBuffer[3]);
+                TargetVelocity[MOTOR0] = mecanumVelocity.motor0;
+                TargetVelocity[MOTOR1] = mecanumVelocity.motor1;
+                TargetVelocity[MOTOR2] = mecanumVelocity.motor2;
+                TargetVelocity[MOTOR3] = mecanumVelocity.motor3;
+                }
             break;
             }
-
             // Reset command buffer
             memset(commandBuffer, '\0', 64);
         }
+        osDelay(1);
     }
 }
 
@@ -182,58 +224,30 @@ void EncoderTaskFunction(void *argument)
 void StartControllerTask(void *argument)
 {
     /*
-    MX_USB_DEVICE_Init();
-    int seq1 = 0;
-    const TickType_t xFrequency1 = pdMS_TO_TICKS(200);
-    TickType_t xLastWakeTime1 = xTaskGetTickCount();
-    int motorToMonitor = MOTOR3;
-
-    initialize_motor(motorToMonitor);
-    set_motor_speed(motorToMonitor, 1, 200);
-
-    for(;;)
-    {
-        vTaskDelayUntil(&xLastWakeTime1, xFrequency1);
-        xSemaphoreTake(mutex, portMAX_DELAY);
-        encoder_get_velocity(motorToMonitor),
-        xSemaphoreGive(mutex);
-        print_controller_state(seq1, encoder_get_velocity(motorToMonitor), 0);
-        seq1++;
-        //xSemaphoreGive(mutex);
-    }
-
-    return;
+    TODO: Add option to send initial short signal to a motor to move it it from static position.
+    Like this:
+    set_motor_speed(3, 240, 1);
+    osDelay(2);
+    set_motor_speed(0, 40, 1);
     */
-    // ------------------------------------------------
-    TargetVelocity.motor0 = 0;
-    TargetVelocity.motor1 = 0;
-    TargetVelocity.motor2 = 0;
-    TargetVelocity.motor3 = 20;
 
-    double max_encoder_velocity_per_capture = MAX_TICKS_PER_SEC * ENCODER_CAPTURE_INTERVAL / 1000;
+    controller_task_paramerers_t* paramerers = (controller_task_paramerers_t*) argument;
 
-    double kp = 0.1f;
-    double ki = 0.01f; // 0.05f;
-    double kd = 0.1f;
-    Controller motorControllers[NUMBER_MOTORS] = {
-        init_pid_controller(kp, ki, kd),
-        init_pid_controller(kp, ki, kd),
-        init_pid_controller(kp, ki, kd),
-        init_pid_controller(kp, ki, kd),
-    };
-    motorControllers[3].motorPWM = 190;
+    // Initialize hardware
+    motorIndex mIndex = paramerers->mIndex;
+    encoder_index_t eIndex = paramerers->eIndex;
+    Controller* controller = paramerers->controller;
+    free(paramerers);
 
-    // Initialize all motors
-    initialize_motor_all();
+    initialize_motor(mIndex);
+    initialize_encoder(eIndex);
 
+    double max_encoder_velocity_per_capture = MAX_TICKS_PER_SEC * CONTROLLER_UPDATE_INTERVAL / 1000;
     const TickType_t xFrequency = pdMS_TO_TICKS(CONTROLLER_UPDATE_INTERVAL);
     TickType_t xLastWakeTime = xTaskGetTickCount();
     unsigned int seq = 0;
-
-    //set_motor_speed(3, 240, 1);
-    //osDelay(2);
-    //set_motor_speed(0, 40, 1);
-    
+    unsigned int previousEncoderValue = 0;
+    uint32_t flags;
 
     for(;;)
     {
@@ -241,42 +255,38 @@ void StartControllerTask(void *argument)
 
         // Get current velocity from encoder
         xSemaphoreTake(mutex, portMAX_DELAY);
-        int currentVelocity[NUMBER_MOTORS] = {
-            encoder_get_velocity(ENCODER0),
-            encoder_get_velocity(ENCODER1),
-            encoder_get_velocity(ENCODER2),
-            encoder_get_velocity(ENCODER3),
-        };
+        unsigned int currentEncoderValue = get_encoder_value(eIndex);
         xSemaphoreGive(mutex);
 
+        unsigned int currentVelocity = currentEncoderValue - previousEncoderValue;
+        previousEncoderValue = currentEncoderValue;
+
         // Convert input velocity from procent to ticks per encoder caputre interval
-        double targetEncoderVelocity[NUMBER_MOTORS] = {
-            TargetVelocity.motor0 * max_encoder_velocity_per_capture / 100,
-            TargetVelocity.motor1 * max_encoder_velocity_per_capture / 100,
-            TargetVelocity.motor2 * max_encoder_velocity_per_capture / 100,
-            TargetVelocity.motor3 * max_encoder_velocity_per_capture / 100
-        };
+        double targetEncoderVelocity = TargetVelocity[mIndex] * max_encoder_velocity_per_capture / 100.0;
 
-        int motorPWM[NUMBER_MOTORS];
-        // Calculate new velocity for motors
-        for(int i = 0; i < NUMBER_MOTORS; i++)
-        {
-            motorPWM[i] = update_pid_controller(&motorControllers[i], currentVelocity[i], targetEncoderVelocity[i]);
-        }
+        int motorPWM = 0;
+        // Calculate new velocity for motor
+        motorPWM = update_pid_controller(controller, currentVelocity, targetEncoderVelocity);
 
-        // Set motors speed and direction
-        for(int i = 0; i < NUMBER_MOTORS; i++)
-        {
-            set_motor_speed(i, motorPWM[i] > 0, abs(motorPWM[i]));
-        }
+        // Set motor speed and direction
+        set_motor_speed(mIndex, motorPWM > 0, abs(motorPWM));
 
-        //set_motor_speed(3, 35, 1);
-
-        int motorToMonitor = MOTOR3;
-        print_controller_state(seq, currentVelocity[motorToMonitor], (int)motorPWM[motorToMonitor]);
-        HAL_GPIO_TogglePin (GPIOC, GPIO_PIN_12);
+        
+        int motorToMonitor = MOTOR0;
+        print_controller_state(seq, currentVelocity, motorPWM);
+        
         seq++;
+        flags = osThreadFlagsGet();
+        if(flags == 0x7){
+            break;
+        }
     }
+
+    // Stop motor
+    set_motor_speed(mIndex, 1, 0);
+
+    // Terminate thread
+    osThreadExit();
 }
 
 void NMI_Handler(void)

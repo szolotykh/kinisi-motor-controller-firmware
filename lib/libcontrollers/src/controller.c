@@ -39,10 +39,6 @@ double update_pid_controller(Controller* controller, double currentVelocuty, dou
     controller->previousError = error;
     controller->previousVelocity = currentVelocuty;
 
-    if (controller->motorPWM < 50){
-        controller->motorPWM = 50;
-    }
-
     return controller->motorPWM;
 }
 
