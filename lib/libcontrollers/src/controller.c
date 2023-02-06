@@ -25,13 +25,18 @@ Controller init_pid_controller(double kp, double ki, double kd)
 
 double update_pid_controller(Controller* controller, double currentVelocuty, double targetVelocity)
 {
+    // TODO Add mutex
+    double kp = controller->kp;
+    double ki = controller->ki;
+    double kd = controller->kd;
+
     double error = targetVelocity - currentVelocuty;
     controller->integrator += error; // + 0.5f * controller->ki * controller->T * (error + controller->previousError);
     controller->integrator = limit_to_range(controller->integrator, -80, 80);
 
-    double differentiator = controller->kd * (currentVelocuty - controller->previousVelocity);
+    double differentiator = kd * (currentVelocuty - controller->previousVelocity);
 
-    controller->motorPWM += controller->kp * error + controller->ki * controller->integrator + differentiator;
+    controller->motorPWM += kp * error + ki * controller->integrator + differentiator;
 
 
     controller->motorPWM = limit_to_range(controller->motorPWM, -PWM_LIMIT, PWM_LIMIT);

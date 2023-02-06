@@ -45,7 +45,7 @@ const osThreadAttr_t CommandsTask_attributes = {
   .priority = (osPriority_t) osPriorityNormal,
 };
 /* Definitions for ControllerTask */
-osThreadId_t ControllerTaskHandles[4] = { NULL };
+osThreadId_t ControllerTaskHandle = NULL;
 const osThreadAttr_t ControllerTask_attributes = {
   .name = "ControllerTask",
   .stack_size = 128 * 8,
@@ -69,12 +69,20 @@ void StartCommandTask(void *argument);
 void StartControllerTask(void *argument);
 void EncoderTaskFunction(void *argument);
 
-typedef struct controller_task_paramerers_t
+typedef struct controller_info_t
 {
+    char state;
     motorIndex mIndex;
     encoder_index_t eIndex;
-    Controller* controller;
-} controller_task_paramerers_t;
+    Controller controller;
+} controller_info_t;
+
+controller_info_t ControllerInfo[NUMBER_MOTORS] = { 
+    {.state = 0},
+    {.state = 0},
+    {.state = 0},
+    {.state = 0},
+ };
 
 int main(void)
 {
@@ -118,39 +126,42 @@ void StartCommandTask(void *argument)
             case MOTOR_SET_CONTROLLER:
                 {
                 char motorIndex = commandBuffer[1];
-                if (ControllerTaskHandles[motorIndex] == NULL)
+                if (ControllerTaskHandle == NULL)
                 {
-                    // SetMotorController 
-                    Controller* controller = (Controller*) malloc(sizeof(Controller));
-                    controller->kp = 0.1f;
-                    controller->ki = 0.0f;
-                    controller->kd = 0.0f;
-                    controller->motorPWM = 190;
-
-                    controller_task_paramerers_t* parameters = (controller_task_paramerers_t*) malloc(sizeof(controller_task_paramerers_t));
-                    parameters->controller = controller;
-                    parameters->mIndex = motorIndex;
-                    parameters->eIndex = motorIndex;
-                    ControllerTaskHandles[motorIndex] = osThreadNew(StartControllerTask, (void*)parameters, &ControllerTask_attributes);
+                    ControllerTaskHandle = osThreadNew(StartControllerTask, NULL, &ControllerTask_attributes);
                 }
+
+                // SetMotorController 
+                Controller controller;
+                controller.kp = 0.15f;
+                controller.ki = 0.0f;
+                controller.kd = 0.0f;
+                controller.motorPWM = 0;
+
+                controller_info_t controllerInfo;
+                controllerInfo.state = 1;
+                controllerInfo.controller = controller;
+                controllerInfo.mIndex = motorIndex;
+                controllerInfo.eIndex = motorIndex;
+
+                initialize_motor(controllerInfo.mIndex);
+                initialize_encoder(controllerInfo.eIndex);
+
+                ControllerInfo[motorIndex] = controllerInfo;
                 }
             break;
 
             case MOTOR_DEL_CONTROLLER:
                 {
-                osThreadId_t handler = ControllerTaskHandles[commandBuffer[1]];
-                osThreadFlagsSet(handler, 0x7);
-                // osThreadJoin is not implemented
-                //osThreadJoin(handler);
-                //free(handler);
+                ControllerInfo[commandBuffer[1]].state = 10; // STOPPING
                 }
             break;
 
             case MOTOR_SET_TARGET_VELOCITY:
                 {
-                signed short speed = commandBuffer[3] | commandBuffer[4]<<8;
+                signed short speed = commandBuffer[3] | commandBuffer[4] << 8;
                 signed short direction = commandBuffer[2];
-                TargetVelocity[commandBuffer[1]] = ((direction*2)-1) * speed;
+                TargetVelocity[commandBuffer[1]] = ((direction * 2) - 1) * speed;
                 }
             break;
 
@@ -231,47 +242,63 @@ void StartControllerTask(void *argument)
     set_motor_speed(0, 40, 1);
     */
 
-    controller_task_paramerers_t* paramerers = (controller_task_paramerers_t*) argument;
-
-    // Initialize hardware
-    motorIndex mIndex = paramerers->mIndex;
-    encoder_index_t eIndex = paramerers->eIndex;
-    Controller* controller = paramerers->controller;
-    free(paramerers);
-
-    initialize_motor(mIndex);
-    initialize_encoder(eIndex);
-
     double max_encoder_velocity_per_capture = MAX_TICKS_PER_SEC * CONTROLLER_UPDATE_INTERVAL / 1000;
     const TickType_t xFrequency = pdMS_TO_TICKS(CONTROLLER_UPDATE_INTERVAL);
     TickType_t xLastWakeTime = xTaskGetTickCount();
     unsigned int seq = 0;
-    unsigned int previousEncoderValue = 0;
+    unsigned int previousEncoderValue[NUMBER_MOTORS] = { 0 };
     uint32_t flags;
 
     for(;;)
     {
-        vTaskDelayUntil(&xLastWakeTime, xFrequency);
+        for (int index = 0; index < NUMBER_MOTORS; index++)
+        {
+            
+            if( ControllerInfo[index].state == 1 )
+            {
+            vTaskDelayUntil(&xLastWakeTime, xFrequency);
 
-        // Get current velocity from encoder
-        xSemaphoreTake(mutex, portMAX_DELAY);
-        unsigned int currentEncoderValue = get_encoder_value(eIndex);
-        xSemaphoreGive(mutex);
+            // Get current velocity from encoder
+            xSemaphoreTake(mutex, portMAX_DELAY);
+            unsigned int currentEncoderValue = get_encoder_value(index);
+            xSemaphoreGive(mutex);
 
-        unsigned int currentVelocity = currentEncoderValue - previousEncoderValue;
-        previousEncoderValue = currentEncoderValue;
+            unsigned int currentVelocity = currentEncoderValue - previousEncoderValue[index];
+            previousEncoderValue[index] = currentEncoderValue;
 
-        // Convert input velocity from procent to ticks per encoder caputre interval
-        double targetEncoderVelocity = TargetVelocity[mIndex] * max_encoder_velocity_per_capture / 100.0;
+            // Convert input velocity from procent to ticks per encoder caputre interval
+            double targetEncoderVelocity = TargetVelocity[index] * max_encoder_velocity_per_capture / 100.0;
 
-        int motorPWM = 0;
-        // Calculate new velocity for motor
-        motorPWM = update_pid_controller(controller, currentVelocity, targetEncoderVelocity);
+            // Calculate new velocity for motor
+            update_pid_controller(&ControllerInfo[index].controller, currentVelocity, targetEncoderVelocity);
+            }
+        }
 
-        // Set motor speed and direction
-        set_motor_speed(mIndex, motorPWM > 0, abs(motorPWM));
+        for (int index = 0; index < 4; index++)
+        {
+            if( ControllerInfo[index].state == 1 )
+            {
+            // Set motor speed and direction
+            unsigned short direction = ControllerInfo[index].controller.motorPWM > 0;
+            unsigned int speed = abs(ControllerInfo[index].controller.motorPWM);
+            set_motor_speed(ControllerInfo[index].mIndex, direction, speed);
+            }
+        }
 
-        
+        // Stopping controllers and motors
+        for (int index = 0; index < 4; index++)
+        {
+            if( ControllerInfo[index].state == 10 )
+            {
+                // Stop controller
+                ControllerInfo[index].state = 0;
+                ControllerInfo[index].controller.motorPWM = 0;
+                //Stop motor
+                set_motor_speed(ControllerInfo[index].mIndex, 0, 0);
+            }
+        }
+
+        /*
         int motorToMonitor = MOTOR0;
         print_controller_state(seq, currentVelocity, motorPWM);
         
@@ -280,13 +307,8 @@ void StartControllerTask(void *argument)
         if(flags == 0x7){
             break;
         }
+        */
     }
-
-    // Stop motor
-    set_motor_speed(mIndex, 1, 0);
-
-    // Terminate thread
-    osThreadExit();
 }
 
 void NMI_Handler(void)
