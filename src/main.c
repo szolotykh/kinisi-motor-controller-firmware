@@ -117,7 +117,7 @@ void StartCommandTask(void *argument)
 
             case SET_MOTOR_SPEED:
                 {
-                signed short speed = commandBuffer[3] | commandBuffer[4]<<8;
+                signed short speed = commandBuffer[3] | commandBuffer[4] << 8;
                 signed short direction = commandBuffer[2];
                 set_motor_speed(commandBuffer[1], direction, speed);
                 }
@@ -133,9 +133,10 @@ void StartCommandTask(void *argument)
 
                 // SetMotorController 
                 Controller controller;
-                controller.kp = 0.15f;
-                controller.ki = 0.0f;
-                controller.kd = 0.0f;
+                controller.kp = decode_double(commandBuffer + 2);
+                controller.ki = decode_double(commandBuffer + 10);
+                controller.kd = decode_double(commandBuffer + 18);
+
                 controller.motorPWM = 0;
 
                 controller_info_t controllerInfo;
@@ -274,7 +275,7 @@ void StartControllerTask(void *argument)
             }
         }
 
-        for (int index = 0; index < 4; index++)
+        for (int index = 0; index < NUMBER_MOTORS; index++)
         {
             if( ControllerInfo[index].state == 1 )
             {
@@ -286,7 +287,7 @@ void StartControllerTask(void *argument)
         }
 
         // Stopping controllers and motors
-        for (int index = 0; index < 4; index++)
+        for (int index = 0; index < NUMBER_MOTORS; index++)
         {
             if( ControllerInfo[index].state == 10 )
             {
