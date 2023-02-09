@@ -35,9 +35,6 @@ void OTG_FS_IRQHandler(void);
 double TargetVelocity[4] = { 0 };
 Controller* motor_controllers[NUMBER_MOTORS];
 
-static SemaphoreHandle_t mutex;
-
-
 osThreadId_t CommandsTaskHandle;
 const osThreadAttr_t CommandsTask_attributes = {
   .name = "CommandsTask",
@@ -52,13 +49,6 @@ const osThreadAttr_t ControllerTask_attributes = {
   .priority = (osPriority_t) osPriorityNormal,
 };
 
-osThreadId_t EncoderTaskHandle;
-const osThreadAttr_t EncoderTask_attributes = {
-  .name = "CommandsTask",
-  .stack_size = 128 * 4,
-  .priority = (osPriority_t) osPriorityNormal,
-};
-
 /* Definitions for CommandsQueue01 */
 osMessageQueueId_t CommandsQueue01Handle;
 const osMessageQueueAttr_t CommandsQueue01_attributes = {
@@ -67,7 +57,6 @@ const osMessageQueueAttr_t CommandsQueue01_attributes = {
 
 void StartCommandTask(void *argument);
 void StartControllerTask(void *argument);
-void EncoderTaskFunction(void *argument);
 
 typedef struct controller_info_t
 {
@@ -92,12 +81,9 @@ int main(void)
 
     HAL_NVIC_SetPriority(PendSV_IRQn, 15, 0);
 
-    mutex = xSemaphoreCreateMutex();
     osKernelInitialize();
     CommandsQueue01Handle = osMessageQueueNew (16, sizeof(uint16_t), &CommandsQueue01_attributes);
-
     CommandsTaskHandle = osThreadNew(StartCommandTask, NULL, &CommandsTask_attributes);
-    //EncoderTaskHandle = osThreadNew(EncoderTaskFunction, NULL, &EncoderTask_attributes);
 
     osKernelStart();
 }
@@ -211,28 +197,6 @@ void StartCommandTask(void *argument)
     }
 }
 
-void EncoderTaskFunction(void *argument)
-{
-    initialize_encoder(ENCODER0);
-    initialize_encoder(ENCODER1);
-    initialize_encoder(ENCODER2);
-    initialize_encoder(ENCODER3);
-
-    const TickType_t xFrequency = pdMS_TO_TICKS(ENCODER_CAPTURE_INTERVAL);
-    TickType_t xLastWakeTime = xTaskGetTickCount();
-    for(;;)
-    {
-        vTaskDelayUntil(&xLastWakeTime, xFrequency);
-
-        xSemaphoreTake(mutex, portMAX_DELAY);
-        encoder_update_state(ENCODER0, get_encoder_value(ENCODER0));
-        encoder_update_state(ENCODER1, get_encoder_value(ENCODER1));
-        encoder_update_state(ENCODER2, get_encoder_value(ENCODER2));
-        encoder_update_state(ENCODER3, get_encoder_value(ENCODER3));
-        xSemaphoreGive(mutex);
-    }
-}
-
 void StartControllerTask(void *argument)
 {
     /*
@@ -260,9 +224,7 @@ void StartControllerTask(void *argument)
             vTaskDelayUntil(&xLastWakeTime, xFrequency);
 
             // Get current velocity from encoder
-            xSemaphoreTake(mutex, portMAX_DELAY);
             unsigned int currentEncoderValue = get_encoder_value(index);
-            xSemaphoreGive(mutex);
 
             unsigned int currentVelocity = currentEncoderValue - previousEncoderValue[index];
             previousEncoderValue[index] = currentEncoderValue;
