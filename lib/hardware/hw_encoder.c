@@ -17,7 +17,7 @@ static motor_status_t encoder_status[NUMBER_ENCODERS];
 
 static void initialize_encoder_timer(TIM_HandleTypeDef *htim, TIM_TypeDef *typeDef);
 
-void initialize_encoder(encoder_index index){
+void initialize_encoder(encoder_index_t index) {
 	if(!encoder_status[index].isInitialized){
 		TIM_HandleTypeDef *htim = get_timer_handeler(encoder_info[index].timer);
 		initialize_encoder_timer(htim, encoder_info[index].timer);
@@ -26,10 +26,16 @@ void initialize_encoder(encoder_index index){
 	}
 }
 
-unsigned int get_encoder_value(encoder_index index){
+unsigned int get_encoder_value(encoder_index_t index){
 
 	TIM_HandleTypeDef *htim = get_timer_handeler(encoder_info[index].timer);
 	return htim->Instance->CNT;
+}
+
+uint8_t get_encoder_direction(encoder_index_t index){
+
+	// TODO: implement base on velocity
+	return 0;
 }
 
 static void initialize_encoder_timer(TIM_HandleTypeDef *htim, TIM_TypeDef *typeDef)
@@ -44,7 +50,7 @@ static void initialize_encoder_timer(TIM_HandleTypeDef *htim, TIM_TypeDef *typeD
 	htim->Instance = typeDef;
 	htim->Init.Prescaler = 0;
 	htim->Init.CounterMode = TIM_COUNTERMODE_UP;
-	htim->Init.Period = 65535;
+	htim->Init.Period = 4294967295; // 65535
 	htim->Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
 	htim->Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
 	sConfig.EncoderMode = TIM_ENCODERMODE_TI1;

@@ -14,4 +14,5 @@
 typedef unsigned char motorIndex;
 
 extern void initialize_motor(motorIndex motorIndex);
+extern void initialize_motor_all();
 extern void set_motor_speed(motorIndex motorIndex, unsigned short direction, unsigned speed);

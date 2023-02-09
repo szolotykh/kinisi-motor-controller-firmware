@@ -23,6 +23,8 @@
 #include "usbd_cdc_if.h"
 #include "main.h"
 
+char commandBuffer[64];
+
 /* USER CODE BEGIN INCLUDE */
 
 /* USER CODE END INCLUDE */
