@@ -183,10 +183,13 @@ void StartCommandTask(void *argument)
             case PLATFORM_SET_VELOCITY_INPUT:
                 {
                 mecanum_velocity_t mecanumVelocity = get_mecanum_velocities(commandBuffer[1], commandBuffer[2], commandBuffer[3]);
+                set_velocity_input(mecanumVelocity);
+                /* Should be part of set target velocity
                 TargetVelocity[MOTOR0] = mecanumVelocity.motor0;
                 TargetVelocity[MOTOR1] = mecanumVelocity.motor1;
                 TargetVelocity[MOTOR2] = mecanumVelocity.motor2;
                 TargetVelocity[MOTOR3] = mecanumVelocity.motor3;
+                */
                 }
             break;
             }
