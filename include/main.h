@@ -4,6 +4,8 @@
 
 #pragma once
 
-void SystemClock_Config(void);
+#include <message_queue.h>
 
-extern char commandBuffer[64];
+extern message_queue_t CommandQueue;
+
+void SystemClock_Config(void);

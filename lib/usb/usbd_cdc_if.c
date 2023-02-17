@@ -22,8 +22,9 @@
 /* Includes ------------------------------------------------------------------*/
 #include "usbd_cdc_if.h"
 #include "main.h"
+#include <message_queue.h>
 
-char commandBuffer[64];
+message_queue_t CommandQueue;
 
 /* USER CODE BEGIN INCLUDE */
 
@@ -269,8 +270,7 @@ static int8_t CDC_Receive_FS(uint8_t* Buf, uint32_t *Len)
   USBD_CDC_ReceivePacket(&hUsbDeviceFS);
 
   uint8_t len = (uint8_t) *Len;
-  memset(commandBuffer, '\0', 64);
-  memcpy(commandBuffer, Buf, len);
+  enqueue_multi(&CommandQueue, Buf, len);
   memset(Buf, '\0', len);
 
   return (USBD_OK);

@@ -4,6 +4,7 @@
 #include "usb_device.h"
 #include "hw_encoder.h"
 #include "commands.h"
+#include <message_queue.h>
 #include "main.h"
 #include "platform.h"
 #include "utils.h"
@@ -90,11 +91,16 @@ int main(void)
 
 void StartCommandTask(void *argument)
 {
+    init_queue(&CommandQueue);
     MX_USB_DEVICE_Init();
     while(1)
     {
-        if(commandBuffer[0] != '\0')
+        if(!is_queue_empty(&CommandQueue))
         {
+            char commandBuffer[MESSAGE_QUEUE_MAX_SIZE];
+            int data_len;
+            dequeue(&CommandQueue, commandBuffer, &data_len);
+
             switch(commandBuffer[0])
             {
             case INITIALIZE_MOTOR:
