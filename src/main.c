@@ -15,6 +15,7 @@
 #include "task.h"
 #include <semphr.h>
 #include <stdio.h>
+#include <assert.h>
 
 #include <controller.h>
 
@@ -27,6 +28,9 @@
 #define CONTROLLER_UPDATE_INTERVAL 200
 #define ENCODER_CAPTURE_INTERVAL 100
 
+// Change length of messages that command queue can store.
+// Max command + message lenght byte.
+#define MESSAGE_QUEUE_MAX_STR_LENGTH sizeof(controller_command_t) + 1
 
 #define HAL_PCD_MODULE_ENABLED
 extern PCD_HandleTypeDef hpcd_USB_OTG_FS;
@@ -39,14 +43,14 @@ Controller* motor_controllers[NUMBER_MOTORS];
 osThreadId_t CommandsTaskHandle;
 const osThreadAttr_t CommandsTask_attributes = {
   .name = "CommandsTask",
-  .stack_size = 128 * 4,
+  .stack_size = 128 * 8,
   .priority = (osPriority_t) osPriorityNormal,
 };
 /* Definitions for ControllerTask */
 osThreadId_t ControllerTaskHandle = NULL;
 const osThreadAttr_t ControllerTask_attributes = {
   .name = "ControllerTask",
-  .stack_size = 128 * 8,
+  .stack_size = 128 * 4,
   .priority = (osPriority_t) osPriorityNormal,
 };
 
@@ -91,33 +95,38 @@ int main(void)
 
 void StartCommandTask(void *argument)
 {
+    static_assert(
+        sizeof(controller_command_t) + 1 == MESSAGE_QUEUE_MAX_STR_LENGTH,
+        "Size of command queue less them motor command size.");
     init_queue(&CommandQueue);
     MX_USB_DEVICE_Init();
     while(1)
     {
-        if(!is_queue_empty(&CommandQueue))
+        if(!is_queue_empty(&CommandQueue)) 
         {
-            char commandBuffer[MESSAGE_QUEUE_MAX_SIZE];
+            char commandBuffer[MESSAGE_QUEUE_MAX_STR_LENGTH];
             int data_len;
             dequeue(&CommandQueue, commandBuffer, &data_len);
+            controller_command_t* cmd = (controller_command_t*)(&commandBuffer[0]);
 
-            switch(commandBuffer[0])
+            switch(cmd->commandType)
             {
             case INITIALIZE_MOTOR:
-                initialize_motor(commandBuffer[1]);
+                initialize_motor(cmd->properties.initializeMotor.motorIndex);
             break;
 
             case SET_MOTOR_SPEED:
                 {
-                signed short speed = commandBuffer[3] | commandBuffer[4] << 8;
-                signed short direction = commandBuffer[2];
-                set_motor_speed(commandBuffer[1], direction, speed);
+                set_motor_speed(
+                    cmd->properties.setMotorSpeed.motorIndex,
+                    cmd->properties.setMotorSpeed.direction,
+                    cmd->properties.setMotorSpeed.speed);
                 }
             break;
 
             case MOTOR_SET_CONTROLLER:
                 {
-                char motorIndex = commandBuffer[1];
+                char motorIndex = cmd->properties.setMotorController.motorIndex;
                 if (ControllerTaskHandle == NULL)
                 {
                     ControllerTaskHandle = osThreadNew(StartControllerTask, NULL, &ControllerTask_attributes);
@@ -125,11 +134,11 @@ void StartCommandTask(void *argument)
 
                 // SetMotorController 
                 Controller controller;
-                controller.kp = decode_double(commandBuffer + 2);
-                controller.ki = decode_double(commandBuffer + 10);
-                controller.kd = decode_double(commandBuffer + 18);
+                controller.kp = cmd->properties.setMotorController.kp;
+                controller.ki = cmd->properties.setMotorController.ki;
+                controller.kd = cmd->properties.setMotorController.kd;
 
-                controller.motorPWM = 0;
+                controller.motorPWM = motorIndex;
 
                 controller_info_t controllerInfo;
                 controllerInfo.state = 1;
@@ -146,25 +155,25 @@ void StartCommandTask(void *argument)
 
             case MOTOR_DEL_CONTROLLER:
                 {
-                ControllerInfo[commandBuffer[1]].state = 10; // STOPPING
+                ControllerInfo[cmd->properties.deleteMotorController.motorIndex].state = 10; // STOPPING
                 }
             break;
 
             case MOTOR_SET_TARGET_VELOCITY:
                 {
-                signed short speed = commandBuffer[3] | commandBuffer[4] << 8;
-                signed short direction = commandBuffer[2];
-                TargetVelocity[commandBuffer[1]] = ((direction * 2) - 1) * speed;
+                signed short speed = cmd->properties.setMotorTargetVelocity.speed;
+                signed short direction = cmd->properties.setMotorTargetVelocity.direction;
+                TargetVelocity[cmd->properties.setMotorTargetVelocity.motorIndex] = ((direction * 2) - 1) * speed;
                 }
             break;
 
             case INITIALIZE_ENCODER:
-                initialize_encoder(commandBuffer[1]);
+                initialize_encoder(cmd->properties.initializeEncoder.encoderIndex);
             break;
 
             case GET_ENCODER_VALUE:
                 {
-                unsigned int value = get_encoder_value(commandBuffer[1]);
+                unsigned int value = get_encoder_value(cmd->properties.getEncoderValue.encoderIndex);
                 char buf[4];
                 buf[3] = (value >> 24) & 0xFF;
                 buf[2] = (value >> 16) & 0xFF;
@@ -188,19 +197,20 @@ void StartCommandTask(void *argument)
 
             case PLATFORM_SET_VELOCITY_INPUT:
                 {
-                mecanum_velocity_t mecanumVelocity = get_mecanum_velocities(commandBuffer[1], commandBuffer[2], commandBuffer[3]);
+                mecanum_velocity_t mecanumVelocity = get_mecanum_velocities(
+                    cmd->properties.setPlatformVelocityInput.x,
+                    cmd->properties.setPlatformVelocityInput.y,
+                    cmd->properties.setPlatformVelocityInput.t);
                 set_velocity_input(mecanumVelocity);
-                /* Should be part of set target velocity
-                TargetVelocity[MOTOR0] = mecanumVelocity.motor0;
-                TargetVelocity[MOTOR1] = mecanumVelocity.motor1;
-                TargetVelocity[MOTOR2] = mecanumVelocity.motor2;
-                TargetVelocity[MOTOR3] = mecanumVelocity.motor3;
-                */
+                // Should be part of set target velocity
+                // TargetVelocity[MOTOR0] = mecanumVelocity.motor0;
+                // TargetVelocity[MOTOR1] = mecanumVelocity.motor1;
+                // TargetVelocity[MOTOR2] = mecanumVelocity.motor2;
+                // TargetVelocity[MOTOR3] = mecanumVelocity.motor3;
+                
                 }
             break;
             }
-            // Reset command buffer
-            memset(commandBuffer, '\0', 64);
         }
         osDelay(1);
     }
@@ -219,9 +229,8 @@ void StartControllerTask(void *argument)
     double max_encoder_velocity_per_capture = MAX_TICKS_PER_SEC * CONTROLLER_UPDATE_INTERVAL / 1000;
     const TickType_t xFrequency = pdMS_TO_TICKS(CONTROLLER_UPDATE_INTERVAL);
     TickType_t xLastWakeTime = xTaskGetTickCount();
-    unsigned int seq = 0;
+    // unsigned int seq = 0;
     unsigned int previousEncoderValue[NUMBER_MOTORS] = { 0 };
-    uint32_t flags;
 
     for(;;)
     {
@@ -246,6 +255,7 @@ void StartControllerTask(void *argument)
             }
         }
 
+        // Set motor speed
         for (int index = 0; index < NUMBER_MOTORS; index++)
         {
             if( ControllerInfo[index].state == 1 )

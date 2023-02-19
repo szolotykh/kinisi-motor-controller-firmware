@@ -7,7 +7,7 @@
 #define MESSAGE_QUEUE_MAX_SIZE 30
 
 // Maximum size of a message in bytes (including length byte)
-#define MESSAGE_QUEUE_MAX_STR_LENGTH 21
+#define MESSAGE_QUEUE_MAX_STR_LENGTH 50
 
 // Structure to hold the message queue
 typedef struct {
