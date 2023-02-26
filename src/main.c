@@ -25,7 +25,7 @@
 #define MAX_TICKS_PER_SEC MAX_RPS*ENCDER_EVENT_PER_REV
 // 116*4/5
 
-#define CONTROLLER_UPDATE_INTERVAL 200
+#define CONTROLLER_UPDATE_INTERVAL 100
 #define ENCODER_CAPTURE_INTERVAL 100
 
 // Change length of messages that command queue can store.
@@ -127,7 +127,9 @@ void StartCommandTask(void *argument)
             case MOTOR_SET_CONTROLLER:
                 {
                 char motorIndex = cmd->properties.setMotorController.motorIndex;
-                if (ControllerTaskHandle == NULL)
+                osThreadState_t status = osThreadGetState(ControllerTaskHandle);
+
+                if (status == osThreadError)
                 {
                     ControllerTaskHandle = osThreadNew(StartControllerTask, NULL, &ControllerTask_attributes);
                 }
@@ -138,10 +140,14 @@ void StartCommandTask(void *argument)
                 controller.ki = cmd->properties.setMotorController.ki;
                 controller.kd = cmd->properties.setMotorController.kd;
 
+                controller.previousError = 0;
+                controller.previousVelocity = 0;
+                controller.integrator = 0;
+
                 controller.motorPWM = motorIndex;
 
                 controller_info_t controllerInfo;
-                controllerInfo.state = 1;
+                controllerInfo.state = 0;
                 controllerInfo.controller = controller;
                 controllerInfo.mIndex = motorIndex;
                 controllerInfo.eIndex = motorIndex;
@@ -150,6 +156,7 @@ void StartCommandTask(void *argument)
                 initialize_encoder(controllerInfo.eIndex);
 
                 ControllerInfo[motorIndex] = controllerInfo;
+                ControllerInfo[motorIndex].state = 1;
                 }
             break;
 
@@ -174,12 +181,7 @@ void StartCommandTask(void *argument)
             case GET_ENCODER_VALUE:
                 {
                 unsigned int value = get_encoder_value(cmd->properties.getEncoderValue.encoderIndex);
-                char buf[4];
-                buf[3] = (value >> 24) & 0xFF;
-                buf[2] = (value >> 16) & 0xFF;
-                buf[1] = (value >> 8) & 0xFF;
-                buf[0] = value & 0xFF;
-                CDC_Transmit_FS(buf, 4);
+                CDC_Transmit_FS((char*)&value, sizeof(unsigned int));
                 }
             break;
 
@@ -229,22 +231,20 @@ void StartControllerTask(void *argument)
     double max_encoder_velocity_per_capture = MAX_TICKS_PER_SEC * CONTROLLER_UPDATE_INTERVAL / 1000;
     const TickType_t xFrequency = pdMS_TO_TICKS(CONTROLLER_UPDATE_INTERVAL);
     TickType_t xLastWakeTime = xTaskGetTickCount();
-    // unsigned int seq = 0;
+    unsigned int seq = 0;
     unsigned int previousEncoderValue[NUMBER_MOTORS] = { 0 };
 
     for(;;)
     {
+        vTaskDelayUntil(&xLastWakeTime, xFrequency);
         for (int index = 0; index < NUMBER_MOTORS; index++)
         {
-            
             if( ControllerInfo[index].state == 1 )
             {
-            vTaskDelayUntil(&xLastWakeTime, xFrequency);
-
             // Get current velocity from encoder
             unsigned int currentEncoderValue = get_encoder_value(index);
 
-            unsigned int currentVelocity = currentEncoderValue - previousEncoderValue[index];
+            int currentVelocity = currentEncoderValue - previousEncoderValue[index];
             previousEncoderValue[index] = currentEncoderValue;
 
             // Convert input velocity from procent to ticks per encoder caputre interval
@@ -252,6 +252,10 @@ void StartControllerTask(void *argument)
 
             // Calculate new velocity for motor
             update_pid_controller(&ControllerInfo[index].controller, currentVelocity, targetEncoderVelocity);
+
+            int motorToMonitor = MOTOR0;
+            print_controller_state(seq, currentVelocity, targetEncoderVelocity, ControllerInfo[motorToMonitor].controller.motorPWM );
+            seq++;
             }
         }
 
@@ -279,17 +283,6 @@ void StartControllerTask(void *argument)
                 set_motor_speed(ControllerInfo[index].mIndex, 0, 0);
             }
         }
-
-        /*
-        int motorToMonitor = MOTOR0;
-        print_controller_state(seq, currentVelocity, motorPWM);
-        
-        seq++;
-        flags = osThreadFlagsGet();
-        if(flags == 0x7){
-            break;
-        }
-        */
     }
 }
 
