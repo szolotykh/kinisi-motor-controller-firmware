@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include <controller.h>
+#include <pid_controller.h>
 #include <hw_motor.h>
 #include <hw_encoder.h>
 

@@ -17,7 +17,7 @@
 #include <stdio.h>
 #include <assert.h>
 
-#include <controller.h>
+#include <pid_controller.h>
 
 #define ENCDER_EVENT_PER_REV 1557.21f
 #define MAX_RPM 92.8f
@@ -38,7 +38,6 @@ extern PCD_HandleTypeDef hpcd_USB_OTG_FS;
 void OTG_FS_IRQHandler(void);
 
 double TargetVelocity[4] = { 0 };
-Controller* motor_controllers[NUMBER_MOTORS];
 
 osThreadId_t CommandsTaskHandle;
 const osThreadAttr_t CommandsTask_attributes = {
@@ -68,7 +67,7 @@ typedef struct controller_info_t
     char state;
     motorIndex mIndex;
     encoder_index_t eIndex;
-    Controller controller;
+    pid_controller_t controller;
 } controller_info_t;
 
 controller_info_t ControllerInfo[NUMBER_MOTORS] = { 
@@ -135,7 +134,7 @@ void StartCommandTask(void *argument)
                 }
 
                 // SetMotorController 
-                Controller controller;
+                pid_controller_t controller;
                 controller.kp = cmd->properties.setMotorController.kp;
                 controller.ki = cmd->properties.setMotorController.ki;
                 controller.kd = cmd->properties.setMotorController.kd;
@@ -251,7 +250,7 @@ void StartControllerTask(void *argument)
             double targetEncoderVelocity = TargetVelocity[index] * max_encoder_velocity_per_capture / 100.0;
 
             // Calculate new velocity for motor
-            update_pid_controller(&ControllerInfo[index].controller, currentVelocity, targetEncoderVelocity);
+            pid_controller_update(&ControllerInfo[index].controller, currentVelocity, targetEncoderVelocity);
 
             int motorToMonitor = MOTOR0;
             print_controller_state(seq, currentVelocity, targetEncoderVelocity, ControllerInfo[motorToMonitor].controller.motorPWM );

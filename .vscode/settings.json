@@ -17,7 +17,8 @@
         "semphr.h": "c",
         "usb_device.h": "c",
         "usbd_cdc_if.h": "c",
-        "message_queue.h": "c"
+        "message_queue.h": "c",
+        "pid_controller.h": "c"
     },
     "C_Cpp.errorSquiggles": "disabled"
 }
