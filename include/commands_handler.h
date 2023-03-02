@@ -1,9 +1,9 @@
 //------------------------------------------------------------
-// File name: main.h
+// File name: commands_handler.h
 //------------------------------------------------------------
 
 #pragma once
 
-#include <message_queue.h>
+#include "commands.h"
 
-void SystemClock_Config(void);
+void command_handler(controller_command_t* cmd);
