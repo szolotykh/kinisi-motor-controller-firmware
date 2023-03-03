@@ -29,5 +29,6 @@ typedef struct controllers_manager_input
 
 void controllers_manager_init(controllers_manager_t* controllers_manager, controllers_manager_input_t* controllers_manager_input);
 
+int controllers_manager_is_not_init(const controllers_manager_t* controllers_manager);
 
 

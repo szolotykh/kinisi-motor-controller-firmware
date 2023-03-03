@@ -33,9 +33,7 @@ void command_handler(controller_command_t* cmd)
         case MOTOR_SET_CONTROLLER:
             {
             char motorIndex = cmd->properties.setMotorController.motorIndex;
-            osThreadState_t status = osThreadGetState(controllersManager.threadHandler);
-
-            if (status == osThreadError)
+            if (controllers_manager_is_not_init(&controllersManager))
             {
                 controllers_manager_init(&controllersManager, &controllers_manager_input);
             }

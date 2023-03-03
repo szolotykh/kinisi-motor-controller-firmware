@@ -17,7 +17,7 @@
 
 const osThreadAttr_t ControllerTask_attributes = {
   .name = "ControllerTask",
-  .stack_size = 128 * 4,
+  .stack_size = 128 * 8,
   .priority = (osPriority_t) osPriorityNormal,
 };
 
@@ -44,27 +44,35 @@ void StartControllerTask(void *argument)
     for(;;)
     {
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
+        unsigned int seq_update = 0;
         for (int index = 0; index < NUMBER_MOTORS; index++)
         {
             if( controllers_manager_input->ControllerInfo[index].state == 1 )
             {
-            // Get current velocity from encoder
-            unsigned int currentEncoderValue = get_encoder_value(index);
+                // Get current velocity from encoder
+                unsigned int currentEncoderValue = get_encoder_value(index);
 
-            int currentVelocity = currentEncoderValue - previousEncoderValue[index];
-            previousEncoderValue[index] = currentEncoderValue;
+                int currentVelocity = currentEncoderValue - previousEncoderValue[index];
+                previousEncoderValue[index] = currentEncoderValue;
 
-            // Convert input velocity from procent to ticks per encoder caputre interval
-            double targetEncoderVelocity = controllers_manager_input->TargetVelocity[index] * max_encoder_velocity_per_capture / 100.0;
+                // Convert input velocity from procent to ticks per encoder caputre interval
+                double targetEncoderVelocity = controllers_manager_input->TargetVelocity[index] * max_encoder_velocity_per_capture / 100.0;
 
-            // Calculate new velocity for motor
-            pid_controller_update(&controllers_manager_input->ControllerInfo[index].controller, currentVelocity, targetEncoderVelocity);
+                // Calculate new velocity for motor
+                pid_controller_update(&controllers_manager_input->ControllerInfo[index].controller, currentVelocity, targetEncoderVelocity);
 
-            int motorToMonitor = MOTOR0;
-            print_controller_state(seq, currentVelocity, targetEncoderVelocity, controllers_manager_input->ControllerInfo[motorToMonitor].controller.motorPWM );
-            seq++;
+                print_controller_state(
+                    seq,
+                    index, 
+                    currentVelocity, 
+                    targetEncoderVelocity,
+                    controllers_manager_input->ControllerInfo[index].controller.motorPWM
+                    );
+                    
+                seq_update = 1;
             }
         }
+        seq += seq_update;
 
         // Set motor speed
         for (int index = 0; index < NUMBER_MOTORS; index++)
@@ -96,4 +104,10 @@ void StartControllerTask(void *argument)
 void controllers_manager_init(controllers_manager_t* controllers_manager, controllers_manager_input_t* controllers_manager_input)
 {
     controllers_manager->threadHandler = osThreadNew(StartControllerTask, controllers_manager_input, &ControllerTask_attributes);
+}
+
+int controllers_manager_is_not_init(const controllers_manager_t* controllers_manager)
+{
+    osThreadState_t status = osThreadGetState(controllers_manager->threadHandler);
+    return status == osThreadError;
 }

@@ -4,6 +4,4 @@
 
 #pragma once
 
-void print_controller_state(unsigned int seq, int velocity, int targetVelocity, int pwm);
-
-double decode_double(char* bytes);
+void print_controller_state(unsigned int seq, int motorIndex, int velocity, int targetVelocity, int pwm);
