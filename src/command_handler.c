@@ -6,11 +6,14 @@
 #include <pid_controller.h>
 #include <cmsis_os.h>
 #include <message_queue.h>
+#include <usbd_cdc_if.h>
+#include <hw_gpio.h>
+#include "platform.h"
 
 controllers_manager_t controllersManager;
 controllers_manager_input_t controllers_manager_input = {
     .TargetVelocity = {0},
-    .ControllerInfo = {{.state = 0}, {.state = 0},{.state = 0},{.state = 0}}
+    .ControllerInfo = {{.state = STOP}, {.state = STOP},{.state = STOP},{.state = STOP}}
 };
 
 void command_handler(controller_command_t* cmd)
@@ -32,26 +35,23 @@ void command_handler(controller_command_t* cmd)
 
         case MOTOR_SET_CONTROLLER:
             {
-            char motorIndex = cmd->properties.setMotorController.motorIndex;
+            uint8_t motorIndex = cmd->properties.setMotorController.motorIndex;
             if (controllers_manager_is_not_init(&controllersManager))
             {
                 controllers_manager_init(&controllersManager, &controllers_manager_input);
             }
 
-            // SetMotorController 
-            pid_controller_t controller;
-            controller.kp = cmd->properties.setMotorController.kp;
-            controller.ki = cmd->properties.setMotorController.ki;
-            controller.kd = cmd->properties.setMotorController.kd;
-
-            controller.previousError = 0;
-            controller.previousVelocity = 0;
-            controller.integrator = 0;
-
-            controller.motorPWM = motorIndex;
+            // SetMotorController
+            pid_controller_t controller; 
+            pid_controller_init(
+                &controller,
+                cmd->properties.setMotorController.kp,
+                cmd->properties.setMotorController.ki,
+                cmd->properties.setMotorController.kd
+            );
 
             controller_info_t controllerInfo;
-            controllerInfo.state = 0;
+            controllerInfo.state = STOP;
             controllerInfo.controller = controller;
             controllerInfo.mIndex = motorIndex;
             controllerInfo.eIndex = motorIndex;
@@ -60,13 +60,13 @@ void command_handler(controller_command_t* cmd)
             initialize_encoder(controllerInfo.eIndex);
 
             controllers_manager_input.ControllerInfo[motorIndex] = controllerInfo;
-            controllers_manager_input.ControllerInfo[motorIndex].state = 1;
+            controllers_manager_input.ControllerInfo[motorIndex].state = RUN;
             }
         break; 
 
         case MOTOR_DEL_CONTROLLER:
             {
-            controllers_manager_input.ControllerInfo[cmd->properties.deleteMotorController.motorIndex].state = 10; // STOPPING
+            controllers_manager_input.ControllerInfo[cmd->properties.deleteMotorController.motorIndex].state = STOPPING; // STOPPING
             }
         break;
 
@@ -85,7 +85,7 @@ void command_handler(controller_command_t* cmd)
         case GET_ENCODER_VALUE:
             {
             unsigned int value = get_encoder_value(cmd->properties.getEncoderValue.encoderIndex);
-            CDC_Transmit_FS((char*)&value, sizeof(unsigned int));
+            CDC_Transmit_FS((uint8_t*)&value, sizeof(unsigned int));
             }
         break;
 

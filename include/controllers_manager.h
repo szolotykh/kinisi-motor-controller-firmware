@@ -7,10 +7,13 @@
 #include "hw_encoder.h"
 #include <pid_controller.h>
 #include <cmsis_os.h>
-
 typedef struct controller_info_t
 {
-    char state;
+    enum {
+        STOP,
+        RUN,
+        STOPPING
+    } state;
     motorIndex mIndex;
     encoder_index_t eIndex;
     pid_controller_t controller;

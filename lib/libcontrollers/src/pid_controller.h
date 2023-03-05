@@ -29,7 +29,7 @@ typedef struct pid_controller
     double T;
 } pid_controller_t;
 
-pid_controller_t pid_controller_init(double kp, double ki, double kd);
+void pid_controller_init(pid_controller_t* controller, double kp, double ki, double kd);
 double pid_controller_update(pid_controller_t* controller, double currentVelocuty, double targetVelocity);
 
 mecanum_velocity_t get_mecanum_velocities(signed char x, signed char y, signed char t);

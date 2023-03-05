@@ -10,5 +10,5 @@ void print_controller_state(unsigned int seq, int motorIndex, int velocity, int 
 {
     char msg[100];
     sprintf(msg, "{\"seq\":%i,\"motorIndex\":%i,\"velocity\":%i,\"targetVelocity\":%i,\"pwm\":%i}\n", seq, motorIndex, velocity, targetVelocity, pwm);
-    CDC_Transmit_FS(msg, strlen(msg));
+    CDC_Transmit_FS((uint8_t*)msg, strlen(msg));
 }

@@ -21,9 +21,6 @@ const osThreadAttr_t ControllerTask_attributes = {
   .priority = (osPriority_t) osPriorityNormal,
 };
 
-void StartControllerTask(void *argument);
-
-
 void StartControllerTask(void *argument)
 {
     /*
@@ -47,7 +44,7 @@ void StartControllerTask(void *argument)
         unsigned int seq_update = 0;
         for (int index = 0; index < NUMBER_MOTORS; index++)
         {
-            if( controllers_manager_input->ControllerInfo[index].state == 1 )
+            if( controllers_manager_input->ControllerInfo[index].state == RUN )
             {
                 // Get current velocity from encoder
                 unsigned int currentEncoderValue = get_encoder_value(index);
@@ -68,7 +65,7 @@ void StartControllerTask(void *argument)
                     targetEncoderVelocity,
                     controllers_manager_input->ControllerInfo[index].controller.motorPWM
                     );
-                    
+
                 seq_update = 1;
             }
         }
@@ -77,7 +74,7 @@ void StartControllerTask(void *argument)
         // Set motor speed
         for (int index = 0; index < NUMBER_MOTORS; index++)
         {
-            if( controllers_manager_input->ControllerInfo[index].state == 1 )
+            if( controllers_manager_input->ControllerInfo[index].state == RUN )
             {
             // Set motor speed and direction
             unsigned short direction = controllers_manager_input->ControllerInfo[index].controller.motorPWM > 0;
@@ -89,10 +86,10 @@ void StartControllerTask(void *argument)
         // Stopping controllers and motors
         for (int index = 0; index < NUMBER_MOTORS; index++)
         {
-            if( controllers_manager_input->ControllerInfo[index].state == 10 )
+            if( controllers_manager_input->ControllerInfo[index].state == STOPPING )
             {
                 // Stop controller
-                controllers_manager_input->ControllerInfo[index].state = 0;
+                controllers_manager_input->ControllerInfo[index].state = STOP;
                 controllers_manager_input->ControllerInfo[index].controller.motorPWM = 0;
                 //Stop motor
                 set_motor_speed(controllers_manager_input->ControllerInfo[index].mIndex, 0, 0);
