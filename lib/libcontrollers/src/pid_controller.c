@@ -1,29 +1,27 @@
 //------------------------------------------------------------
-// File name: controller.c
+// File name: pid_controller.c
 //------------------------------------------------------------
 #include <stdlib.h>
-#include "controller.h"
+#include "pid_controller.h"
 
 signed char verify_range(signed char c);
 int sing(int c);
 double limit_to_range(double value, double min_value, double max_value);
 
 
-Controller init_pid_controller(double kp, double ki, double kd)
+void pid_controller_init(pid_controller_t* controller, double kp, double ki, double kd)
 {
-    Controller controller = {
-        .kp = kp,
-        .ki = ki,
-        .kd = kd,
-        .previousError = 0,
-        .T = 0.2,
-        .previousVelocity = 0,
-        .motorPWM = 0
-        };
-    return controller;
+    controller->kp = kp;
+    controller->ki = ki;
+    controller->kd = kd;
+    controller->previousError = 0;
+    controller->T = 0.2;
+    controller->previousVelocity = 0;
+    controller->motorPWM = 0;
+    controller->integrator = 0;
 }
 
-double update_pid_controller(Controller* controller, double currentVelocuty, double targetVelocity)
+double pid_controller_update(pid_controller_t* controller, double currentVelocuty, double targetVelocity)
 {
     // TODO Add mutex
     double kp = controller->kp;

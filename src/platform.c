@@ -2,7 +2,7 @@
 // File name: platform.c
 //------------------------------------------------------------
 #include <stdlib.h>
-#include <controller.h>
+#include <pid_controller.h>
 #include "platform.h"
 #include "hw_motor.h"
 #include "hw_encoder.h"

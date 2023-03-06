@@ -17,7 +17,16 @@
         "semphr.h": "c",
         "usb_device.h": "c",
         "usbd_cdc_if.h": "c",
-        "message_queue.h": "c"
+        "message_queue.h": "c",
+        "pid_controller.h": "c",
+        "commands_handler.h": "c",
+        "commands_manager.h": "c",
+        "controllers_manager.h": "c",
+        "app.h": "c",
+        "utils.h": "c",
+        "hw_gpio.h": "c",
+        "hw_config.h": "c",
+        "freertos.h": "c"
     },
     "C_Cpp.errorSquiggles": "disabled"
 }

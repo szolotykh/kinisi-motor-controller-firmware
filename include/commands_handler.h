@@ -1,7 +1,9 @@
 //------------------------------------------------------------
-// File name: utils.h
+// File name: commands_handler.h
 //------------------------------------------------------------
 
 #pragma once
 
-void print_controller_state(unsigned int seq, int motorIndex, int velocity, int targetVelocity, int pwm);
+#include "commands.h"
+
+void command_handler(controller_command_t* cmd);

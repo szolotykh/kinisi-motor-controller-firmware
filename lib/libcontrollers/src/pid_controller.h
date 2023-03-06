@@ -1,5 +1,5 @@
 //------------------------------------------------------------
-// File name: controller.h
+// File name: pid_controller.h
 //------------------------------------------------------------
 
 #pragma once
@@ -15,7 +15,7 @@ typedef struct mecanum_velocity_t
     int motor3;
 } mecanum_velocity_t;
 
-typedef struct Controller
+typedef struct pid_controller
 {
     double kp;
     double ki;
@@ -27,10 +27,10 @@ typedef struct Controller
     double motorPWM;
     
     double T;
-} Controller;
+} pid_controller_t;
 
-Controller init_pid_controller(double kp, double ki, double kd);
-double update_pid_controller(Controller* controller, double currentVelocuty, double targetVelocity);
+void pid_controller_init(pid_controller_t* controller, double kp, double ki, double kd);
+double pid_controller_update(pid_controller_t* controller, double currentVelocuty, double targetVelocity);
 
 mecanum_velocity_t get_mecanum_velocities(signed char x, signed char y, signed char t);
 
