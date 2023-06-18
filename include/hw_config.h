@@ -109,10 +109,16 @@
 	#define NUMBER_GPIO_PINS 4
 
 	static gpio_info_t gpio_info[NUMBER_GPIO_PINS] = {
+		{.port = GPIOB, .pin = GPIO_PIN_13},
+		{.port = GPIOB, .pin = GPIO_PIN_12},
+		{.port = GPIOC, .pin = GPIO_PIN_10},
+		{.port = GPIOC, .pin = GPIO_PIN_11},
 		{.port = GPIOB, .pin = GPIO_PIN_5},
 		{.port = GPIOB, .pin = GPIO_PIN_4},
 		{.port = GPIOD, .pin = GPIO_PIN_2},
-		{.port = GPIOC, .pin = GPIO_PIN_12}
+		{.port = GPIOC, .pin = GPIO_PIN_12},
+		{.port = GPIOB, .pin = GPIO_PIN_9},
+		{.port = GPIOB, .pin = GPIO_PIN_8}
 	};
 
 	// Status pin configurations
