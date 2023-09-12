@@ -37,8 +37,8 @@
         "description": "This command sets the speed of the specified motor.",
         "properties": [
           {"name": "motorIndex", "type": "MotorIndex", "description": "The index of the motor to set the speed for."},
-          {"name": "direction", "type": "uint16_t", "range": [0, 1], "description": "The direction of the motor."},
-          {"name": "speed", "type": "uint8_t", "range": [0, 840], "description": "The speed of the motor."}
+          {"name": "direction", "type": "uint8_t", "range": [0, 1], "description": "The direction of the motor."},
+          {"name": "speed", "type": "uint16_t", "range": [0, 840], "description": "The speed of the motor."}
         ]
       },
       {
@@ -58,8 +58,8 @@
         "description": "This command sets the target velocity for the specified motor.",
         "properties": [
           {"name": "motorIndex", "type": "MotorIndex", "description": "The index of the motor to set the target velocity for."},
-          {"name": "direction", "type": "uint16_t", "range": [0, 1], "description": "The direction of the motor."},
-          {"name": "speed", "type": "uint8_t", "range": [0, 840], "description": "The speed of the motor."}
+          {"name": "direction", "type": "uint8_t", "range": [0, 1], "description": "The direction of the motor."},
+          {"name": "speed", "type": "uint16_t", "range": [0, 840], "description": "The speed of the motor."}
         ]
       },
       {
