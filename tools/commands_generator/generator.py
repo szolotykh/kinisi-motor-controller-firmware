@@ -93,11 +93,11 @@ def generate_js_code(commands_data):
     constant_code += "\n"
 
     # Write abstract methods for write and read
-    abstract_methods = "    write(buffer) {\n"
+    abstract_methods = "    async write(buffer) {\n"
     abstract_methods += "        throw new Error(\"write method must be implemented\");\n"
     abstract_methods += "    }\n\n"
 
-    abstract_methods += "    read(numBytes) {\n"
+    abstract_methods += "    async read(numBytes) {\n"
     abstract_methods += "        throw new Error(\"read method must be implemented\");\n"
     abstract_methods += "    }\n\n"
 
@@ -114,7 +114,7 @@ def generate_js_code(commands_data):
     function_code = ""
     for cmd in commands_data['commands']:
         func_args = ', '.join([f"{prop['name']}" for prop in cmd.get('properties', [])])
-        func_body = f"    {cmd['command'].lower()}({func_args}){{\n"
+        func_body = f"    async {cmd['command'].lower()}({func_args}){{\n"
 
         message_length = 1  # 1 byte for the command code
         for prop in cmd.get("properties", []):
@@ -124,7 +124,7 @@ def generate_js_code(commands_data):
         func_body += f"        const buffer = new ArrayBuffer(messageLength + 1);\n"
         func_body += f"        const view = new DataView(buffer);\n"
 
-        func_body += f"        view.setUint8(0, message_length);  // Message length\n"
+        func_body += f"        view.setUint8(0, messageLength);  // Message length\n"
         func_body += f"        view.setUint8(1, {cmd['code']});  // Command byte\n"
 
         offset = 2
@@ -133,11 +133,11 @@ def generate_js_code(commands_data):
             func_body += f"        view.{setter_func}({offset}, {prop['name']});  // {prop['name']}\n"
             offset += type_to_size_map.get(prop['type'], 1)
 
-        func_body += "        this.write(buffer);\n"
+        func_body += "        await this.write(buffer);\n"
 
         response = cmd.get("response", None)
         if response != None:
-            func_body += f"        return this.read({type_to_size_map[response['type']]})\n"
+            func_body += f"        return await this.read({type_to_size_map[response['type']]})\n"
 
         func_body += "    }\n\n"
         function_code += func_body
