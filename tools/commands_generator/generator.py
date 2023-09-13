@@ -120,8 +120,8 @@ def generate_js_code(commands_data):
         for prop in cmd.get("properties", []):
             message_length += type_to_size_map.get(prop['type'], 1)  # Default to 1 byte if type is unknown
 
-        func_body += f"        const messageLength = {message_length};\n"
-        func_body += f"        const buffer = new ArrayBuffer(messageLength + 1);\n"
+        func_body += f"        const messageLength = {message_length + 1};\n"
+        func_body += f"        const buffer = new ArrayBuffer(messageLength);\n"
         func_body += f"        const view = new DataView(buffer);\n"
 
         func_body += f"        view.setUint8(0, messageLength);  // Message length\n"
@@ -130,7 +130,8 @@ def generate_js_code(commands_data):
         offset = 2
         for prop in cmd.get("properties", []):
             setter_func = type_to_js_setter_func_map.get(prop['type'], "setUint8")
-            func_body += f"        view.{setter_func}({offset}, {prop['name']});  // {prop['name']}\n"
+            little_endian = ", true" if type_to_size_map[prop['type']] > 1 else ""
+            func_body += f"        view.{setter_func}({offset}, {prop['name']}{little_endian});  // {prop['name']}\n"
             offset += type_to_size_map.get(prop['type'], 1)
 
         func_body += "        await this.write(buffer);\n"
