@@ -173,7 +173,7 @@ def generate_python_code(commands_data):
     enum_code = ''
     function_code = ''
     class_code = '''
-class Commands:
+class KinisiCommands:
     def write(self, msg: bytearray):
         """Abstract method to write the byte message to the serial interface."""
         raise NotImplementedError("This method should be overridden by subclass.")
@@ -181,6 +181,7 @@ class Commands:
     def read(self, length: int) -> bytearray:
         """Abstract method to read a specified number of bytes from the serial interface."""
         raise NotImplementedError("This method should be overridden by subclass.")
+
     '''
     
     # Generate constants for command codes
@@ -198,13 +199,12 @@ class Commands:
 
     # Generate function for each command
     for cmd in commands_data['commands']:
-        func_args = ', '.join([f"{prop['name']}:{type_mapping[prop['type']]}" for prop in cmd.get('properties', [])])
-        func_body = f'''
-    def {cmd['command'].lower()}(self, {func_args}):
-        '''
-        func_body += f"msg = {cmd['command']}.to_bytes(1, 'little')"
+        func_body = f"    # {cmd['description']}\n"
+        func_args = ", ".join([f"{prop['name']}:{type_mapping[prop['type']]}" for prop in cmd.get('properties', [])])
+        func_body += f"    def {cmd['command'].lower()}(self{', ' if len(func_args) > 0 else ''}{func_args}):\n"
+        func_body += f"        msg = {cmd['command']}.to_bytes(1, 'little')"
         for prop in cmd.get('properties', []):
-            if prop['type'][0] == 'double':
+            if prop['type'] == 'double':
                 func_body += f" + bytearray(struct.pack('d', {prop['name']}))"
             else:
                 func_body += f" + {prop['name']}.to_bytes({type_to_size_map[prop['type']]}, 'little')"
@@ -215,11 +215,18 @@ class Commands:
         func_body += f"        self.write(msg)\n"
         if 'response' in cmd:
             func_body += f"        return self.read({type_to_size_map[cmd['response']['type']]})\n"
-            
         function_code += func_body
-        
+        function_code += "\n"
+
     class_code += function_code
-    return file_header(commands_data['version'], "#") + constant_code + enum_code + class_code
+
+    result = file_header(commands_data['version'], "#")
+    result += "import struct\n\n"
+    result += constant_code
+    result += enum_code
+    result += class_code
+
+    return result
 
 # Generates a Markdown file from the commands JSON file
 def generate_md_file(commands_data):
