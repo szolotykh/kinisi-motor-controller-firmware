@@ -42,7 +42,7 @@
         ]
       },
       {
-        "command": "SET_MOTOR_CONTROLLER",
+        "command": "INITIALIZE_MOTOR_CONTROLLER",
         "code": "0x03",
         "description": "This command sets the controller for the specified motor.",
         "properties": [

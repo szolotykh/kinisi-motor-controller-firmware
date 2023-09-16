@@ -174,10 +174,12 @@ def generate_python_code(commands_data):
     function_code = ''
     class_code = '''
 class KinisiCommands:
+    # Write command to serial interface
     def write(self, msg: bytearray):
         """Abstract method to write the byte message to the serial interface."""
         raise NotImplementedError("This method should be overridden by subclass.")
     
+    # Read command from serial interface
     def read(self, length: int) -> bytearray:
         """Abstract method to read a specified number of bytes from the serial interface."""
         raise NotImplementedError("This method should be overridden by subclass.")
