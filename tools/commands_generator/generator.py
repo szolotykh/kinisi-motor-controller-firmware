@@ -9,6 +9,8 @@ type_to_size_map = {
     "uint16_t": 2,
     "uint32_t": 4,
     "int8_t": 1,
+    "int16_t": 2,
+    "int32_t": 4,
     "double": 8,
     "integer": 4,
     "MotorIndex": 1,
@@ -80,8 +82,9 @@ def generate_js_code(commands_data):
         "uint16_t": "setUint16",
         "uint32_t": "setUint32",
         "int8_t": "setInt8",
+        'int16_t': 'setInt16',
+        'int32_t': 'setInt32',
         "double": "setFloat64",
-        "integer": "setInt32",
         "MotorIndex": "setUint8",
         "EncoderIndex": "setUint8"
     }
@@ -129,7 +132,7 @@ def generate_js_code(commands_data):
 
         offset = 2
         for prop in cmd.get("properties", []):
-            setter_func = type_to_js_setter_func_map.get(prop['type'], "setUint8")
+            setter_func = type_to_js_setter_func_map[prop['type']]
             little_endian = ", true" if type_to_size_map[prop['type']] > 1 else ""
             func_body += f"        view.{setter_func}({offset}, {prop['name']}{little_endian});  // {prop['name']}\n"
             offset += type_to_size_map.get(prop['type'], 1)
@@ -163,7 +166,8 @@ def generate_python_code(commands_data):
         'uint32_t': 'int',
         'double': 'float',
         'int8_t': 'int',
-        'int': 'int',
+        'int16_t': 'int',
+        'int32_t': 'int',
         'MotorIndex': 'MotorIndex',
         'EncoderIndex': 'EncoderIndex',
     }
@@ -209,7 +213,8 @@ class KinisiCommands:
             if prop['type'] == 'double':
                 func_body += f" + bytearray(struct.pack('d', {prop['name']}))"
             else:
-                func_body += f" + {prop['name']}.to_bytes({type_to_size_map[prop['type']]}, 'little')"
+                signed = ", True" if prop['type'].startswith("int") else ""
+                func_body += f" + {prop['name']}.to_bytes({type_to_size_map[prop['type']]}, 'little'{signed})"
 
         func_body += "\n"
         func_body += f"        length = len(msg)\n"

@@ -10,3 +10,9 @@ There are number of commands that can be send to the motor controller to control
 Discription of commands can be find [here](commands.md). \
 JavaScript code and client with UI interface to control motor controller can be find [here](https://github.com/szolotykh/jskinisi).\
 Python code to control motor controller can be find [here](https://github.com/szolotykh/pykinisi).
+
+## Links
+- [Kinisi Motion Controller firmware](https://github.com/szolotykh/kinisi-motor-controller-firmware)
+- [Kinisi Motion Controller hardware](https://github.com/szolotykh/kinisi-motor-controller-board)
+- [JavaScipt package for kinisi motor controller](https://github.com/szolotykh/jskinisi)
+- [Python package for kinisi motor controller](https://github.com/szolotykh/pykinisi)
