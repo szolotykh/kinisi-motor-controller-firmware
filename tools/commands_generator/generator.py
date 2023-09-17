@@ -213,7 +213,7 @@ class KinisiCommands:
             if prop['type'] == 'double':
                 func_body += f" + bytearray(struct.pack('d', {prop['name']}))"
             else:
-                signed = ", True" if prop['type'].startswith("int") else ""
+                signed = ", signed=True" if prop['type'].startswith("int") else ""
                 func_body += f" + {prop['name']}.to_bytes({type_to_size_map[prop['type']]}, 'little'{signed})"
 
         func_body += "\n"
