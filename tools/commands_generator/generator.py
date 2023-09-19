@@ -13,8 +13,8 @@ type_to_size_map = {
     "int32_t": 4,
     "double": 8,
     "integer": 4,
-    "MotorIndex": 1,
-    "EncoderIndex": 1
+    "motor_index": 1,
+    "encoder_index": 1
 }
 
 def file_header(version, comment_char="//"):
@@ -26,7 +26,7 @@ def file_header(version, comment_char="//"):
 {comment_char} Version: {version}
 {comment_char} ----------------------------------------------------------------------------\n\n"""
 
-# Function to validate names for various categories like 'Type', 'Enum value', 'Command', etc.
+# Function to validate names for various categories like 'Type', 'Command', etc.
 # 'name' is the name to be validated, 'category' specifies the category, and 'context' provides additional information.
 def validate_name(name, category, context):
     errors = []
@@ -35,16 +35,6 @@ def validate_name(name, category, context):
         errors.append(f"{category} name '{name}' in {context} contains a space.")
     return errors
 
-# Function to validate an enumeration type in the JSON
-# 'enum_type' is a dictionary containing the enumeration type details
-def validate_enum_type(enum_type):
-    errors = []
-    # Validate the name of the enumeration type
-    errors.extend(validate_name(enum_type['name'], 'Type', 'enum'))
-    # Validate the names of each value in the enumeration type
-    for val in enum_type.get('values', []):
-        errors.extend(validate_name(val['name'], 'Enum value', f"type '{enum_type['name']}'"))
-    return errors
 
 # Function to validate a command in the JSON
 # 'command' is a dictionary containing the command details
@@ -65,9 +55,7 @@ def validate_command(command):
 # 'commands_data' is a dictionary containing the JSON data
 def validate_json(commands_data):
     errors = []
-    # Validate each enumeration type in the JSON
-    for enum_type in commands_data.get("types", []):
-        errors.extend(validate_enum_type(enum_type))
+
     # Validate each command in the JSON
     for command in commands_data.get("commands", []):
         errors.extend(validate_command(command))
@@ -85,8 +73,6 @@ def generate_js_code(commands_data):
         'int16_t': 'setInt16',
         'int32_t': 'setInt32',
         "double": "setFloat64",
-        "MotorIndex": "setUint8",
-        "EncoderIndex": "setUint8"
     }
     
     # Generate constants for command codes
@@ -103,15 +89,6 @@ def generate_js_code(commands_data):
     abstract_methods += "    async read(numBytes) {\n"
     abstract_methods += "        throw new Error(\"read method must be implemented\");\n"
     abstract_methods += "    }\n\n"
-
-    # Generate enum-like classes for enum types
-    enum_code = ""
-    for t in commands_data['types']:
-        if t['type'] == 'enum':
-            enum_code += f"const {t['name']} = {{\n"
-            for v in t['values']:
-                enum_code += f"    {v['name']}: {v['value']},\n"
-            enum_code += "}\n\n"
 
     # Generate function for each command
     function_code = ""
@@ -149,7 +126,6 @@ def generate_js_code(commands_data):
     # Generate the final code
     result = file_header(commands_data['version'])
     result += constant_code
-    result += enum_code
     result += "class Commands {\n"
     result += abstract_methods
     result += function_code
@@ -168,13 +144,10 @@ def generate_python_code(commands_data):
         'int8_t': 'int',
         'int16_t': 'int',
         'int32_t': 'int',
-        'MotorIndex': 'MotorIndex',
-        'EncoderIndex': 'EncoderIndex',
     }
 
     # Initialize code strings
     constant_code = ''
-    enum_code = ''
     function_code = ''
     class_code = '''
 class KinisiCommands:
@@ -194,14 +167,7 @@ class KinisiCommands:
     for cmd in commands_data['commands']:
         constant_code += f"{cmd['command']} = {cmd['code']}\n"
     constant_code += "\n"
-        
-    # Generate enum-like classes for enum types
-    for t in commands_data['types']:
-        if t['type'] == 'enum':
-            enum_code += f"class {t['name']}:\n"
-            for v in t['values']:
-                enum_code += f"    {v['name']} = {v['value']}\n"
-            enum_code += "\n"
+
 
     # Generate function for each command
     for cmd in commands_data['commands']:
@@ -230,7 +196,6 @@ class KinisiCommands:
     result = file_header(commands_data['version'], "#")
     result += "import struct\n\n"
     result += constant_code
-    result += enum_code
     result += class_code
 
     return result
@@ -242,14 +207,6 @@ def generate_md_file(commands_data):
     # version
     md_content += f"Version: {commands_data['version']}\n"
     md_content += "---\n"
-
-    # Generate type definitions
-    md_content += "## Types\n"
-    for enum_type in commands_data.get("types", []):
-        md_content += f"### {enum_type['name']}\n"
-        for val in enum_type.get('values', []):
-            md_content += f"- {val['name']}\n"
-        md_content += "\n"
 
     # Generate command definitions
     md_content += "\n## Commands\n"
@@ -321,15 +278,6 @@ def generate_cpp_code(commands_data):
         definitions +=  f"// {cmd['description']}\n"
         definitions += f"#define {cmd['command']} {cmd['code']}\n\n"
 
-    # Generate enumeration types
-    enum_code = ""
-    for t in commands_data['types']:
-        if t['type'] == 'enum':
-            enum_code += f"enum class {t['name']} : uint8_t {{\n"
-            for v in t['values']:
-                enum_code += f"    {v['name']} = {v['value']}\n"
-            enum_code += "}\n"
-
     commands_class = "// Commands class\n"
     commands_class += "class KinisiCommands {\n"
     commands_class += "public:\n"
@@ -356,13 +304,16 @@ def generate_cpp_code(commands_data):
     result = file_header(commands_data['version'])
     result += "#pragma once\n\n"
     result += "#include <stdint.h>\n\n"
-    result += enum_code
     result += "\n"
     result += definitions
     result += "\n"
     result += commands_class
 
     return result
+
+# Converts a string with underscores into PascalCase:
+def to_pascal(s):
+    return ''.join(word.capitalize() for word in s.split('_'))
 
 def main():
     parser = argparse.ArgumentParser(description='Generate code from command definitions in JSON.')
