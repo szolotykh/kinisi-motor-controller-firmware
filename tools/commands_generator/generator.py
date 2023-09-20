@@ -259,7 +259,8 @@ def generate_c_header_file(commands_data):
         commands_struct += f"        }} {cmd['command'].lower()};\n\n"
 
     commands_struct += "    } properties;\n"
-    commands_struct += "} controller_command_t;\n\n"
+    commands_struct += "} controller_command_t;\n"
+    commands_struct += "#pragma pack(pop)\n\n"
     
     result = file_header(commands_data['version'])
     result += "#pragma once\n\n"

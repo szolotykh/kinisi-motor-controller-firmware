@@ -6,7 +6,7 @@
         "code": "0x01",
         "description": "This command initializes a motor and prepares it for use.",
         "properties": [
-          {"name": "motorIndex", "type": "uint8_t", "range": [0, 3], "description": "The index of the motor to initialize."}
+          {"name": "motor_index", "type": "uint8_t", "range": [0, 3], "description": "The index of the motor to initialize."}
         ]
       },
       {
@@ -14,7 +14,7 @@
         "code": "0x02",
         "description": "This command sets the speed of the specified motor.",
         "properties": [
-          {"name": "motorIndex", "type": "uint8_t", "range": [0, 3], "description": "The index of the motor to set the speed for."},
+          {"name": "motor_index", "type": "uint8_t", "range": [0, 3], "description": "The index of the motor to set the speed for."},
           {"name": "direction", "type": "uint8_t", "range": [0, 1], "description": "The direction of the motor."},
           {"name": "speed", "type": "uint16_t", "range": [0, 840], "description": "The speed of the motor."}
         ]
@@ -24,7 +24,7 @@
         "code": "0x03",
         "description": "This command sets the controller for the specified motor.",
         "properties": [
-          {"name": "motorIndex", "type": "uint8_t", "range": [0, 3], "description": "The index of the motor to set the controller for."},
+          {"name": "motor_index", "type": "uint8_t", "range": [0, 3], "description": "The index of the motor to set the controller for."},
           {"name": "kp", "type": "double", "description": "Proportional constant of PID"},
           {"name": "ki", "type": "double", "description": "Integral constant of PID"},
           {"name": "kd", "type": "double", "description": "Derivative constant of PID"}
@@ -35,7 +35,7 @@
         "code": "0x04",
         "description": "This command sets the target velocity for the specified motor.",
         "properties": [
-          {"name": "motorIndex", "type": "uint8_t", "range": [0, 3], "description": "The index of the motor to set the target velocity for."},
+          {"name": "motor_index", "type": "uint8_t", "range": [0, 3], "description": "The index of the motor to set the target velocity for."},
           {"name": "direction", "type": "uint8_t", "range": [0, 1], "description": "The direction of the motor."},
           {"name": "speed", "type": "uint16_t", "range": [0, 840], "description": "The speed of the motor."}
         ]
@@ -45,7 +45,7 @@
         "code": "0x05",
         "description": "This command deletes the controller for the specified motor.",
         "properties": [
-          {"name": "motorIndex", "type": "uint8_t", "range": [0, 3], "description": "The index of the motor to delete the controller for."}
+          {"name": "motor_index", "type": "uint8_t", "range": [0, 3], "description": "The index of the motor to delete the controller for."}
         ]
       },
       {
@@ -53,7 +53,7 @@
         "code": "0x11",
         "description": "This command initializes an encoder and prepares it for use.",
         "properties": [
-          {"name": "encoderIndex", "type": "uint8_t", "range": [0, 3], "description": "The index of the encoder to initialize."}
+          {"name": "encoder_index", "type": "uint8_t", "range": [0, 3], "description": "The index of the encoder to initialize."}
         ]
       },
       {
@@ -61,7 +61,7 @@
         "code": "0x12",
         "description": "This command retrieves the current value of the encoder.",
         "properties": [
-          {"name": "encoderIndex", "type": "uint8_t", "range": [0, 3], "description": "The index of the encoder to retrieve the value for."}
+          {"name": "encoder_index", "type": "uint8_t", "range": [0, 3], "description": "The index of the encoder to retrieve the value for."}
         ],
         "response": {"name": "encoderValue", "type": "uint32_t", "description": "The current value of the encoder."}
       },
@@ -70,7 +70,7 @@
         "code": "0x20",
         "description": "This command sets the specified pin to a low state.",
         "properties": [
-          {"name": "pinNumber", "type": "uint8_t", "description": "The number of the pin to set to a low state."}
+          {"name": "pin_number", "type": "uint8_t", "description": "The number of the pin to set to a low state."}
         ]
       },
       {
@@ -78,7 +78,7 @@
         "code": "0x21",
         "description": "This command sets the specified pin to a high state.",
         "properties": [
-          {"name": "pinNumber", "type": "uint8_t", "description": "The number of the pin to set to a high state."}
+          {"name": "pin_number", "type": "uint8_t", "description": "The number of the pin to set to a high state."}
         ]
       },
       {
@@ -86,7 +86,7 @@
         "code": "0x22",
         "description": "This command toggles the specified pin.",
         "properties": [
-          {"name": "pinNumber", "type": "uint8_t", "description": "The number of the pin to toggle."}
+          {"name": "pin_number", "type": "uint8_t", "description": "The number of the pin to toggle."}
         ]
       },
       {
