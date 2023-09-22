@@ -21,21 +21,21 @@ void command_handler(controller_command_t* cmd)
     switch(cmd->commandType)
         {
         case INITIALIZE_MOTOR:
-            initialize_motor(cmd->properties.initializeMotor.motorIndex);
+            initialize_motor(cmd->properties.initialize_motor.motor_index);
         break;
 
         case SET_MOTOR_SPEED:
             {
             set_motor_speed(
-                cmd->properties.setMotorSpeed.motorIndex,
-                cmd->properties.setMotorSpeed.direction,
-                cmd->properties.setMotorSpeed.speed);
+                cmd->properties.set_motor_speed.motor_index,
+                cmd->properties.set_motor_speed.direction,
+                cmd->properties.set_motor_speed.speed);
             }
         break;
 
-        case MOTOR_SET_CONTROLLER:
+        case INITIALIZE_MOTOR_CONTROLLER:
             {
-            uint8_t motorIndex = cmd->properties.setMotorController.motorIndex;
+            uint8_t motorIndex = cmd->properties.initialize_motor_controller.motor_index;
             if (controllers_manager_is_not_init(&controllersManager))
             {
                 controllers_manager_init(&controllersManager, &controllers_manager_input);
@@ -45,9 +45,9 @@ void command_handler(controller_command_t* cmd)
             pid_controller_t controller; 
             pid_controller_init(
                 &controller,
-                cmd->properties.setMotorController.kp,
-                cmd->properties.setMotorController.ki,
-                cmd->properties.setMotorController.kd
+                cmd->properties.initialize_motor_controller.kp,
+                cmd->properties.initialize_motor_controller.ki,
+                cmd->properties.initialize_motor_controller.kd
             );
 
             controller_info_t controllerInfo;
@@ -64,49 +64,49 @@ void command_handler(controller_command_t* cmd)
             }
         break; 
 
-        case MOTOR_DEL_CONTROLLER:
+        case DELETE_MOTOR_CONTROLLER:
             {
-            controllers_manager_input.ControllerInfo[cmd->properties.deleteMotorController.motorIndex].state = STOPPING; // STOPPING
+            controllers_manager_input.ControllerInfo[cmd->properties.delete_motor_controller.motor_index].state = STOPPING; // STOPPING
             }
         break;
 
-        case MOTOR_SET_TARGET_VELOCITY:
+        case SET_MOTOR_TARGET_VELOCITY:
             {
-            signed short speed = cmd->properties.setMotorTargetVelocity.speed;
-            signed short direction = cmd->properties.setMotorTargetVelocity.direction;
-            controllers_manager_input.TargetVelocity[cmd->properties.setMotorTargetVelocity.motorIndex] = ((direction * 2) - 1) * speed;
+            signed short speed = cmd->properties.set_motor_target_velocity.speed;
+            signed short direction = cmd->properties.set_motor_target_velocity.direction;
+            controllers_manager_input.TargetVelocity[cmd->properties.set_motor_target_velocity.motor_index] = ((direction * 2) - 1) * speed;
             }
         break;
 
         case INITIALIZE_ENCODER:
-            initialize_encoder(cmd->properties.initializeEncoder.encoderIndex);
+            initialize_encoder(cmd->properties.initialize_encoder.encoder_index);
         break;
 
         case GET_ENCODER_VALUE:
             {
-            unsigned int value = get_encoder_value(cmd->properties.getEncoderValue.encoderIndex);
+            unsigned int value = get_encoder_value(cmd->properties.get_encoder_value.encoder_index);
             CDC_Transmit_FS((uint8_t*)&value, sizeof(unsigned int));
             }
         break;
 
-        case STATUS_LED_TOGGLE:
+        case TOGGLE_STATUS_LED:
             gpio_toggle_status_led();
         break;
 
-        case PLATFORM_INITIALIZE:
+        case INITIALIZE_PLATFORM:
             init_platform();
         break;
 
-        case PLATFORM_SET_CONTROLLER:
+        case SET_PLATFORM_CONTROLLER:
             // SetController
         break;
 
-        case PLATFORM_SET_VELOCITY_INPUT:
+        case SET_PLATFORM_VELOCITY_INPUT:
             {
             mecanum_velocity_t mecanumVelocity = get_mecanum_velocities(
-                cmd->properties.setPlatformVelocityInput.x,
-                cmd->properties.setPlatformVelocityInput.y,
-                cmd->properties.setPlatformVelocityInput.t);
+                cmd->properties.set_platform_velocity_input.x,
+                cmd->properties.set_platform_velocity_input.y,
+                cmd->properties.set_platform_velocity_input.t);
             set_velocity_input(mecanumVelocity);
             // Should be part of set target velocity
             // TargetVelocity[MOTOR0] = mecanumVelocity.motor0;
