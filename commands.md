@@ -1,40 +1,30 @@
 # Kinisi motor controller commands
 
-Version: 1.0.0
+Version: 1.0.1
 ---
-## Types
-### MotorIndex
-- Motor0
-- Motor1
-- Motor2
-- Motor3
-
-### EncoderIndex
-- Encoder0
-- Encoder1
-- Encoder2
-- Encoder3
-
 
 ## Commands
 ### INITIALIZE_MOTOR (0x01)
 Description: This command initializes a motor and prepares it for use.
 Properties:
-- motorIndex (MotorIndex): The index of the motor to initialize.
+- motor_index (uint8_t): The index of the motor to initialize.
+  - Range: 0 to 3
 
 ### SET_MOTOR_SPEED (0x02)
 Description: This command sets the speed of the specified motor.
 Properties:
-- motorIndex (MotorIndex): The index of the motor to set the speed for.
-- direction (uint16_t): The direction of the motor.
+- motor_index (uint8_t): The index of the motor to set the speed for.
+  - Range: 0 to 3
+- direction (uint8_t): The direction of the motor.
   - Range: 0 to 1
-- speed (uint8_t): The speed of the motor.
+- speed (uint16_t): The speed of the motor.
   - Range: 0 to 840
 
-### SET_MOTOR_CONTROLLER (0x03)
+### INITIALIZE_MOTOR_CONTROLLER (0x03)
 Description: This command sets the controller for the specified motor.
 Properties:
-- motorIndex (MotorIndex): The index of the motor to set the controller for.
+- motor_index (uint8_t): The index of the motor to set the controller for.
+  - Range: 0 to 3
 - kp (double): Proportional constant of PID
 - ki (double): Integral constant of PID
 - kd (double): Derivative constant of PID
@@ -42,55 +32,63 @@ Properties:
 ### SET_MOTOR_TARGET_VELOCITY (0x04)
 Description: This command sets the target velocity for the specified motor.
 Properties:
-- motorIndex (MotorIndex): The index of the motor to set the target velocity for.
-- direction (uint16_t): The direction of the motor.
+- motor_index (uint8_t): The index of the motor to set the target velocity for.
+  - Range: 0 to 3
+- direction (uint8_t): The direction of the motor.
   - Range: 0 to 1
-- speed (uint8_t): The speed of the motor.
+- speed (uint16_t): The speed of the motor.
   - Range: 0 to 840
 
 ### DELETE_MOTOR_CONTROLLER (0x05)
 Description: This command deletes the controller for the specified motor.
 Properties:
-- motorIndex (MotorIndex): The index of the motor to delete the controller for.
+- motor_index (uint8_t): The index of the motor to delete the controller for.
+  - Range: 0 to 3
 
 ### INITIALIZE_ENCODER (0x11)
 Description: This command initializes an encoder and prepares it for use.
 Properties:
-- encoderIndex (EncoderIndex): The index of the encoder to initialize.
+- encoder_index (uint8_t): The index of the encoder to initialize.
+  - Range: 0 to 3
 
 ### GET_ENCODER_VALUE (0x12)
 Description: This command retrieves the current value of the encoder.
 Properties:
-- encoderIndex (EncoderIndex): The index of the encoder to retrieve the value for.
+- encoder_index (uint8_t): The index of the encoder to retrieve the value for.
+  - Range: 0 to 3
 Response: 
  - encoderValue (uint32_t): The current value of the encoder.
 
-### SET_PIN_LOW (0x20)
+### INITIALIZE_GPIO_PIN (0x20)
 Description: This command sets the specified pin to a low state.
 Properties:
-- pinNumber (uint8_t): The number of the pin to set to a low state.
+- pin_number (uint8_t): The number of the pin to initialize.
+- mode (uint8_t): Set digital pin as input or output. Awailable modes: 0 = INPUT, 0 = INPUT_PULLDOWN, 1 = INPUT_PULLUP, 2 = INPUT_NOPULL, 3 = OUTPUT.
 
-### SET_PIN_HIGH (0x21)
-Description: This command sets the specified pin to a high state.
+### SET_GPIO_PIN_STATE (0x21)
+Description: This command sets the specified pin to a state.
 Properties:
-- pinNumber (uint8_t): The number of the pin to set to a high state.
+- pin_number (uint8_t): The number of the pin to set to a state.
+- state (uint8_t): The state of the pin. 0 = LOW, 1 = HIGH.
 
-### TOGGLE_PIN (0x22)
+### GET_GPIO_PIN_STATE (0x22)
+Description: This command gets the state of the specified pin.
+Properties:
+- pin_number (uint8_t): The number of the pin to get the state for.
+Response: 
+ - state (uint8_t): The state of the pin. 0 = LOW, 1 = HIGH.
+
+### TOGGLE_GPIO_PIN_STATE (0x23)
 Description: This command toggles the specified pin.
 Properties:
-- pinNumber (uint8_t): The number of the pin to toggle.
+- pin_number (uint8_t): The number of the pin to toggle.
 
-### SET_STATUS_LED_OFF (0x23)
-Description: This command turns off the status LED.
+### SET_STATUS_LED_STATE (0x25)
+Description: This command sets the status LED to a state.
 Properties:
-- None
+- state (uint8_t): The state of the status LED. 0 = OFF, 1 = ON.
 
-### SET_STATUS_LED_ON (0x24)
-Description: This command turns on the status LED.
-Properties:
-- None
-
-### TOGGLE_STATUS_LED (0x25)
+### TOGGLE_STATUS_LED_STATE (0x26)
 Description: This command toggles the status LED.
 Properties:
 - None

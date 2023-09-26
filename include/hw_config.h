@@ -106,7 +106,7 @@
 	};
 
 	// GPIO Configurations
-	#define NUMBER_GPIO_PINS 4
+	#define NUMBER_GPIO_PINS 10
 
 	static gpio_info_t gpio_info[NUMBER_GPIO_PINS] = {
 		{.port = GPIOB, .pin = GPIO_PIN_13},

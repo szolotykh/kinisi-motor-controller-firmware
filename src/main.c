@@ -19,7 +19,7 @@ int main(void)
 { 
     HAL_Init();
     SystemClock_Config();
-    initialize_gpio();
+    initialize_status_led();
     HAL_NVIC_SetPriority(PendSV_IRQn, 15, 0);
 
     osKernelInitialize();
