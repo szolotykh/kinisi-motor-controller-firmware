@@ -33,19 +33,6 @@
 		{
 			.timer = TIM8,
 			.pwmChannel1 = {
-							.timerChannel = TIM_CHANNEL_3,
-							.port = GPIOC,
-							.pin = GPIO_PIN_8,
-						   },
-			.pwmChannel2 = {
-							.timerChannel = TIM_CHANNEL_4,
-							.port = GPIOC,
-							.pin = GPIO_PIN_9,
-						   },
-		},
-		{
-			.timer = TIM8,
-			.pwmChannel1 = {
 							.timerChannel = TIM_CHANNEL_1,
 							.port = GPIOC,
 							.pin = GPIO_PIN_6,
@@ -54,6 +41,19 @@
 							.timerChannel = TIM_CHANNEL_2,
 							.port = GPIOC,
 							.pin = GPIO_PIN_7,
+						   },
+		},
+		{
+			.timer = TIM8,
+			.pwmChannel1 = {
+							.timerChannel = TIM_CHANNEL_3,
+							.port = GPIOC,
+							.pin = GPIO_PIN_8,
+						   },
+			.pwmChannel2 = {
+							.timerChannel = TIM_CHANNEL_4,
+							.port = GPIOC,
+							.pin = GPIO_PIN_9,
 						   },
 		},
 		{
