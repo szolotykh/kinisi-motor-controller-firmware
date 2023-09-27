@@ -108,7 +108,7 @@
 	// GPIO Configurations
 	#define NUMBER_GPIO_PINS 10
 
-	static gpio_info_t gpio_info[NUMBER_GPIO_PINS] = {
+	static const gpio_info_t gpio_info[NUMBER_GPIO_PINS] = {
 		{.port = GPIOB, .pin = GPIO_PIN_13},
 		{.port = GPIOB, .pin = GPIO_PIN_12},
 		{.port = GPIOC, .pin = GPIO_PIN_10},

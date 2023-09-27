@@ -187,7 +187,11 @@ class KinisiCommands:
         func_body += f"        msg = length.to_bytes(1, 'little') + msg\n"
         func_body += f"        self.write(msg)\n"
         if 'response' in cmd:
-            func_body += f"        return self.read({type_to_size_map[cmd['response']['type']]})\n"
+            func_body += f"        result =  self.read({type_to_size_map[cmd['response']['type']]})\n"
+            if cmd['response']['type'] == 'double':
+                func_body += f"        return struct.unpack('d', result)[0]\n"
+            else:
+                func_body += f"        return {type_mapping[cmd['response']['type']]}.from_bytes(result, 'little')\n"
         function_code += func_body
         function_code += "\n"
 

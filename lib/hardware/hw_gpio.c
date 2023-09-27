@@ -19,7 +19,6 @@ void initialize_gpio_pin(uint8_t pin, uint8_t mode)
 			GPIO_InitTypeDef PinInitStruct = {0};
 			PinInitStruct.Pin = gpio_info[pin].pin;
 			PinInitStruct.Mode = GPIO_MODE_INPUT;
-			// Determine pull resistor
 			PinInitStruct.Pull = GPIO_PULLDOWN;
 			if(mode == GPIO_MODE_INPUT_PULLUP){
 				PinInitStruct.Pull = GPIO_PULLUP;
