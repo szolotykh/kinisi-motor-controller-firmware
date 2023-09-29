@@ -182,7 +182,7 @@
                 {
                     "name": "mode",
                     "type": "uint8_t",
-                    "description": "Set digital pin as input or output. Modes: 0 = INPUT, 0 = INPUT_PULLDOWN, 1 = INPUT_PULLUP, 2 = INPUT_NOPULL, 3 = OUTPUT."
+                    "description": "Set digital pin as input or output. Modes: 0 = INPUT_PULLDOWN, 1 = INPUT_PULLUP, 2 = INPUT_NOPULL, 3 = OUTPUT."
                 }
             ]
         },

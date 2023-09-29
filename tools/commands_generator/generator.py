@@ -13,8 +13,6 @@ type_to_size_map = {
     "int32_t": 4,
     "double": 8,
     "integer": 4,
-    "motor_index": 1,
-    "encoder_index": 1
 }
 
 def file_header(version, comment_char="//"):
@@ -118,7 +116,13 @@ def generate_js_code(commands_data):
 
         response = cmd.get("response", None)
         if response != None:
-            func_body += f"        return await this.read({type_to_size_map[response['type']]})\n"
+            func_body += f"        const result = await this.read({type_to_size_map[response['type']]})\n"
+            func_body += f"        const dataView = new DataView(result, 0);\n"
+            # if type size map is 1, then it is a single byte and we don't need to specify the endianness
+            if type_to_size_map[response['type']] == 1:
+                func_body += f"        return dataView.get{response['type']}(0);\n"
+            else:
+                func_body += f"        return dataView.get{response['type']}(0, true);\n"
 
         func_body += "    }\n\n"
         function_code += func_body

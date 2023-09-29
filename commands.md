@@ -60,10 +60,10 @@ Response:
  - encoderValue (uint32_t): The current value of the encoder.
 
 ### INITIALIZE_GPIO_PIN (0x20)
-Description: This command sets the specified pin to a low state.
+Description: This command initializes a digital pin and prepares it for use.
 Properties:
 - pin_number (uint8_t): The number of the pin to initialize.
-- mode (uint8_t): Set digital pin as input or output. Awailable modes: 0 = INPUT, 0 = INPUT_PULLDOWN, 1 = INPUT_PULLUP, 2 = INPUT_NOPULL, 3 = OUTPUT.
+- mode (uint8_t): Set digital pin as input or output. Modes: 0 = INPUT_PULLDOWN, 1 = INPUT_PULLUP, 2 = INPUT_NOPULL, 3 = OUTPUT.
 
 ### SET_GPIO_PIN_STATE (0x21)
 Description: This command sets the specified pin to a state.
