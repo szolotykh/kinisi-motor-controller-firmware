@@ -78,6 +78,7 @@ void command_handler(controller_command_t* cmd)
             }
         break;
 
+        // Encoder commands
         case INITIALIZE_ENCODER:
             initialize_encoder(cmd->properties.initialize_encoder.encoder_index);
         break;
@@ -89,10 +90,36 @@ void command_handler(controller_command_t* cmd)
             }
         break;
 
-        case TOGGLE_STATUS_LED:
-            gpio_toggle_status_led();
+        // GPIO commands
+        case INITIALIZE_GPIO_PIN:
+            initialize_gpio_pin(cmd->properties.initialize_gpio_pin.pin_number, cmd->properties.initialize_gpio_pin.mode);
         break;
 
+        case SET_GPIO_PIN_STATE:
+            set_gpio_pin_state(cmd->properties.set_gpio_pin_state.pin_number, cmd->properties.set_gpio_pin_state.state);
+        break;
+
+        case GET_GPIO_PIN_STATE:
+            {
+            uint8_t state = get_gpio_pin_state(cmd->properties.get_gpio_pin_state.pin_number);
+            CDC_Transmit_FS((uint8_t*)&state, sizeof(uint8_t));
+            }
+        break;
+
+        case TOGGLE_GPIO_PIN_STATE:
+            toggle_gpio_pin_state(cmd->properties.toggle_gpio_pin_state.pin_number);
+        break;
+
+        // Status LED commands
+        case SET_STATUS_LED_STATE:
+            set_status_led_state(cmd->properties.set_status_led_state.state);
+        break;
+
+        case TOGGLE_STATUS_LED_STATE:
+            toggle_status_led_state();
+        break;
+
+        // Platform commands
         case INITIALIZE_PLATFORM:
             init_platform();
         break;

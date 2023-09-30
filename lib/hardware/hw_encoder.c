@@ -50,7 +50,7 @@ static void initialize_encoder_timer(TIM_HandleTypeDef *htim, TIM_TypeDef *typeD
 	htim->Instance = typeDef;
 	htim->Init.Prescaler = 0;
 	htim->Init.CounterMode = TIM_COUNTERMODE_UP;
-	htim->Init.Period = 4294967295; // 65535
+	htim->Init.Period = 65535; // This value can't be 4294967295 since some of the timeers are 16 bit.
 	htim->Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
 	htim->Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
 	sConfig.EncoderMode = TIM_ENCODERMODE_TI1;
@@ -116,32 +116,17 @@ void HAL_TIM_Encoder_MspInit(TIM_HandleTypeDef* htim_encoder)
     HAL_GPIO_Init(encoder_configuration.portB, &GPIO_InitStruct);
 }
 
-
-/**
-* @brief TIM_Encoder MSP De-Initialization
-* This function freeze the hardware resources used in this example
-* @param htim_encoder: TIM_Encoder handle pointer
-* @retval None
-*/
 void HAL_TIM_Encoder_MspDeInit(TIM_HandleTypeDef* htim_encoder)
 {
-  if(htim_encoder->Instance==TIM4)
-  {
-  /* USER CODE BEGIN TIM4_MspDeInit 0 */
+    encoder_info_t encoder_configuration = get_encoder_info(htim_encoder->Instance);
+    
+    if(htim_encoder->Instance == encoder_configuration.timer)
+    {
+        // Disable the peripheral clock
+        rcc_tim_clk_disable(encoder_configuration.timer);
 
-  /* USER CODE END TIM4_MspDeInit 0 */
-    /* Peripheral clock disable */
-    __HAL_RCC_TIM4_CLK_DISABLE();
-
-    /**TIM4 GPIO Configuration
-    PB6     ------> TIM4_CH1
-    PB7     ------> TIM4_CH2
-    */
-    HAL_GPIO_DeInit(GPIOB, GPIO_PIN_6|GPIO_PIN_7);
-
-  /* USER CODE BEGIN TIM4_MspDeInit 1 */
-
-  /* USER CODE END TIM4_MspDeInit 1 */
-  }
-
+        // DeInit GPIO for Channel A and B
+        HAL_GPIO_DeInit(encoder_configuration.portA, encoder_configuration.pinA);
+    	HAL_GPIO_DeInit(encoder_configuration.portB, encoder_configuration.pinB);
+    }
 }

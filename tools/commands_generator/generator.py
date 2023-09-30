@@ -13,8 +13,6 @@ type_to_size_map = {
     "int32_t": 4,
     "double": 8,
     "integer": 4,
-    "motor_index": 1,
-    "encoder_index": 1
 }
 
 def file_header(version, comment_char="//"):
@@ -66,13 +64,34 @@ def generate_js_code(commands_data):
 
     # Map of type names to their corresponding setter functions in the DataView class
     type_to_js_setter_func_map = {
-        "uint8_t": "setUint8",
-        "uint16_t": "setUint16",
-        "uint32_t": "setUint32",
-        "int8_t": "setInt8",
-        'int16_t': 'setInt16',
-        'int32_t': 'setInt32',
-        "double": "setFloat64",
+        "uint8_t": {
+            "set":"setUint8",
+            "get":"getUint8"
+            },
+        "uint16_t": {
+            "set":"setUint16",
+            "get":"getUint16"
+            },
+        "uint32_t": {
+            "set":"setUint32",
+            "get":"getUint32"
+            },
+        "int8_t": {
+            "set":"setInt8", 
+            "get":"getInt8"
+            },
+        'int16_t': {
+            "set":"setInt16",
+            "get":"getInt16"
+            },
+        'int32_t': {
+            "set":"setInt32",
+            "get":"getInt32"
+            },
+        "double": {
+            "set":"setFloat64",
+            "get":"getFloat64"
+            },
     }
     
     # Generate constants for command codes
@@ -109,7 +128,7 @@ def generate_js_code(commands_data):
 
         offset = 2
         for prop in cmd.get("properties", []):
-            setter_func = type_to_js_setter_func_map[prop['type']]
+            setter_func = type_to_js_setter_func_map[prop['type']].get("set")
             little_endian = ", true" if type_to_size_map[prop['type']] > 1 else ""
             func_body += f"        view.{setter_func}({offset}, {prop['name']}{little_endian});  // {prop['name']}\n"
             offset += type_to_size_map.get(prop['type'], 1)
@@ -118,7 +137,13 @@ def generate_js_code(commands_data):
 
         response = cmd.get("response", None)
         if response != None:
-            func_body += f"        return await this.read({type_to_size_map[response['type']]})\n"
+            func_body += f"        const result = await this.read({type_to_size_map[response['type']]})\n"
+            func_body += f"        const dataView = new DataView(result, 0);\n"
+            # if type size map is 1, then it is a single byte and we don't need to specify the endianness
+            if type_to_size_map[response['type']] == 1:
+                func_body += f"        return dataView.{type_to_js_setter_func_map[response['type']].get('get')}(0);\n"
+            else:
+                func_body += f"        return dataView.{type_to_js_setter_func_map[response['type']].get('get')}(0, true);\n"
 
         func_body += "    }\n\n"
         function_code += func_body
@@ -187,7 +212,11 @@ class KinisiCommands:
         func_body += f"        msg = length.to_bytes(1, 'little') + msg\n"
         func_body += f"        self.write(msg)\n"
         if 'response' in cmd:
-            func_body += f"        return self.read({type_to_size_map[cmd['response']['type']]})\n"
+            func_body += f"        result =  self.read({type_to_size_map[cmd['response']['type']]})\n"
+            if cmd['response']['type'] == 'double':
+                func_body += f"        return struct.unpack('<d', result)[0]\n"
+            else:
+                func_body += f"        return {type_mapping[cmd['response']['type']]}.from_bytes(result, 'little')\n"
         function_code += func_body
         function_code += "\n"
 

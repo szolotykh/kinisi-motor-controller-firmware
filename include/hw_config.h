@@ -33,19 +33,6 @@
 		{
 			.timer = TIM8,
 			.pwmChannel1 = {
-							.timerChannel = TIM_CHANNEL_3,
-							.port = GPIOC,
-							.pin = GPIO_PIN_8,
-						   },
-			.pwmChannel2 = {
-							.timerChannel = TIM_CHANNEL_4,
-							.port = GPIOC,
-							.pin = GPIO_PIN_9,
-						   },
-		},
-		{
-			.timer = TIM8,
-			.pwmChannel1 = {
 							.timerChannel = TIM_CHANNEL_1,
 							.port = GPIOC,
 							.pin = GPIO_PIN_6,
@@ -54,6 +41,19 @@
 							.timerChannel = TIM_CHANNEL_2,
 							.port = GPIOC,
 							.pin = GPIO_PIN_7,
+						   },
+		},
+		{
+			.timer = TIM8,
+			.pwmChannel1 = {
+							.timerChannel = TIM_CHANNEL_3,
+							.port = GPIOC,
+							.pin = GPIO_PIN_8,
+						   },
+			.pwmChannel2 = {
+							.timerChannel = TIM_CHANNEL_4,
+							.port = GPIOC,
+							.pin = GPIO_PIN_9,
 						   },
 		},
 		{
@@ -106,9 +106,9 @@
 	};
 
 	// GPIO Configurations
-	#define NUMBER_GPIO_PINS 4
+	#define NUMBER_GPIO_PINS 10
 
-	static gpio_info_t gpio_info[NUMBER_GPIO_PINS] = {
+	static const gpio_info_t gpio_info[NUMBER_GPIO_PINS] = {
 		{.port = GPIOB, .pin = GPIO_PIN_13},
 		{.port = GPIOB, .pin = GPIO_PIN_12},
 		{.port = GPIOC, .pin = GPIO_PIN_10},
