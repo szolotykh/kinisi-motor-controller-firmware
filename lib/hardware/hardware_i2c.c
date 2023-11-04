@@ -56,10 +56,11 @@ void send_external_i2c(uint8_t* data, uint16_t data_len)
     // We need to wait here since master may not yet request data from slave
     // and we will not be able to send data until then (receive_state == LISTENING)
     // TODO: Replace better wait mechanism
-    unsigned int timeout = 100000;
+    unsigned int timeout = 1000;
     i2c_receive_state_t state = receive_state;
-    while(state == UNKNOWN)
+    while(state != LISTENING)
     {
+        osDelay(1);
         if(timeout-- == 0) {
             return;
         }
@@ -75,7 +76,6 @@ void send_external_i2c(uint8_t* data, uint16_t data_len)
 
         if(HAL_I2C_Slave_Seq_Transmit_IT(&hi2c2, i2c_send_buffer, bytes_to_send, I2C_LAST_FRAME) != HAL_OK){
             // TODO: Handle error here
-            receive_state = ERROR_STATE;
         }
     }
 }
@@ -103,7 +103,6 @@ void HAL_I2C_SlaveRxCpltCallback(I2C_HandleTypeDef *hi2c)
             receive_state = AWAITING_MESSAGE;
             HAL_I2C_Slave_Seq_Receive_IT(hi2c, i2c_message_buffer + 1, i2c_message_buffer[0], I2C_LAST_FRAME);
         } else {
-            receive_state = UNKNOWN;
             enqueue(&I2CCommandQueue, i2c_message_buffer);
         }
     }

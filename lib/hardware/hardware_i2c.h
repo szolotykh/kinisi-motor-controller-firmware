@@ -10,9 +10,7 @@
 typedef enum {
   AWAITING_SIZE,
   AWAITING_MESSAGE,
-  LISTENING,
-  UNKNOWN, // Wait for master start request data or send data
-  ERROR_STATE
+  LISTENING
 } i2c_receive_state_t;
 
 uint8_t i2c_message_buffer[256];
