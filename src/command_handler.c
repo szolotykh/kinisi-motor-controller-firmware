@@ -9,6 +9,8 @@
 #include <usbd_cdc_if.h>
 #include <hw_gpio.h>
 #include "platform.h"
+#include "commands_handler.h"
+#include "hardware_i2c.h"
 
 controllers_manager_t controllersManager;
 controllers_manager_input_t controllers_manager_input = {
@@ -16,7 +18,7 @@ controllers_manager_input_t controllers_manager_input = {
     .ControllerInfo = {{.state = STOP}, {.state = STOP},{.state = STOP},{.state = STOP}}
 };
 
-void command_handler(controller_command_t* cmd)
+void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t*, uint16_t))
 {
     switch(cmd->commandType)
         {
@@ -85,8 +87,8 @@ void command_handler(controller_command_t* cmd)
 
         case GET_ENCODER_VALUE:
             {
-            unsigned int value = get_encoder_value(cmd->properties.get_encoder_value.encoder_index);
-            CDC_Transmit_FS((uint8_t*)&value, sizeof(unsigned int));
+            unsigned int value = 15; // get_encoder_value(cmd->properties.get_encoder_value.encoder_index);
+            command_callback((uint8_t*)&value, sizeof(unsigned int));
             }
         break;
 
@@ -102,7 +104,7 @@ void command_handler(controller_command_t* cmd)
         case GET_GPIO_PIN_STATE:
             {
             uint8_t state = get_gpio_pin_state(cmd->properties.get_gpio_pin_state.pin_number);
-            CDC_Transmit_FS((uint8_t*)&state, sizeof(uint8_t));
+            command_callback((uint8_t*)&state, sizeof(uint8_t));
             }
         break;
 
