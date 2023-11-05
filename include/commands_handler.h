@@ -6,4 +6,4 @@
 
 #include "commands.h"
 
-void command_handler(controller_command_t* cmd);
+void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t*, uint16_t));

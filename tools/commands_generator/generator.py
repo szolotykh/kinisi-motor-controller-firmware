@@ -320,7 +320,7 @@ def generate_cpp_code(commands_data):
         commands_class += f"    // {cmd['command']}: {cmd['description']}\n"
         func_args = ', '.join([f"{prop['type']} {prop['name']}" for prop in cmd.get('properties', [])])
         commands_class += f"    void {cmd['command'].lower()}({func_args}){{\n"
-        commands_class += f"        unsigned char cmd[] = {{ 0, {', '.join([prop['name'] for prop in cmd.get('properties', [])])}}};\n"
+        commands_class += f"        unsigned char cmd[] = {{ 0, {cmd['command']}, {', '.join([prop['name'] for prop in cmd.get('properties', [])])}}};\n"
         commands_class += f"        cmd[0] = sizeof(cmd) - 1;\n"
         commands_class += f"        write(cmd, sizeof(cmd));\n"
         # Generate response 
