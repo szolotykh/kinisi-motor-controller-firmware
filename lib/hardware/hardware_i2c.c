@@ -69,12 +69,10 @@ void send_external_i2c(uint8_t* data, uint16_t data_len)
 
     if (state == LISTENING) 
     {
-        unsigned int value = 128;
-
-        uint16_t bytes_to_send = sizeof(value);
-        memcpy(i2c_send_buffer, &value, bytes_to_send);
-
-        if(HAL_I2C_Slave_Seq_Transmit_IT(&hi2c2, i2c_send_buffer, bytes_to_send, I2C_LAST_FRAME) != HAL_OK){
+        // Copy bytes to send buffer
+        memcpy(i2c_send_buffer, data, data_len);
+        // Send data from send buffer
+        if(HAL_I2C_Slave_Seq_Transmit_IT(&hi2c2, i2c_send_buffer, data_len, I2C_LAST_FRAME) != HAL_OK){
             // TODO: Handle error here
         }
     }
