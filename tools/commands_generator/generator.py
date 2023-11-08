@@ -64,6 +64,10 @@ def generate_js_code(commands_data):
 
     # Map of type names to their corresponding setter functions in the DataView class
     type_to_js_setter_func_map = {
+        "bool": {
+            "set":"setUint8",
+            "get":"getUint8"
+            },
         "uint8_t": {
             "set":"setUint8",
             "get":"getUint8"

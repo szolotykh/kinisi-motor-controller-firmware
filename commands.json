@@ -326,7 +326,7 @@
         },
         {
             "command": "SET_PLATFORM_CONTROLLER",
-            "code": "0x40",
+            "code": "0x41",
             "description": "This command sets the controller for the platform.",
             "properties": [],
             "category": "Platform"
