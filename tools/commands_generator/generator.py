@@ -5,6 +5,7 @@ import os
 
 # Map of type names to their size in bytes
 type_to_size_map = {
+    "bool": 1,
     "uint8_t": 1,
     "uint16_t": 2,
     "uint32_t": 4,
