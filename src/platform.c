@@ -21,24 +21,27 @@ typedef struct
 
 encoder_state_t encoder_state[4];
 
-void SetMotorVelocity(motorIndex motorIndex, int velocity)
+void set_motor_velocity(motorIndex motorIndex, int velocity)
 {
     unsigned short direction = velocity >= 0;
     unsigned int speed = abs(velocity) * SPEED_RESOLUTION / 100;
     set_motor_speed(motorIndex, direction, speed);
 }
 
-void init_platform()
+void initialize_mecanum_platform(uint8_t isReversed0, uint8_t isReversed1, uint8_t isReversed2, uint8_t isReversed3)
 {
-    initialize_motor_all();
+    initialize_motor(MOTOR0, isReversed0);
+	initialize_motor(MOTOR1, isReversed1);
+	initialize_motor(MOTOR2, isReversed2);
+	initialize_motor(MOTOR3, isReversed3);
 }
 
 void set_velocity_input(const mecanum_velocity_t velocity)
 {
-    SetMotorVelocity(MOTOR0, -velocity.motor0);
-    SetMotorVelocity(MOTOR1, -velocity.motor1);
-    SetMotorVelocity(MOTOR2, velocity.motor2);
-    SetMotorVelocity(MOTOR3, velocity.motor3);
+    set_motor_velocity(MOTOR0, -velocity.motor0);
+    set_motor_velocity(MOTOR1, -velocity.motor1);
+    set_motor_velocity(MOTOR2, velocity.motor2);
+    set_motor_velocity(MOTOR3, velocity.motor3);
 }
 
 void encoder_update_state(encoder_index_t index, unsigned int value)

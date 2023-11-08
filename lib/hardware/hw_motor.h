@@ -4,6 +4,9 @@
 
 #pragma once
 
+#include "stdbool.h"
+#include "stdint.h"
+
 // Motor indexes
 #define MOTOR0 0
 #define MOTOR1 1
@@ -13,6 +16,6 @@
 
 typedef unsigned char motorIndex;
 
-extern void initialize_motor(motorIndex motorIndex);
+extern void initialize_motor(motorIndex motorIndex, bool isReversed);
 extern void initialize_motor_all();
-extern void set_motor_speed(motorIndex motorIndex, unsigned short direction, unsigned speed);
+extern void set_motor_speed(motorIndex motorIndex, uint8_t direction, uint16_t speed);

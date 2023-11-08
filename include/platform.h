@@ -10,7 +10,7 @@
 
 #define ENCODER_UPDATE_RATE 100
 
-void init_platform();
+void initialize_mecanum_platform(uint8_t isReversed0, uint8_t isReversed1, uint8_t isReversed2, uint8_t isReversed3);
 
 void encoder_update_state(encoder_index_t index, unsigned int value);
 void set_velocity_input(const mecanum_velocity_t velocity);

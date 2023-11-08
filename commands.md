@@ -1,6 +1,6 @@
 # Kinisi motor controller commands
 
-Version: 1.0.1
+Version: 1.0.2
 ---
 
 ## Commands
@@ -9,6 +9,7 @@ Description: This command initializes a motor and prepares it for use.
 Properties:
 - motor_index (uint8_t): The index of the motor to initialize.
   - Range: 0 to 3
+- is_reversed (bool): Whether or not the motor is reversed.
 
 ### SET_MOTOR_SPEED (0x02)
 Description: This command sets the speed of the specified motor.
@@ -93,10 +94,13 @@ Description: This command toggles the status LED.
 Properties:
 - None
 
-### INITIALIZE_PLATFORM (0x30)
-Description: This command initializes the platform and prepares it for use.
+### INITIALIZE_MECANUM_PLATFORM (0x30)
+Description: This command initializes a mecanum platform and prepares it for use.
 Properties:
-- None
+- is_reversed_0 (bool): Determins if motor 0 is reversed.
+- is_reversed_1 (bool): Determins if motor 1 is reversed.
+- is_reversed_2 (bool): Determins if motor 2 is reversed.
+- is_reversed_3 (bool): Determins if motor 3 is reversed.
 
 ### SET_PLATFORM_VELOCITY_INPUT (0x31)
 Description: This command sets the velocity input for the platform.
