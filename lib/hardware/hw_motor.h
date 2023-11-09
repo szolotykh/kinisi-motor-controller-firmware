@@ -13,9 +13,11 @@
 #define MOTOR2 2
 #define MOTOR3 3
 
+#define MOTOR_MAX_SPEED 840
 
 typedef unsigned char motorIndex;
 
-extern void initialize_motor(motorIndex motorIndex, bool isReversed);
-extern void initialize_motor_all();
-extern void set_motor_speed(motorIndex motorIndex, uint8_t direction, uint16_t speed);
+void initialize_motor(motorIndex motorIndex, bool isReversed);
+void set_motor_speed(motorIndex motorIndex, uint8_t direction, uint16_t speed);
+void stop_motor(motorIndex motorIndex);
+void brake_motor(motorIndex motorIndex);

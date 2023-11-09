@@ -30,14 +30,6 @@ void initialize_motor(motorIndex motorIndex, bool isReversed)
 	}
 }
 
-void initialize_motor_all()
-{
-	initialize_motor(MOTOR0, false);
-	initialize_motor(MOTOR1, false);
-	initialize_motor(MOTOR2, false);
-	initialize_motor(MOTOR3, false);
-}
-
 void set_motor_speed(motorIndex motorIndex, uint8_t direction, uint16_t speed)
 {
 	if(motor_status[motorIndex].isInitialized)
@@ -49,8 +41,30 @@ void set_motor_speed(motorIndex motorIndex, uint8_t direction, uint16_t speed)
 	}
 }
 
+void stop_motor(motorIndex motorIndex)
+{
+	if(motor_status[motorIndex].isInitialized)
+	{
+		TIM_HandleTypeDef *htim = get_timer_handeler(motor_info[motorIndex].timer);
+		// Both channels are set to low
+		set_motor_channel(htim, motor_info[motorIndex].pwmChannel1.timerChannel, 0, 0, 0);
+		set_motor_channel(htim, motor_info[motorIndex].pwmChannel2.timerChannel, 0, 0, 0);
+	}
+}
+
+void brake_motor(motorIndex motorIndex)
+{
+	if(motor_status[motorIndex].isInitialized)
+	{
+		TIM_HandleTypeDef *htim = get_timer_handeler(motor_info[motorIndex].timer);
+		// Both channels are set to high
+		set_motor_channel(htim, motor_info[motorIndex].pwmChannel1.timerChannel, 1, MOTOR_MAX_SPEED, 0);
+		set_motor_channel(htim, motor_info[motorIndex].pwmChannel2.timerChannel, 1, MOTOR_MAX_SPEED, 0);
+	}
+}
+
 void set_motor_channel(TIM_HandleTypeDef *htim, uint32_t channel, uint8_t direction, uint16_t speed, uint8_t isReversed){
-	direction = direction && isReversed;
+	direction = direction && !isReversed;
 	switch(channel)
 	{
 		case TIM_CHANNEL_1:
