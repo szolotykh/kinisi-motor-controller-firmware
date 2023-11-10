@@ -46,6 +46,7 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
             {
                 brake_motor(cmd->properties.brake_motor.motor_index);
             }
+        break;
 
         case INITIALIZE_MOTOR_CONTROLLER:
             {
