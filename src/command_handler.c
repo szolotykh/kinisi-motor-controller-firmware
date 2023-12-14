@@ -144,23 +144,27 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
             );
         break;
 
+        case INITIALIZE_OMNI_PLATFORM:
+            initialize_omni_platform(
+                cmd->properties.initialize_omni_platform.is_reversed_0,
+                cmd->properties.initialize_omni_platform.is_reversed_1,
+                cmd->properties.initialize_omni_platform.is_reversed_2,
+                cmd->properties.initialize_omni_platform.wheels_diameter,
+                cmd->properties.initialize_omni_platform.robot_radius
+            );
+
         case SET_PLATFORM_CONTROLLER:
             // SetController
         break;
 
         case SET_PLATFORM_VELOCITY_INPUT:
             {
-            mecanum_velocity_t mecanumVelocity = get_mecanum_velocities(
-                cmd->properties.set_platform_velocity_input.x,
-                cmd->properties.set_platform_velocity_input.y,
-                cmd->properties.set_platform_velocity_input.t);
-            set_velocity_input(mecanumVelocity);
-            // Should be part of set target velocity
-            // TargetVelocity[MOTOR0] = mecanumVelocity.motor0;
-            // TargetVelocity[MOTOR1] = mecanumVelocity.motor1;
-            // TargetVelocity[MOTOR2] = mecanumVelocity.motor2;
-            // TargetVelocity[MOTOR3] = mecanumVelocity.motor3;
-            
+            platform_velocity_t platform_velocity = {
+                .x = cmd->properties.set_platform_velocity_input.x,
+                .y = cmd->properties.set_platform_velocity_input.y,
+                .t = cmd->properties.set_platform_velocity_input.t
+            };
+            set_platform_velocity(platform_velocity);
             }
         break;
         }

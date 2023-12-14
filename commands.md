@@ -28,7 +28,7 @@ Properties:
   - Range: 0 to 3
 
 ### BRAKE_MOTOR (0x04)
-Description: This command brakes motor by setting its speed to 0.
+Description: This command brakes motor.
 Properties:
 - motor_index (uint8_t): The index of the motor to set the speed for.
   - Range: 0 to 3
@@ -113,6 +113,15 @@ Properties:
 - is_reversed_1 (bool): Determins if motor 1 is reversed.
 - is_reversed_2 (bool): Determins if motor 2 is reversed.
 - is_reversed_3 (bool): Determins if motor 3 is reversed.
+
+### INITIALIZE_OMNI_PLATFORM (0x31)
+Description: This command initializes a omni platform and prepares it for use.
+Properties:
+- is_reversed_0 (bool): Determins if motor 0 is reversed.
+- is_reversed_1 (bool): Determins if motor 1 is reversed.
+- is_reversed_2 (bool): Determins if motor 2 is reversed.
+- wheels_diameter (uint16_t): Diameter of the robot wheels in millimeters.
+- robot_radius (uint16_t): Distance berween the center of the robot and the center of the wheels in millimeters.
 
 ### SET_PLATFORM_VELOCITY_INPUT (0x40)
 Description: This command sets the velocity input for the platform.
