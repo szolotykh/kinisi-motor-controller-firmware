@@ -2,13 +2,23 @@
 // File name: platform.c
 //------------------------------------------------------------
 #include <stdlib.h>
-#include <pid_controller.h>
 #include "platform.h"
 #include "hw_motor.h"
 #include "hw_encoder.h"
 #include <stdint.h>
+#include <math.h>
 
 #define SPEED_RESOLUTION 840
+
+// Type definitions
+typedef void (*set_platform_velocity_t)(platform_velocity_t);
+
+typedef struct
+{
+    uint8_t is_initialized;
+    set_platform_velocity_t set_platform_velocity;
+    
+} platform_t;
 
 typedef struct
 {
@@ -19,27 +29,123 @@ typedef struct
     int acceleration_n0;
 } encoder_state_t;
 
-encoder_state_t encoder_state[4];
-
-void SetMotorVelocity(motorIndex motorIndex, int velocity)
+typedef struct mecanum_velocity_t
 {
-    unsigned short direction = velocity >= 0;
-    unsigned int speed = abs(velocity) * SPEED_RESOLUTION / 100;
+    int motor0;
+    int motor1;
+    int motor2;
+    int motor3;
+} mecanum_velocity_t;
+
+// Internal variables
+static platform_t platform = {.is_initialized = 0};
+
+static encoder_state_t encoder_state[4];
+
+// Function definitions
+signed char verify_range(signed char c);
+int sing(int c);
+
+// ------------------------------------------------------------------------
+// Platform functions
+
+void set_platform_velocity(platform_velocity_t platform_velocity){
+    // Set platform velocity only if platform is initialized
+    if (!platform.is_initialized)
+    {
+        return;
+    }
+    // Verify that velocity is in range [-100, 100] and adjust if needed
+    platform_velocity.x = verify_range(platform_velocity.x);
+    platform_velocity.y = verify_range(platform_velocity.y);
+    platform_velocity.t = verify_range(platform_velocity.t);
+
+    // Set velocity for initialized platform
+    platform.set_platform_velocity(platform_velocity);
+}
+
+void set_motor_velocity(motorIndex motorIndex, int velocity)
+{
+    uint8_t direction = velocity >= 0;
+    uint16_t speed = abs(velocity) * SPEED_RESOLUTION / 100;
     set_motor_speed(motorIndex, direction, speed);
 }
 
-void init_platform()
-{
-    initialize_motor_all();
+// ------------------------------------------------------------------------
+// Mecanum platform functions
+void set_mecaunm_platform_velocity(platform_velocity_t platform_velocity){
+    // Normalize velocity
+    int l = abs(platform_velocity.x) + abs(platform_velocity.y) + abs(platform_velocity.t);
+    platform_velocity.x = sing(platform_velocity.x) * platform_velocity.x * platform_velocity.x / l;
+    platform_velocity.y = sing(platform_velocity.y) * platform_velocity.y * platform_velocity.y / l;
+    platform_velocity.t = sing(platform_velocity.t) * platform_velocity.t * platform_velocity.t / l;
+
+    const mecanum_velocity_t mecanum_velocity = {
+        .motor0 = platform_velocity.x + platform_velocity.y + platform_velocity.t,
+        .motor1 = platform_velocity.x - platform_velocity.y + platform_velocity.t,
+        .motor2 = platform_velocity.x + platform_velocity.y - platform_velocity.t,
+        .motor3 = platform_velocity.x - platform_velocity.y - platform_velocity.t
+        };
+
+    set_motor_velocity(MOTOR0, -mecanum_velocity.motor0);
+    set_motor_velocity(MOTOR1, -mecanum_velocity.motor1);
+    set_motor_velocity(MOTOR2, mecanum_velocity.motor2);
+    set_motor_velocity(MOTOR3, mecanum_velocity.motor3);
 }
 
-void set_velocity_input(const mecanum_velocity_t velocity)
+void initialize_mecanum_platform(uint8_t isReversed0, uint8_t isReversed1, uint8_t isReversed2, uint8_t isReversed3)
 {
-    SetMotorVelocity(MOTOR0, -velocity.motor0);
-    SetMotorVelocity(MOTOR1, -velocity.motor1);
-    SetMotorVelocity(MOTOR2, velocity.motor2);
-    SetMotorVelocity(MOTOR3, velocity.motor3);
+    if (platform.is_initialized)
+    {
+        return;
+    }
+
+    initialize_motor(MOTOR0, isReversed0);
+	initialize_motor(MOTOR1, isReversed1);
+	initialize_motor(MOTOR2, isReversed2);
+	initialize_motor(MOTOR3, isReversed3);
+    platform.is_initialized = true;
+    platform.set_platform_velocity = set_mecaunm_platform_velocity;
 }
+
+// ------------------------------------------------------------------------
+// Omni platform functions
+
+void set_omni_platform_velocity(platform_velocity_t platform_velocity)
+{
+    double V1 = sqrt(3.0)/2 * platform_velocity.x - 1/2 * platform_velocity.y + platform_velocity.t;
+    double V2 = -sqrt(3.0)/2 * platform_velocity.x - 1/2 * platform_velocity.y + platform_velocity.t;
+    double V3 = -platform_velocity.y + platform_velocity.t;
+
+    double maxv = fmax(fabs(V1), fmax(fabs(V2), fabs(V3)));
+    if (maxv > 100.0)
+    {
+        V1 *= 100.0 / maxv;
+        V2 *= 100.0 / maxv;
+        V3 *= 100.0 / maxv;
+    }
+
+    set_motor_velocity(MOTOR0, V1);
+    set_motor_velocity(MOTOR1, V2);
+    set_motor_velocity(MOTOR2, V3);
+}
+
+void initialize_omni_platform(uint8_t isReversed0, uint8_t isReversed1, uint8_t isReversed2, uint16_t wheel_diameter, uint16_t robot_radius)
+{
+    if (platform.is_initialized)
+    {
+        return;
+    }
+
+    initialize_motor(MOTOR0, isReversed0);
+	initialize_motor(MOTOR1, isReversed1);
+	initialize_motor(MOTOR2, isReversed2);
+    platform.is_initialized = true;
+    platform.set_platform_velocity = set_omni_platform_velocity;
+}
+
+// ------------------------------------------------------------------------
+// Encoder functions
 
 void encoder_update_state(encoder_index_t index, unsigned int value)
 {
@@ -78,3 +184,18 @@ int get_motor_rps(motorIndex index)
 
 }
 */
+
+// ------------------------------------------------------------------------
+// Utils functions
+
+int8_t verify_range(int8_t c)
+{
+    if(c > 100) return 100;
+    if(c < -100) return -100;
+    return c;
+}
+
+int sing(int c)
+{
+    return (c > 0) - (c < 0);
+}

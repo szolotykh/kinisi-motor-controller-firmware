@@ -5,6 +5,7 @@ import os
 
 # Map of type names to their size in bytes
 type_to_size_map = {
+    "bool": 1,
     "uint8_t": 1,
     "uint16_t": 2,
     "uint32_t": 4,
@@ -64,6 +65,10 @@ def generate_js_code(commands_data):
 
     # Map of type names to their corresponding setter functions in the DataView class
     type_to_js_setter_func_map = {
+        "bool": {
+            "set":"setUint8",
+            "get":"getUint8"
+            },
         "uint8_t": {
             "set":"setUint8",
             "get":"getUint8"
@@ -268,6 +273,11 @@ def generate_md_file(commands_data):
 
 # Generates a C header file from the commands JSON file
 def generate_c_header_file(commands_data):
+    def get_type(type_name):
+        if type_name == 'bool':
+            return 'uint8_t'
+        return type_name
+    
     # Create commands definitions
     definitions = "// Commands"
     for cmd in commands_data['commands']:
@@ -284,7 +294,8 @@ def generate_c_header_file(commands_data):
         commands_struct += f"        // {cmd['command']}: {cmd['description']}\n"
         commands_struct += "        struct {\n"
         for prop in cmd.get("properties", []):
-            commands_struct += f"            {prop['type']} {prop['name']}; // {prop['description']}\n"
+            prop_type = get_type(prop['type'])
+            commands_struct += f"            {prop_type} {prop['name']}; // {prop['description']}\n"
         commands_struct += f"        }} {cmd['command'].lower()};\n\n"
 
     commands_struct += "    } properties;\n"

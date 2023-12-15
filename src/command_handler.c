@@ -11,6 +11,7 @@
 #include "platform.h"
 #include "commands_handler.h"
 #include "hardware_i2c.h"
+#include "stdbool.h"
 
 controllers_manager_t controllersManager;
 controllers_manager_input_t controllers_manager_input = {
@@ -23,7 +24,7 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
     switch(cmd->commandType)
         {
         case INITIALIZE_MOTOR:
-            initialize_motor(cmd->properties.initialize_motor.motor_index);
+            initialize_motor(cmd->properties.initialize_motor.motor_index, cmd->properties.initialize_motor.is_reversed);
         break;
 
         case SET_MOTOR_SPEED:
@@ -32,6 +33,18 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
                 cmd->properties.set_motor_speed.motor_index,
                 cmd->properties.set_motor_speed.direction,
                 cmd->properties.set_motor_speed.speed);
+            }
+        break;
+
+        case STOP_MOTOR:
+            {
+                stop_motor(cmd->properties.stop_motor.motor_index);
+            }
+        break;
+
+        case BRAKE_MOTOR:
+            {
+                brake_motor(cmd->properties.brake_motor.motor_index);
             }
         break;
 
@@ -58,7 +71,7 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
             controllerInfo.mIndex = motorIndex;
             controllerInfo.eIndex = motorIndex;
 
-            initialize_motor(controllerInfo.mIndex);
+            initialize_motor(controllerInfo.mIndex, false);
             initialize_encoder(controllerInfo.eIndex);
 
             controllers_manager_input.ControllerInfo[motorIndex] = controllerInfo;
@@ -122,9 +135,23 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
         break;
 
         // Platform commands
-        case INITIALIZE_PLATFORM:
-            init_platform();
+        case INITIALIZE_MECANUM_PLATFORM:
+            initialize_mecanum_platform(
+                cmd->properties.initialize_mecanum_platform.is_reversed_0,
+                cmd->properties.initialize_mecanum_platform.is_reversed_1,
+                cmd->properties.initialize_mecanum_platform.is_reversed_2,
+                cmd->properties.initialize_mecanum_platform.is_reversed_3
+            );
         break;
+
+        case INITIALIZE_OMNI_PLATFORM:
+            initialize_omni_platform(
+                cmd->properties.initialize_omni_platform.is_reversed_0,
+                cmd->properties.initialize_omni_platform.is_reversed_1,
+                cmd->properties.initialize_omni_platform.is_reversed_2,
+                cmd->properties.initialize_omni_platform.wheels_diameter,
+                cmd->properties.initialize_omni_platform.robot_radius
+            );
 
         case SET_PLATFORM_CONTROLLER:
             // SetController
@@ -132,17 +159,12 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
 
         case SET_PLATFORM_VELOCITY_INPUT:
             {
-            mecanum_velocity_t mecanumVelocity = get_mecanum_velocities(
-                cmd->properties.set_platform_velocity_input.x,
-                cmd->properties.set_platform_velocity_input.y,
-                cmd->properties.set_platform_velocity_input.t);
-            set_velocity_input(mecanumVelocity);
-            // Should be part of set target velocity
-            // TargetVelocity[MOTOR0] = mecanumVelocity.motor0;
-            // TargetVelocity[MOTOR1] = mecanumVelocity.motor1;
-            // TargetVelocity[MOTOR2] = mecanumVelocity.motor2;
-            // TargetVelocity[MOTOR3] = mecanumVelocity.motor3;
-            
+            platform_velocity_t platform_velocity = {
+                .x = cmd->properties.set_platform_velocity_input.x,
+                .y = cmd->properties.set_platform_velocity_input.y,
+                .t = cmd->properties.set_platform_velocity_input.t
+            };
+            set_platform_velocity(platform_velocity);
             }
         break;
         }

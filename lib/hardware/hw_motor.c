@@ -8,58 +8,87 @@
 #include "stm32f4xx_hal.h"
 #include "stdbool.h"
 
-void set_motor_channel(TIM_HandleTypeDef *htim, uint32_t channel, unsigned short direction, unsigned speed);
+void set_motor_channel(TIM_HandleTypeDef *htim, uint32_t channel, uint16_t speed);
 void init_channel(TIM_HandleTypeDef *htim, const pwm_channel_info_t *channel_info, TIM_TypeDef * timTypeDef);
 void init_motor_timer(const motor_info_t *motorInfo);
 
 typedef struct motor_status_t
 {
 	bool isInitialized;
+	uint8_t isReversed;
 }motor_status_t;
 
 static motor_status_t motor_status[NUMBER_MOTORS];
 
-void initialize_motor(motorIndex motorIndex)
+void initialize_motor(motorIndex motorIndex, bool isReversed)
 {
 	if(!motor_status[motorIndex].isInitialized)
 	{
 		init_motor_timer(&motor_info[motorIndex]);
 		motor_status[motorIndex].isInitialized = true;
+		motor_status[motorIndex].isReversed = isReversed;
 	}
 }
 
-void initialize_motor_all()
+void set_motor_speed(motorIndex motorIndex, uint8_t direction, uint16_t speed)
 {
-	initialize_motor(MOTOR0);
-	initialize_motor(MOTOR1);
-	initialize_motor(MOTOR2);
-	initialize_motor(MOTOR3);
+	if(motor_status[motorIndex].isInitialized)
+	{
+		TIM_HandleTypeDef *htim = get_timer_handeler(motor_info[motorIndex].timer);
+		direction = direction ^ motor_status[motorIndex].isReversed;
+		speed = MOTOR_MAX_SPEED - speed;
+		if(direction)
+		{
+			set_motor_channel(htim, motor_info[motorIndex].pwmChannel1.timerChannel, speed);
+			set_motor_channel(htim, motor_info[motorIndex].pwmChannel2.timerChannel, MOTOR_MAX_SPEED);
+		}
+		else
+		{
+			set_motor_channel(htim, motor_info[motorIndex].pwmChannel1.timerChannel, MOTOR_MAX_SPEED);
+			set_motor_channel(htim, motor_info[motorIndex].pwmChannel2.timerChannel, speed);
+		}
+	}
 }
 
-void set_motor_speed(motorIndex motorIndex, unsigned short direction, unsigned speed)
+void stop_motor(motorIndex motorIndex)
 {
-	TIM_HandleTypeDef *htim = get_timer_handeler(motor_info[motorIndex].timer);
-	set_motor_channel(htim, motor_info[motorIndex].pwmChannel1.timerChannel, direction, speed);
-	set_motor_channel(htim, motor_info[motorIndex].pwmChannel2.timerChannel, !direction, speed);
+	if(motor_status[motorIndex].isInitialized)
+	{
+		TIM_HandleTypeDef *htim = get_timer_handeler(motor_info[motorIndex].timer);
+		// Both channels are set to low
+		set_motor_channel(htim, motor_info[motorIndex].pwmChannel1.timerChannel, 0);
+		set_motor_channel(htim, motor_info[motorIndex].pwmChannel2.timerChannel, 0);
+	}
 }
 
-void set_motor_channel(TIM_HandleTypeDef *htim, uint32_t channel, unsigned short direction, unsigned speed){
+void brake_motor(motorIndex motorIndex)
+{
+	if(motor_status[motorIndex].isInitialized)
+	{
+		TIM_HandleTypeDef *htim = get_timer_handeler(motor_info[motorIndex].timer);
+		// Both channels are set to high
+		set_motor_channel(htim, motor_info[motorIndex].pwmChannel1.timerChannel, MOTOR_MAX_SPEED);
+		set_motor_channel(htim, motor_info[motorIndex].pwmChannel2.timerChannel, MOTOR_MAX_SPEED);
+	}
+}
+
+void set_motor_channel(TIM_HandleTypeDef *htim, uint32_t channel, uint16_t speed){
 	switch(channel)
 	{
 		case TIM_CHANNEL_1:
-			htim->Instance->CCR1 = speed * direction;
+			htim->Instance->CCR1 = (uint32_t)speed;
 		break;
 
 		case TIM_CHANNEL_2:
-			htim->Instance->CCR2 = speed * direction;
+			htim->Instance->CCR2 = (uint32_t)speed;
 		break;
 
 		case TIM_CHANNEL_3:
-			htim->Instance->CCR3 = speed * direction;
+			htim->Instance->CCR3 = (uint32_t)speed;
 		break;
 
 		case TIM_CHANNEL_4:
-			htim->Instance->CCR4 = speed * direction;
+			htim->Instance->CCR4 = (uint32_t)speed;
 		break;
 	}
 }

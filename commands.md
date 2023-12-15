@@ -1,6 +1,6 @@
 # Kinisi motor controller commands
 
-Version: 1.0.1
+Version: 1.0.2
 ---
 
 ## Commands
@@ -9,6 +9,7 @@ Description: This command initializes a motor and prepares it for use.
 Properties:
 - motor_index (uint8_t): The index of the motor to initialize.
   - Range: 0 to 3
+- is_reversed (bool): Whether or not the motor is reversed.
 
 ### SET_MOTOR_SPEED (0x02)
 Description: This command sets the speed of the specified motor.
@@ -20,7 +21,19 @@ Properties:
 - speed (uint16_t): The speed of the motor.
   - Range: 0 to 840
 
-### INITIALIZE_MOTOR_CONTROLLER (0x03)
+### STOP_MOTOR (0x03)
+Description: This command stops motor by setting its speed to 0.
+Properties:
+- motor_index (uint8_t): The index of the motor to set the speed for.
+  - Range: 0 to 3
+
+### BRAKE_MOTOR (0x04)
+Description: This command brakes motor.
+Properties:
+- motor_index (uint8_t): The index of the motor to set the speed for.
+  - Range: 0 to 3
+
+### INITIALIZE_MOTOR_CONTROLLER (0x05)
 Description: This command sets the controller for the specified motor.
 Properties:
 - motor_index (uint8_t): The index of the motor to set the controller for.
@@ -29,7 +42,7 @@ Properties:
 - ki (double): Integral constant of PID
 - kd (double): Derivative constant of PID
 
-### SET_MOTOR_TARGET_VELOCITY (0x04)
+### SET_MOTOR_TARGET_VELOCITY (0x06)
 Description: This command sets the target velocity for the specified motor.
 Properties:
 - motor_index (uint8_t): The index of the motor to set the target velocity for.
@@ -39,7 +52,7 @@ Properties:
 - speed (uint16_t): The speed of the motor.
   - Range: 0 to 840
 
-### DELETE_MOTOR_CONTROLLER (0x05)
+### DELETE_MOTOR_CONTROLLER (0x07)
 Description: This command deletes the controller for the specified motor.
 Properties:
 - motor_index (uint8_t): The index of the motor to delete the controller for.
@@ -93,19 +106,31 @@ Description: This command toggles the status LED.
 Properties:
 - None
 
-### INITIALIZE_PLATFORM (0x30)
-Description: This command initializes the platform and prepares it for use.
+### INITIALIZE_MECANUM_PLATFORM (0x30)
+Description: This command initializes a mecanum platform and prepares it for use.
 Properties:
-- None
+- is_reversed_0 (bool): Determins if motor 0 is reversed.
+- is_reversed_1 (bool): Determins if motor 1 is reversed.
+- is_reversed_2 (bool): Determins if motor 2 is reversed.
+- is_reversed_3 (bool): Determins if motor 3 is reversed.
 
-### SET_PLATFORM_VELOCITY_INPUT (0x31)
+### INITIALIZE_OMNI_PLATFORM (0x31)
+Description: This command initializes a omni platform and prepares it for use.
+Properties:
+- is_reversed_0 (bool): Determins if motor 0 is reversed.
+- is_reversed_1 (bool): Determins if motor 1 is reversed.
+- is_reversed_2 (bool): Determins if motor 2 is reversed.
+- wheels_diameter (uint16_t): Diameter of the robot wheels in millimeters.
+- robot_radius (uint16_t): Distance berween the center of the robot and the center of the wheels in millimeters.
+
+### SET_PLATFORM_VELOCITY_INPUT (0x40)
 Description: This command sets the velocity input for the platform.
 Properties:
 - x (int8_t): X component of platform velocity input.
 - y (int8_t): Y component of platform velocity input.
 - t (int8_t): Theta component of platform velocity input.
 
-### SET_PLATFORM_CONTROLLER (0x32)
+### SET_PLATFORM_CONTROLLER (0x41)
 Description: This command sets the controller for the platform.
 Properties:
 - None
