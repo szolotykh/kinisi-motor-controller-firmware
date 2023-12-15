@@ -46,9 +46,12 @@ static encoder_state_t encoder_state[4];
 signed char verify_range(signed char c);
 int sing(int c);
 
+// ------------------------------------------------------------------------
+// Platform functions
+
 void set_platform_velocity(platform_velocity_t platform_velocity){
     // Set platform velocity only if platform is initialized
-    if (platform.is_initialized)
+    if (!platform.is_initialized)
     {
         return;
     }
@@ -57,9 +60,8 @@ void set_platform_velocity(platform_velocity_t platform_velocity){
     platform_velocity.y = verify_range(platform_velocity.y);
     platform_velocity.t = verify_range(platform_velocity.t);
 
-    if(platform.is_initialized){
-        platform.set_platform_velocity(platform_velocity);
-    }
+    // Set velocity for initialized platform
+    platform.set_platform_velocity(platform_velocity);
 }
 
 void set_motor_velocity(motorIndex motorIndex, int velocity)
@@ -115,11 +117,13 @@ void set_omni_platform_velocity(platform_velocity_t platform_velocity)
     double V2 = -sqrt(3.0)/2 * platform_velocity.x - 1/2 * platform_velocity.y + platform_velocity.t;
     double V3 = -platform_velocity.y + platform_velocity.t;
 
-    double k = 100 / fmax(fabs(V1), fmax(fabs(V2), fabs(V3)));
-
-    V1 *= k;
-    V2 *= k;
-    V3 *= k;
+    double maxv = fmax(fabs(V1), fmax(fabs(V2), fabs(V3)));
+    if (maxv > 100.0)
+    {
+        V1 *= 100.0 / maxv;
+        V2 *= 100.0 / maxv;
+        V3 *= 100.0 / maxv;
+    }
 
     set_motor_velocity(MOTOR0, V1);
     set_motor_velocity(MOTOR1, V2);
@@ -140,12 +144,8 @@ void initialize_omni_platform(uint8_t isReversed0, uint8_t isReversed1, uint8_t 
     platform.set_platform_velocity = set_omni_platform_velocity;
 }
 
-
-
-
-
-
 // ------------------------------------------------------------------------
+// Encoder functions
 
 void encoder_update_state(encoder_index_t index, unsigned int value)
 {
@@ -188,7 +188,7 @@ int get_motor_rps(motorIndex index)
 // ------------------------------------------------------------------------
 // Utils functions
 
-signed char verify_range(signed char c)
+int8_t verify_range(int8_t c)
 {
     if(c > 100) return 100;
     if(c < -100) return -100;
