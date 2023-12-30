@@ -113,8 +113,8 @@ void initialize_mecanum_platform(uint8_t isReversed0, uint8_t isReversed1, uint8
 
 void set_omni_platform_velocity(platform_velocity_t platform_velocity)
 {
-    double V1 = sqrt(3.0)/2 * platform_velocity.x - 1/2 * platform_velocity.y + platform_velocity.t;
-    double V2 = -sqrt(3.0)/2 * platform_velocity.x - 1/2 * platform_velocity.y + platform_velocity.t;
+    double V1 = sqrt(3.0)/2 * platform_velocity.x + 0.5 * platform_velocity.y + platform_velocity.t;
+    double V2 = -sqrt(3.0)/2 * platform_velocity.x + 0.5 * platform_velocity.y + platform_velocity.t;
     double V3 = -platform_velocity.y + platform_velocity.t;
 
     double maxv = fmax(fabs(V1), fmax(fabs(V2), fabs(V3)));
