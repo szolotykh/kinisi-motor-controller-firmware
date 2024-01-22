@@ -160,78 +160,6 @@ def generate_js_code(commands_data):
     result += abstract_methods
     result += function_code
     result += "}"
-
-    return result
-
-# Generates Python code from the commands JSON file
-def generate_python_code(commands_data):
-
-    type_mapping = {
-        'uint8_t': 'int',
-        'uint16_t': 'int',
-        'uint32_t': 'int',
-        'double': 'float',
-        'int8_t': 'int',
-        'int16_t': 'int',
-        'int32_t': 'int',
-    }
-
-    # Initialize code strings
-    constant_code = ''
-    function_code = ''
-    class_code = '''
-class KinisiCommands:
-    # Write command to serial interface
-    def write(self, msg: bytearray):
-        """Abstract method to write the byte message to the serial interface."""
-        raise NotImplementedError("This method should be overridden by subclass.")
-    
-    # Read command from serial interface
-    def read(self, length: int) -> bytearray:
-        """Abstract method to read a specified number of bytes from the serial interface."""
-        raise NotImplementedError("This method should be overridden by subclass.")
-
-    '''
-    
-    # Generate constants for command codes
-    for cmd in commands_data['commands']:
-        constant_code += f"{cmd['command']} = {cmd['code']}\n"
-    constant_code += "\n"
-
-
-    # Generate function for each command
-    for cmd in commands_data['commands']:
-        func_body = f"    # {cmd['description']}\n"
-        func_args = ", ".join([f"{prop['name']}:{type_mapping[prop['type']]}" for prop in cmd.get('properties', [])])
-        func_body += f"    def {cmd['command'].lower()}(self{', ' if len(func_args) > 0 else ''}{func_args}):\n"
-        func_body += f"        msg = {cmd['command']}.to_bytes(1, 'little')"
-        for prop in cmd.get('properties', []):
-            if prop['type'] == 'double':
-                func_body += f" + bytearray(struct.pack('d', {prop['name']}))"
-            else:
-                signed = ", signed=True" if prop['type'].startswith("int") else ""
-                func_body += f" + {prop['name']}.to_bytes({type_to_size_map[prop['type']]}, 'little'{signed})"
-
-        func_body += "\n"
-        func_body += f"        length = len(msg)\n"
-        func_body += f"        msg = length.to_bytes(1, 'little') + msg\n"
-        func_body += f"        self.write(msg)\n"
-        if 'response' in cmd:
-            func_body += f"        result =  self.read({type_to_size_map[cmd['response']['type']]})\n"
-            if cmd['response']['type'] == 'double':
-                func_body += f"        return struct.unpack('<d', result)[0]\n"
-            else:
-                func_body += f"        return {type_mapping[cmd['response']['type']]}.from_bytes(result, 'little')\n"
-        function_code += func_body
-        function_code += "\n"
-
-    class_code += function_code
-
-    result = file_header(commands_data['version'], "#")
-    result += "import struct\n\n"
-    result += constant_code
-    result += class_code
-
     return result
 
 # Generates a Markdown file from the commands JSON file
@@ -278,6 +206,19 @@ def generate_c_header_file(commands_data):
             return 'uint8_t'
         return type_name
     
+    def generate_objects(objects):
+        result = ""
+        for obj in objects:
+            result += f"// {obj['name']}: {obj['description']}\n"
+            result += "#pragma pack(push, 1)\n"
+            result += f"typedef struct\n"
+            result += "{\n"
+            for prop in obj.get("properties", []):
+                result += f"    {get_type(prop['type'])} {prop['name']}; // {prop['description']}\n"
+            result += f"}} {obj['name']};\n"
+            result += "#pragma pack(pop)\n\n"
+        return result
+    
     # Create commands definitions
     definitions = "// Commands"
     for cmd in commands_data['commands']:
@@ -306,6 +247,8 @@ def generate_c_header_file(commands_data):
     result += "#pragma once\n\n"
     result += "#include <stdint.h>\n\n"
     result += definitions
+    result += "\n"
+    result += generate_objects(commands_data['objects'])
     result += "\n"
     result += commands_struct
 
@@ -360,7 +303,7 @@ def main():
     parser = argparse.ArgumentParser(description='Generate code from command definitions in JSON.')
     parser.add_argument('input_json_path', type=str, help='Path to the input JSON file containing command definitions.')
     parser.add_argument('output_path', type=str, help='Path to the output file.')
-    parser.add_argument('--language', type=str, default='js', choices=['c','cpp', 'js', 'python', 'md'], help='Programming language for the generated code.')
+    parser.add_argument('--language', type=str, default='js', choices=['c','cpp', 'js', 'md'], help='Programming language for the generated code.')
 
     args = parser.parse_args()
 
@@ -393,8 +336,6 @@ def main():
         generated_code = generate_cpp_code(commands_data)
     elif args.language == 'js':
         generated_code = generate_js_code(commands_data)
-    elif args.language == 'python':
-        generated_code = generate_python_code(commands_data)
     elif args.language == 'md':
         generated_code = generate_md_file(commands_data)
     else:

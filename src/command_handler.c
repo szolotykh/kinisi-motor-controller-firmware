@@ -13,10 +13,14 @@
 #include "hardware_i2c.h"
 #include "stdbool.h"
 
+#define PID_CONTROLLER_UPDATE_INTERVAL 100
+
 controllers_manager_t controllersManager;
 controllers_manager_input_t controllers_manager_input = {
-    .TargetVelocity = {0},
-    .ControllerInfo = {{.state = STOP}, {.state = STOP},{.state = STOP},{.state = STOP}}
+    .TargetMotorSpeed = {0},
+    .ControllerInfo = {{.state = STOP}, {.state = STOP},{.state = STOP},{.state = STOP}},
+    .update_interval_ms = PID_CONTROLLER_UPDATE_INTERVAL,
+    .controller_state_mutex = NULL
 };
 
 void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t*, uint16_t))
@@ -31,8 +35,7 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
             {
             set_motor_speed(
                 cmd->properties.set_motor_speed.motor_index,
-                cmd->properties.set_motor_speed.direction,
-                cmd->properties.set_motor_speed.speed);
+                cmd->properties.set_motor_speed.pwm);
             }
         break;
 
@@ -60,9 +63,12 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
             pid_controller_t controller; 
             pid_controller_init(
                 &controller,
+                ((double)PID_CONTROLLER_UPDATE_INTERVAL)/1000.0, // PID controller update interval in seconds
                 cmd->properties.initialize_motor_controller.kp,
                 cmd->properties.initialize_motor_controller.ki,
-                cmd->properties.initialize_motor_controller.kd
+                cmd->properties.initialize_motor_controller.kd,
+                cmd->properties.initialize_motor_controller.is_reversed,
+                cmd->properties.initialize_motor_controller.encoder_resolution
             );
 
             controller_info_t controllerInfo;
@@ -71,7 +77,7 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
             controllerInfo.mIndex = motorIndex;
             controllerInfo.eIndex = motorIndex;
 
-            initialize_motor(controllerInfo.mIndex, false);
+            initialize_motor(controllerInfo.mIndex, cmd->properties.initialize_motor_controller.is_reversed);
             initialize_encoder(controllerInfo.eIndex);
 
             controllers_manager_input.ControllerInfo[motorIndex] = controllerInfo;
@@ -85,11 +91,38 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
             }
         break;
 
-        case SET_MOTOR_TARGET_VELOCITY:
+        case SET_MOTOR_TARGET_SPEED:
             {
-            signed short speed = cmd->properties.set_motor_target_velocity.speed;
-            signed short direction = cmd->properties.set_motor_target_velocity.direction;
-            controllers_manager_input.TargetVelocity[cmd->properties.set_motor_target_velocity.motor_index] = ((direction * 2) - 1) * speed;
+            controllers_manager_input.TargetMotorSpeed[cmd->properties.set_motor_target_speed.motor_index] = cmd->properties.set_motor_target_speed.speed;
+            }
+        break;
+
+        case RESET_MOTOR_CONTROLLER:
+            {
+            // TODO: Implement
+            }
+        break;
+
+        case GET_MOTOR_CONTROLLER_STATE:
+            {
+                uint8_t motor_index = cmd->properties.get_motor_controller_state.motor_index;
+                const pid_controller_t* controller = &controllers_manager_input.ControllerInfo[motor_index].controller;
+                motor_controller_state state;
+                if (controllers_manager_input.ControllerInfo[motor_index].state == RUN)
+                {
+                    if (xSemaphoreTake(controllers_manager_input.controller_state_mutex, portMAX_DELAY)) {
+                        state.motor_index = motor_index;
+                        state.kp = controller->kp;
+                        state.ki = controller->ki;
+                        state.kd = controller->kd;
+                        state.target_speed = controller->target_speed;
+                        state.current_speed = controller->previousSpeed; // Get state should always access after controller update
+                        state.error = controller->previousError;
+                        state.output = controller->motorPWM;
+                        xSemaphoreGive(controllers_manager_input.controller_state_mutex);
+                    }
+                }
+                command_callback((uint8_t*)&state, sizeof(motor_controller_state));
             }
         break;
 
@@ -157,12 +190,12 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
             // SetController
         break;
 
-        case SET_PLATFORM_VELOCITY_INPUT:
+        case SET_PLATFORM_VELOCITY:
             {
             platform_velocity_t platform_velocity = {
-                .x = cmd->properties.set_platform_velocity_input.x,
-                .y = cmd->properties.set_platform_velocity_input.y,
-                .t = cmd->properties.set_platform_velocity_input.t
+                .x = cmd->properties.set_platform_velocity.x,
+                .y = cmd->properties.set_platform_velocity.y,
+                .t = cmd->properties.set_platform_velocity.t
             };
             set_platform_velocity(platform_velocity);
             }

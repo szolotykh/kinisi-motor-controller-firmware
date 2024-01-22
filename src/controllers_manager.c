@@ -6,14 +6,7 @@
 #include <hw_config.h>
 #include <utils.h>
 #include <stdlib.h>
-
-#define CONTROLLER_UPDATE_INTEVRAL 100
-
-#define ENCDER_EVENT_PER_REV 1557.21f
-#define MAX_RPM 92.8f
-#define MAX_RPS MAX_RPM/60.0f
-#define MAX_TICKS_PER_SEC MAX_RPS*ENCDER_EVENT_PER_REV
-// 116*4/5
+#include <math.h>
 
 const osThreadAttr_t ControllerTask_attributes = {
   .name = "ControllerTask",
@@ -32,8 +25,7 @@ void StartControllerTask(void *argument)
     */
     controllers_manager_input_t* controllers_manager_input = (controllers_manager_input_t*)argument;
 
-    double max_encoder_velocity_per_capture = MAX_TICKS_PER_SEC * CONTROLLER_UPDATE_INTEVRAL / 1000;
-    const TickType_t xFrequency = pdMS_TO_TICKS(CONTROLLER_UPDATE_INTEVRAL);
+    const TickType_t xFrequency = pdMS_TO_TICKS(controllers_manager_input->update_interval_ms);
     TickType_t xLastWakeTime = xTaskGetTickCount();
     unsigned int seq = 0;
     unsigned int previousEncoderValue[4] = { 0 };
@@ -42,32 +34,40 @@ void StartControllerTask(void *argument)
     {
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
         unsigned int seq_update = 0;
-        for (int index = 0; index < NUMBER_MOTORS; index++)
-        {
-            if( controllers_manager_input->ControllerInfo[index].state == RUN )
+
+        // Aquire controller state mutex before updating controller state
+        if (xSemaphoreTake(controllers_manager_input->controller_state_mutex, portMAX_DELAY)) {
+
+            // Update controller state for all controllers
+            for (int index = 0; index < NUMBER_MOTORS; index++)
             {
-                // Get current velocity from encoder
-                unsigned int currentEncoderValue = get_encoder_value(index);
+                controller_info_t* controller_info = &controllers_manager_input->ControllerInfo[index];
 
-                int currentVelocity = currentEncoderValue - previousEncoderValue[index];
-                previousEncoderValue[index] = currentEncoderValue;
+                // Check if controller is running
+                if(controller_info->state == RUN)
+                {
+                    pid_controller_t* controller = &controller_info->controller;
 
-                // Convert input velocity from procent to ticks per encoder caputre interval
-                double targetEncoderVelocity = controllers_manager_input->TargetVelocity[index] * max_encoder_velocity_per_capture / 100.0;
+                    // Get current velocity from encoder
+                    const unsigned int current_encoder_value = get_encoder_value(index);
 
-                // Calculate new velocity for motor
-                pid_controller_update(&controllers_manager_input->ControllerInfo[index].controller, currentVelocity, targetEncoderVelocity);
+                    // Calculate change in encoder ticks and update previous encoder value
+                    int last_encoder_change = current_encoder_value - previousEncoderValue[index];
+                    previousEncoderValue[index] = current_encoder_value;
 
-                print_controller_state(
-                    seq,
-                    index, 
-                    currentVelocity, 
-                    targetEncoderVelocity,
-                    controllers_manager_input->ControllerInfo[index].controller.motorPWM
-                    );
+                    // Caltulate current motor speed in radians per second from encoder ticks
+                    double current_motor_speed = 2.0 * M_PI * ((double)last_encoder_change / controller->encoder_resolution) * (1.0 / controller->T);
 
-                seq_update = 1;
+                    // Calculate new velocity for motor
+                    pid_controller_update(
+                        &controllers_manager_input->ControllerInfo[index].controller,
+                        current_motor_speed,
+                        controllers_manager_input->TargetMotorSpeed[index]);
+                }
             }
+
+            // Release controller state mutex
+            xSemaphoreGive(controllers_manager_input->controller_state_mutex);
         }
         seq += seq_update;
 
@@ -76,10 +76,10 @@ void StartControllerTask(void *argument)
         {
             if( controllers_manager_input->ControllerInfo[index].state == RUN )
             {
-            // Set motor speed and direction
-            unsigned short direction = controllers_manager_input->ControllerInfo[index].controller.motorPWM > 0;
-            unsigned int speed = abs(controllers_manager_input->ControllerInfo[index].controller.motorPWM);
-            set_motor_speed(controllers_manager_input->ControllerInfo[index].mIndex, direction, speed);
+            // Set motor speed
+            set_motor_speed(
+                controllers_manager_input->ControllerInfo[index].mIndex,
+                controllers_manager_input->ControllerInfo[index].controller.motorPWM);
             }
         }
 
@@ -92,7 +92,7 @@ void StartControllerTask(void *argument)
                 controllers_manager_input->ControllerInfo[index].state = STOP;
                 controllers_manager_input->ControllerInfo[index].controller.motorPWM = 0;
                 //Stop motor
-                set_motor_speed(controllers_manager_input->ControllerInfo[index].mIndex, 0, 0);
+                stop_motor(controllers_manager_input->ControllerInfo[index].mIndex);
             }
         }
     }
@@ -100,6 +100,11 @@ void StartControllerTask(void *argument)
 
 void controllers_manager_init(controllers_manager_t* controllers_manager, controllers_manager_input_t* controllers_manager_input)
 {
+    controllers_manager_input->controller_state_mutex = xSemaphoreCreateMutex();
+    if (controllers_manager_input->controller_state_mutex == NULL) {
+        // Handle error: Failed to create the mutex
+    }
+
     controllers_manager->threadHandler = osThreadNew(StartControllerTask, controllers_manager_input, &ControllerTask_attributes);
 }
 

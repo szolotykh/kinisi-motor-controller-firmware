@@ -2,6 +2,7 @@
 // File name: motor.c
 //------------------------------------------------------------
 
+#include "math.h"
 #include "hw_motor.h"
 #include "hw_timers.h"
 #include "hw_config.h"
@@ -30,8 +31,13 @@ void initialize_motor(motorIndex motorIndex, bool isReversed)
 	}
 }
 
-void set_motor_speed(motorIndex motorIndex, uint8_t direction, uint16_t speed)
+void set_motor_speed(motorIndex motorIndex, double pwm)
 {
+	bool direction = pwm > 0;
+	if (pwm > 100.0) pwm = 100.0;
+	if (pwm < -100.0) pwm = -100.0;
+	uint16_t speed = fabs(pwm)*MOTOR_MAX_SPEED/100.0;
+
 	if(motor_status[motorIndex].isInitialized)
 	{
 		TIM_HandleTypeDef *htim = get_timer_handeler(motor_info[motorIndex].timer);

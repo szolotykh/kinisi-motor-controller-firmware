@@ -1,6 +1,6 @@
 # Kinisi motor controller commands
 
-Version: 1.0.2
+Version: 1.0.3
 ---
 
 ## Commands
@@ -12,14 +12,12 @@ Properties:
 - is_reversed (bool): Whether or not the motor is reversed.
 
 ### SET_MOTOR_SPEED (0x02)
-Description: This command sets the speed of the specified motor.
+Description: This command sets the speed of the specified motor in PWM.
 Properties:
 - motor_index (uint8_t): The index of the motor to set the speed for.
   - Range: 0 to 3
-- direction (uint8_t): The direction of the motor.
-  - Range: 0 to 1
-- speed (uint16_t): The speed of the motor.
-  - Range: 0 to 840
+- speed (double): The speed of the motor.
+  - Range: -100.0 to 100.0
 
 ### STOP_MOTOR (0x03)
 Description: This command stops motor by setting its speed to 0.
@@ -41,22 +39,28 @@ Properties:
 - kp (double): Proportional constant of PID
 - ki (double): Integral constant of PID
 - kd (double): Derivative constant of PID
+- encoder_resolution (double): Encoder resolution in ticks per revolution. The value can not be negative or zero.
 
-### SET_MOTOR_TARGET_VELOCITY (0x06)
-Description: This command sets the target velocity for the specified motor.
+### SET_MOTOR_TARGET_SPEED (0x06)
+Description: This command sets the target speed for the specified motor in radians.
 Properties:
 - motor_index (uint8_t): The index of the motor to set the target velocity for.
   - Range: 0 to 3
-- direction (uint8_t): The direction of the motor.
-  - Range: 0 to 1
-- speed (uint16_t): The speed of the motor.
-  - Range: 0 to 840
+- speed (double): The speed of the motor.
 
-### DELETE_MOTOR_CONTROLLER (0x07)
-Description: This command deletes the controller for the specified motor.
+### RESET_MOTOR_CONTROLLER (0x07)
+Description: This command resets the controller for the specified motor.
 Properties:
-- motor_index (uint8_t): The index of the motor to delete the controller for.
+- motor_index (uint8_t): The index of the motor to reset the controller for.
   - Range: 0 to 3
+
+### GET_MOTOR_CONTROLLER_STATE (0x08)
+Description: This command gets the state of the controller for the specified motor.
+Properties:
+- motor_index (uint8_t): The index of the motor to get the state for.
+  - Range: 0 to 3
+Response: 
+ - motor_controller_state (object): The state of the controller for the specified motor.
 
 ### INITIALIZE_ENCODER (0x11)
 Description: This command initializes an encoder and prepares it for use.

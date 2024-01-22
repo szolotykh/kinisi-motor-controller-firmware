@@ -31,10 +31,10 @@ typedef struct
 
 typedef struct mecanum_velocity_t
 {
-    int motor0;
-    int motor1;
-    int motor2;
-    int motor3;
+    double motor0;
+    double motor1;
+    double motor2;
+    double motor3;
 } mecanum_velocity_t;
 
 // Internal variables
@@ -43,8 +43,8 @@ static platform_t platform = {.is_initialized = 0};
 static encoder_state_t encoder_state[4];
 
 // Function definitions
-signed char verify_range(signed char c);
-int sing(int c);
+double verify_range(double c);
+double sing(double c);
 
 // ------------------------------------------------------------------------
 // Platform functions
@@ -64,13 +64,6 @@ void set_platform_velocity(platform_velocity_t platform_velocity){
     platform.set_platform_velocity(platform_velocity);
 }
 
-void set_motor_velocity(motorIndex motorIndex, int velocity)
-{
-    uint8_t direction = velocity >= 0;
-    uint16_t speed = abs(velocity) * SPEED_RESOLUTION / 100;
-    set_motor_speed(motorIndex, direction, speed);
-}
-
 // ------------------------------------------------------------------------
 // Mecanum platform functions
 void set_mecaunm_platform_velocity(platform_velocity_t platform_velocity){
@@ -87,10 +80,10 @@ void set_mecaunm_platform_velocity(platform_velocity_t platform_velocity){
         .motor3 = platform_velocity.x - platform_velocity.y - platform_velocity.t
         };
 
-    set_motor_velocity(MOTOR0, -mecanum_velocity.motor0);
-    set_motor_velocity(MOTOR1, -mecanum_velocity.motor1);
-    set_motor_velocity(MOTOR2, mecanum_velocity.motor2);
-    set_motor_velocity(MOTOR3, mecanum_velocity.motor3);
+    set_motor_speed(MOTOR0, -mecanum_velocity.motor0);
+    set_motor_speed(MOTOR1, -mecanum_velocity.motor1);
+    set_motor_speed(MOTOR2, mecanum_velocity.motor2);
+    set_motor_speed(MOTOR3, mecanum_velocity.motor3);
 }
 
 void initialize_mecanum_platform(uint8_t isReversed0, uint8_t isReversed1, uint8_t isReversed2, uint8_t isReversed3)
@@ -125,9 +118,9 @@ void set_omni_platform_velocity(platform_velocity_t platform_velocity)
         V3 *= 100.0 / maxv;
     }
 
-    set_motor_velocity(MOTOR0, V1);
-    set_motor_velocity(MOTOR1, V2);
-    set_motor_velocity(MOTOR2, V3);
+    set_motor_speed(MOTOR0, V1);
+    set_motor_speed(MOTOR1, V2);
+    set_motor_speed(MOTOR2, V3);
 }
 
 void initialize_omni_platform(uint8_t isReversed0, uint8_t isReversed1, uint8_t isReversed2, uint16_t wheel_diameter, uint16_t robot_radius)
@@ -188,14 +181,14 @@ int get_motor_rps(motorIndex index)
 // ------------------------------------------------------------------------
 // Utils functions
 
-int8_t verify_range(int8_t c)
+double verify_range(double c)
 {
     if(c > 100) return 100;
     if(c < -100) return -100;
     return c;
 }
 
-int sing(int c)
+double sing(double c)
 {
     return (c > 0) - (c < 0);
 }
