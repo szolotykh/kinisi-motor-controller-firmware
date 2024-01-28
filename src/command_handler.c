@@ -23,7 +23,7 @@ controllers_manager_input_t controllers_manager_input = {
     .controller_state_mutex = NULL
 };
 
-void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t*, uint16_t))
+void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t*, uint8_t))
 {
     switch(cmd->commandType)
         {
@@ -54,6 +54,8 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
         case INITIALIZE_MOTOR_CONTROLLER:
             {
             uint8_t motorIndex = cmd->properties.initialize_motor_controller.motor_index;
+
+            // Initialize controller manager which starts task for all controllers
             if (controllers_manager_is_not_init(&controllersManager))
             {
                 controllers_manager_init(&controllersManager, &controllers_manager_input);
@@ -93,7 +95,10 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
 
         case SET_MOTOR_TARGET_SPEED:
             {
-            controllers_manager_input.TargetMotorSpeed[cmd->properties.set_motor_target_speed.motor_index] = cmd->properties.set_motor_target_speed.speed;
+                if (xSemaphoreTake(controllers_manager_input.controller_state_mutex, portMAX_DELAY)) {
+                    controllers_manager_input.TargetMotorSpeed[cmd->properties.set_motor_target_speed.motor_index] = cmd->properties.set_motor_target_speed.speed;
+                    xSemaphoreGive(controllers_manager_input.controller_state_mutex);
+                }
             }
         break;
 
@@ -107,7 +112,7 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
             {
                 uint8_t motor_index = cmd->properties.get_motor_controller_state.motor_index;
                 const pid_controller_t* controller = &controllers_manager_input.ControllerInfo[motor_index].controller;
-                motor_controller_state state;
+                motor_controller_state state = {0};
                 if (controllers_manager_input.ControllerInfo[motor_index].state == RUN)
                 {
                     if (xSemaphoreTake(controllers_manager_input.controller_state_mutex, portMAX_DELAY)) {
