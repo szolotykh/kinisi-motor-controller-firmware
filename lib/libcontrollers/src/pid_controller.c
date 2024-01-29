@@ -46,8 +46,8 @@ double pid_controller_update(pid_controller_t* controller, double currentSpeed, 
     double proportional = kp * error;
 
     // Integral
-    controller->integrator += error + 0.5f * controller->ki * controller->T * (error + controller->previousError);
-    controller->integrator = limit_to_range(controller->integrator, controller->max_integral, controller->min_integral);
+    controller->integrator += 0.5f * ki * controller->T * (error + controller->previousError);
+    controller->integrator = limit_to_range(controller->integrator, controller->min_integral, controller->max_integral);
 
     // Derivative
     controller->differentiator = -(2.0f * kd * (currentSpeed - controller->previousSpeed)
@@ -57,7 +57,7 @@ double pid_controller_update(pid_controller_t* controller, double currentSpeed, 
 
 
     // Calculate motor PWM
-    controller->motorPWM += proportional + ki * controller->integrator + controller->differentiator;
+    controller->motorPWM = controller->motorPWM + proportional + controller->integrator + controller->differentiator;
     // Limit motor PWM to range -100.0 to 100.0
     controller->motorPWM = limit_to_range(controller->motorPWM, -100.0, 100.0);
 

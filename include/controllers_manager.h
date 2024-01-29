@@ -13,8 +13,7 @@ typedef struct controller_info_t
 {
     enum {
         STOP,
-        RUN,
-        STOPPING
+        RUN
     } state;
     motorIndex mIndex;
     encoder_index_t eIndex;

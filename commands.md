@@ -16,7 +16,7 @@ Description: This command sets the speed of the specified motor in PWM.
 Properties:
 - motor_index (uint8_t): The index of the motor to set the speed for.
   - Range: 0 to 3
-- speed (double): The speed of the motor.
+- pwm (double): The speed of the motor.
   - Range: -100.0 to 100.0
 
 ### STOP_MOTOR (0x03)
@@ -36,10 +36,13 @@ Description: This command sets the controller for the specified motor.
 Properties:
 - motor_index (uint8_t): The index of the motor to set the controller for.
   - Range: 0 to 3
+- is_reversed (bool): Whether or not the motor is reversed.
+- encoder_index (uint8_t): The index of the encoder to use for the controller.
+  - Range: 0 to 3
+- encoder_resolution (double): Encoder resolution in ticks per revolution. The value can not be negative or zero.
 - kp (double): Proportional constant of PID
 - ki (double): Integral constant of PID
 - kd (double): Derivative constant of PID
-- encoder_resolution (double): Encoder resolution in ticks per revolution. The value can not be negative or zero.
 
 ### SET_MOTOR_TARGET_SPEED (0x06)
 Description: This command sets the target speed for the specified motor in radians.
@@ -62,6 +65,12 @@ Properties:
 Response: 
  - motor_controller_state (object): The state of the controller for the specified motor.
 
+### DELETE_MOTOR_CONTROLLER (0x09)
+Description: This command deletes the controller for the specified motor.
+Properties:
+- motor_index (uint8_t): The index of the motor to delete the controller for.
+  - Range: 0 to 3
+
 ### INITIALIZE_ENCODER (0x11)
 Description: This command initializes an encoder and prepares it for use.
 Properties:
@@ -74,7 +83,7 @@ Properties:
 - encoder_index (uint8_t): The index of the encoder to retrieve the value for.
   - Range: 0 to 3
 Response: 
- - encoderValue (uint32_t): The current value of the encoder.
+ - encoderValue (uint16_t): The current value of the encoder.
 
 ### INITIALIZE_GPIO_PIN (0x20)
 Description: This command initializes a digital pin and prepares it for use.
@@ -127,15 +136,28 @@ Properties:
 - wheels_diameter (uint16_t): Diameter of the robot wheels in millimeters.
 - robot_radius (uint16_t): Distance berween the center of the robot and the center of the wheels in millimeters.
 
-### SET_PLATFORM_VELOCITY_INPUT (0x40)
-Description: This command sets the velocity input for the platform.
+### SET_PLATFORM_VELOCITY (0x40)
+Description: This command sets the velocity for the platform in PWM.
 Properties:
-- x (int8_t): X component of platform velocity input.
-- y (int8_t): Y component of platform velocity input.
-- t (int8_t): Theta component of platform velocity input.
+- x (double): X component of platform velocity in PWM
+  - Range: -100.0 to 100.0
+- y (double): Y component of platform velocity in PWM
+  - Range: -100.0 to 100.0
+- t (double): Theta component of platform velocity in PWM
+  - Range: -100.0 to 100.0
 
 ### SET_PLATFORM_CONTROLLER (0x41)
 Description: This command sets the controller for the platform.
 Properties:
-- None
+- kp (double): Proportional constant of PID
+- ki (double): Integral constant of PID
+- kd (double): Derivative constant of PID
+- encoder_resolution (double): Encoder resolution in ticks per revolution. The value can not be negative or zero.
+
+### SET_PLATFORM_TARGET_VELOCITY (0x42)
+Description: This command set the target velocity for the platform in meters per second.
+Properties:
+- x (double): X component of platform velocity in meters per second
+- y (double): Y component of platform velocity in meters per second
+- t (double): Theta component of platform velocity in radians per second
 

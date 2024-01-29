@@ -28,7 +28,7 @@ void StartControllerTask(void *argument)
     const TickType_t xFrequency = pdMS_TO_TICKS(controllers_manager_input->update_interval_ms);
     TickType_t xLastWakeTime = xTaskGetTickCount();
     unsigned int seq = 0;
-    unsigned int previousEncoderValue[4] = { 0 };
+    uint16_t previousEncoderValue[4] = { 0 };
 
     for(;;)
     {
@@ -49,10 +49,18 @@ void StartControllerTask(void *argument)
                     pid_controller_t* controller = &controller_info->controller;
 
                     // Get current velocity from encoder
-                    const unsigned int current_encoder_value = get_encoder_value(index);
+                    const uint16_t current_encoder_value = get_encoder_value(index);
+                    // Calculate change in encoder value
+                    uint16_t raw_change = current_encoder_value - previousEncoderValue[index];
 
-                    // Calculate change in encoder ticks and update previous encoder value
-                    int last_encoder_change = current_encoder_value - previousEncoderValue[index];
+                    // Check for overflow and adjust
+                    int last_encoder_change;
+                    if (raw_change > 32768) { // Half of UINT16_MAX, detecting large backward movement (underflow)
+                        last_encoder_change = -(65536 - raw_change); // Adjust for underflow
+                    } else {
+                        last_encoder_change = raw_change; // No overflow or underflow
+                    }
+                    
                     previousEncoderValue[index] = current_encoder_value;
 
                     // Caltulate current motor speed in radians per second from encoder ticks
@@ -66,34 +74,20 @@ void StartControllerTask(void *argument)
                 }
             }
 
+            // Set motor speed
+            for (int index = 0; index < NUMBER_MOTORS; index++)
+            {
+                if( controllers_manager_input->ControllerInfo[index].state == RUN )
+                {
+                // Set motor speed
+                set_motor_speed(
+                    controllers_manager_input->ControllerInfo[index].mIndex,
+                    controllers_manager_input->ControllerInfo[index].controller.motorPWM);
+                }
+            }
+
             // Release controller state mutex
             xSemaphoreGive(controllers_manager_input->controller_state_mutex);
-        }
-        seq += seq_update;
-
-        // Set motor speed
-        for (int index = 0; index < NUMBER_MOTORS; index++)
-        {
-            if( controllers_manager_input->ControllerInfo[index].state == RUN )
-            {
-            // Set motor speed
-            set_motor_speed(
-                controllers_manager_input->ControllerInfo[index].mIndex,
-                controllers_manager_input->ControllerInfo[index].controller.motorPWM);
-            }
-        }
-
-        // Stopping controllers and motors
-        for (int index = 0; index < NUMBER_MOTORS; index++)
-        {
-            if( controllers_manager_input->ControllerInfo[index].state == STOPPING )
-            {
-                // Stop controller
-                controllers_manager_input->ControllerInfo[index].state = STOP;
-                controllers_manager_input->ControllerInfo[index].controller.motorPWM = 0;
-                //Stop motor
-                stop_motor(controllers_manager_input->ControllerInfo[index].mIndex);
-            }
         }
     }
 }

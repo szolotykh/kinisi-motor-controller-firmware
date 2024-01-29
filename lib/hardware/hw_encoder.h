@@ -14,5 +14,5 @@
 typedef unsigned char encoder_index_t;
 
 extern void initialize_encoder(encoder_index_t index);
-extern unsigned int get_encoder_value(encoder_index_t index);
+extern uint16_t get_encoder_value(encoder_index_t index);
 extern uint8_t get_encoder_direction(encoder_index_t index);

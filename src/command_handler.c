@@ -53,43 +53,63 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
 
         case INITIALIZE_MOTOR_CONTROLLER:
             {
-            uint8_t motorIndex = cmd->properties.initialize_motor_controller.motor_index;
+                uint8_t motorIndex = cmd->properties.initialize_motor_controller.motor_index;
 
-            // Initialize controller manager which starts task for all controllers
-            if (controllers_manager_is_not_init(&controllersManager))
-            {
-                controllers_manager_init(&controllersManager, &controllers_manager_input);
-            }
+                // Initialize controller manager which starts task for all controllers
+                if (controllers_manager_is_not_init(&controllersManager))
+                {
+                    controllers_manager_init(&controllersManager, &controllers_manager_input);
+                }
 
-            // SetMotorController
-            pid_controller_t controller; 
-            pid_controller_init(
-                &controller,
-                ((double)PID_CONTROLLER_UPDATE_INTERVAL)/1000.0, // PID controller update interval in seconds
-                cmd->properties.initialize_motor_controller.kp,
-                cmd->properties.initialize_motor_controller.ki,
-                cmd->properties.initialize_motor_controller.kd,
-                cmd->properties.initialize_motor_controller.is_reversed,
-                cmd->properties.initialize_motor_controller.encoder_resolution
-            );
+                // SetMotorController
+                pid_controller_t controller; 
+                pid_controller_init(
+                    &controller,
+                    ((double)PID_CONTROLLER_UPDATE_INTERVAL)/1000.0, // PID controller update interval in seconds
+                    cmd->properties.initialize_motor_controller.kp,
+                    cmd->properties.initialize_motor_controller.ki,
+                    cmd->properties.initialize_motor_controller.kd,
+                    cmd->properties.initialize_motor_controller.is_reversed,
+                    cmd->properties.initialize_motor_controller.encoder_resolution
+                );
 
-            controller_info_t controllerInfo;
-            controllerInfo.state = STOP;
-            controllerInfo.controller = controller;
-            controllerInfo.mIndex = motorIndex;
-            controllerInfo.eIndex = motorIndex;
+                controller_info_t controllerInfo;
+                controllerInfo.state = RUN;
+                controllerInfo.controller = controller;
+                controllerInfo.mIndex = motorIndex;
+                controllerInfo.eIndex = motorIndex;
 
-            initialize_motor(controllerInfo.mIndex, cmd->properties.initialize_motor_controller.is_reversed);
-            initialize_encoder(controllerInfo.eIndex);
+                // Initialize motor and encoder if controller is not running
+                if (controllers_manager_input.ControllerInfo[motorIndex].state == STOP)
+                {
+                    initialize_motor(controllerInfo.mIndex, cmd->properties.initialize_motor_controller.is_reversed);
+                    initialize_encoder(controllerInfo.eIndex);
+                }
 
-            controllers_manager_input.ControllerInfo[motorIndex] = controllerInfo;
-            controllers_manager_input.ControllerInfo[motorIndex].state = RUN;
+                if (xSemaphoreTake(controllers_manager_input.controller_state_mutex, portMAX_DELAY)) {
+                    controllers_manager_input.ControllerInfo[motorIndex] = controllerInfo;
+                    xSemaphoreGive(controllers_manager_input.controller_state_mutex);
+                }
             }
         break; 
 
         case DELETE_MOTOR_CONTROLLER:
             {
-            controllers_manager_input.ControllerInfo[cmd->properties.delete_motor_controller.motor_index].state = STOPPING; // STOPPING
+                if (xSemaphoreTake(controllers_manager_input.controller_state_mutex, portMAX_DELAY)) {
+                    uint8_t motorIndex = cmd->properties.delete_motor_controller.motor_index;
+
+                    controllers_manager_input.ControllerInfo[motorIndex].state = STOP;
+                    controllers_manager_input.ControllerInfo[motorIndex].controller = (pid_controller_t){0};
+                    
+                    // Stop motor
+                    stop_motor(controllers_manager_input.ControllerInfo[motorIndex].mIndex);
+
+                    // Set target speed to zero
+                    controllers_manager_input.TargetMotorSpeed[motorIndex] = 0;
+
+                    // Release controller state mutex
+                    xSemaphoreGive(controllers_manager_input.controller_state_mutex);
+                }
             }
         break;
 
@@ -97,6 +117,8 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
             {
                 if (xSemaphoreTake(controllers_manager_input.controller_state_mutex, portMAX_DELAY)) {
                     controllers_manager_input.TargetMotorSpeed[cmd->properties.set_motor_target_speed.motor_index] = cmd->properties.set_motor_target_speed.speed;
+
+                    // Release controller state mutex
                     xSemaphoreGive(controllers_manager_input.controller_state_mutex);
                 }
             }
@@ -138,7 +160,7 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
 
         case GET_ENCODER_VALUE:
             {
-            unsigned int value = get_encoder_value(cmd->properties.get_encoder_value.encoder_index);
+            uint16_t value = get_encoder_value(cmd->properties.get_encoder_value.encoder_index);
             command_callback((uint8_t*)&value, sizeof(unsigned int));
             }
         break;
