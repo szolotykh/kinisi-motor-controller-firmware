@@ -213,9 +213,6 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
                 cmd->properties.initialize_omni_platform.wheels_diameter,
                 cmd->properties.initialize_omni_platform.robot_radius
             );
-
-        case SET_PLATFORM_CONTROLLER:
-            // SetController
         break;
 
         case SET_PLATFORM_VELOCITY:
@@ -227,6 +224,10 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
             };
             set_platform_velocity(platform_velocity);
             }
+        break;
+
+        case SET_PLATFORM_CONTROLLER:
+            // Start controller task
         break;
         }
 }
