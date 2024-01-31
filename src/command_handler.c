@@ -70,7 +70,8 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
                     cmd->properties.initialize_motor_controller.ki,
                     cmd->properties.initialize_motor_controller.kd,
                     cmd->properties.initialize_motor_controller.is_reversed,
-                    cmd->properties.initialize_motor_controller.encoder_resolution
+                    cmd->properties.initialize_motor_controller.encoder_resolution,
+                    cmd->properties.initialize_motor_controller.integral_limit
                 );
 
                 controller_info_t controllerInfo;

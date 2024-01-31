@@ -43,6 +43,7 @@ Properties:
 - kp (double): Proportional constant of PID
 - ki (double): Integral constant of PID
 - kd (double): Derivative constant of PID
+- integral_limit (double): Integral limit of PID controller. The value can not be negative or zero. If the value is zero or negative, the integral limit is disabled.
 
 ### SET_MOTOR_TARGET_SPEED (0x06)
 Description: This command sets the target speed for the specified motor in radians.
@@ -153,6 +154,7 @@ Properties:
 - ki (double): Integral constant of PID
 - kd (double): Derivative constant of PID
 - encoder_resolution (double): Encoder resolution in ticks per revolution. The value can not be negative or zero.
+- integral_limit (double): Integral limit of PID controller. The value can not be negative or zero. If the value is zero or negative, the integral limit is disabled.
 
 ### SET_PLATFORM_TARGET_VELOCITY (0x42)
 Description: This command set the target velocity for the platform in meters per second.
@@ -160,4 +162,11 @@ Properties:
 - x (double): X component of platform velocity in meters per second
 - y (double): Y component of platform velocity in meters per second
 - t (double): Theta component of platform velocity in radians per second
+
+### GET_PLATFORM_CURRENT_VELOCITY (0x43)
+Description: This command gets the current velocity of the platform in meters per second.
+Properties:
+- None
+Response: 
+ - platform_velocity (object): The current velocity of the platform in meters per second.
 

@@ -132,6 +132,11 @@
                     "name": "kd",
                     "type": "double",
                     "description": "Derivative constant of PID"
+                },
+                {
+                    "name": "integral_limit",
+                    "type": "double",
+                    "description": "Integral limit of PID controller. The value can not be negative or zero. If the value is zero or negative, the integral limit is disabled."
                 }
             ],
             "category": "Motor Controller"
@@ -468,6 +473,11 @@
                     "name": "encoder_resolution",
                     "type": "double",
                     "description": "Encoder resolution in ticks per revolution. The value can not be negative or zero."
+                },
+                {
+                    "name": "integral_limit",
+                    "type": "double",
+                    "description": "Integral limit of PID controller. The value can not be negative or zero. If the value is zero or negative, the integral limit is disabled."
                 }
             ],
             "category": "Platform"
@@ -494,6 +504,16 @@
                 }
             ],
             "category": "Platform"
+        },
+        {
+            "command": "GET_PLATFORM_CURRENT_VELOCITY",
+            "code": "0x43",
+            "description": "This command gets the current velocity of the platform in meters per second.",
+            "response":{
+                "name": "platform_velocity",
+                "type": "object",
+                "description": "The current velocity of the platform in meters per second."
+            }
         }
     ],
     "objects": [
@@ -540,6 +560,27 @@
                     "name": "output",
                     "type": "double",
                     "description": "The output of the motor."
+                }
+            ]
+        },
+        {
+            "name": "platform_velocity",
+            "description": "The velocity of the platform in meters per second.",
+            "properties": [
+                {
+                    "name": "x",
+                    "type": "double",
+                    "description": "X component of platform velocity in meters per second"
+                },
+                {
+                    "name": "y",
+                    "type": "double",
+                    "description": "Y component of platform velocity in meters per second"
+                },
+                {
+                    "name": "t",
+                    "type": "double",
+                    "description": "Theta component of platform velocity in radians per second"
                 }
             ]
         }
