@@ -127,6 +127,9 @@ Properties:
 - is_reversed_1 (bool): Determins if motor 1 is reversed.
 - is_reversed_2 (bool): Determins if motor 2 is reversed.
 - is_reversed_3 (bool): Determins if motor 3 is reversed.
+- length (double): Length of the platform in meters.
+- width (double): Width of the platform in meters.
+- wheels_diameter (double): Diameter of the robot wheels in meters.
 
 ### INITIALIZE_OMNI_PLATFORM (0x31)
 Description: This command initializes a omni platform and prepares it for use.
@@ -134,8 +137,8 @@ Properties:
 - is_reversed_0 (bool): Determins if motor 0 is reversed.
 - is_reversed_1 (bool): Determins if motor 1 is reversed.
 - is_reversed_2 (bool): Determins if motor 2 is reversed.
-- wheels_diameter (uint16_t): Diameter of the robot wheels in millimeters.
-- robot_radius (uint16_t): Distance berween the center of the robot and the center of the wheels in millimeters.
+- wheels_diameter (double): Diameter of the robot wheels in millimeters.
+- robot_radius (double): Distance berween the center of the robot and the center of the wheels in millimeters.
 
 ### SET_PLATFORM_VELOCITY (0x40)
 Description: This command sets the velocity for the platform in PWM.

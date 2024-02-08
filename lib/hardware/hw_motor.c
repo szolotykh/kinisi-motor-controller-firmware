@@ -31,6 +31,16 @@ void initialize_motor(motorIndex motorIndex, bool isReversed)
 	}
 }
 
+uint8_t motor_is_reversed(motorIndex motorIndex)
+{
+	return motor_status[motorIndex].isReversed;
+}
+
+uint8_t motor_is_initialized(motorIndex motorIndex)
+{
+	return motor_status[motorIndex].isInitialized;
+}
+
 void set_motor_speed(motorIndex motorIndex, double pwm)
 {
 	bool direction = pwm > 0;

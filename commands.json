@@ -372,6 +372,24 @@
                     "type": "bool",
                     "default": false,
                     "description": "Determins if motor 3 is reversed."
+                },
+                {
+                    "name": "length",
+                    "type": "double",
+                    "default": 1,
+                    "description": "Length of the platform in meters."
+                },
+                {
+                    "name": "width",
+                    "type": "double",
+                    "default": 1,
+                    "description": "Width of the platform in meters."
+                },
+                {
+                    "name": "wheels_diameter",
+                    "type": "double",
+                    "default": 1,
+                    "description": "Diameter of the robot wheels in meters."
                 }
             ],
             "category": "Platform"
@@ -401,13 +419,13 @@
                 },
                 {
                     "name": "wheels_diameter",
-                    "type": "uint16_t",
+                    "type": "double",
                     "default": 1,
                     "description": "Diameter of the robot wheels in millimeters."
                 },
                 {
                     "name": "robot_radius",
-                    "type": "uint16_t",
+                    "type": "double",
                     "default": 1,
                     "description": "Distance berween the center of the robot and the center of the wheels in millimeters."
                 }

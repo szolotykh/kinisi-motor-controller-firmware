@@ -13,15 +13,7 @@
 #include "hardware_i2c.h"
 #include "stdbool.h"
 
-#define PID_CONTROLLER_UPDATE_INTERVAL 100
-
 controllers_manager_t controllersManager;
-controllers_manager_input_t controllers_manager_input = {
-    .TargetMotorSpeed = {0},
-    .ControllerInfo = {{.state = STOP}, {.state = STOP},{.state = STOP},{.state = STOP}},
-    .update_interval_ms = PID_CONTROLLER_UPDATE_INTERVAL,
-    .controller_state_mutex = NULL
-};
 
 void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t*, uint8_t))
 {
@@ -53,75 +45,33 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
 
         case INITIALIZE_MOTOR_CONTROLLER:
             {
-                uint8_t motorIndex = cmd->properties.initialize_motor_controller.motor_index;
-
-                // Initialize controller manager which starts task for all controllers
-                if (controllers_manager_is_not_init(&controllersManager))
-                {
-                    controllers_manager_init(&controllersManager, &controllers_manager_input);
-                }
-
-                // SetMotorController
-                pid_controller_t controller; 
-                pid_controller_init(
-                    &controller,
-                    ((double)PID_CONTROLLER_UPDATE_INTERVAL)/1000.0, // PID controller update interval in seconds
+                controllers_manager_initialize_controller(
+                    &controllersManager,
+                    cmd->properties.initialize_motor_controller.motor_index,
+                    cmd->properties.initialize_motor_controller.encoder_index,
                     cmd->properties.initialize_motor_controller.kp,
                     cmd->properties.initialize_motor_controller.ki,
                     cmd->properties.initialize_motor_controller.kd,
                     cmd->properties.initialize_motor_controller.is_reversed,
                     cmd->properties.initialize_motor_controller.encoder_resolution,
-                    cmd->properties.initialize_motor_controller.integral_limit
-                );
-
-                controller_info_t controllerInfo;
-                controllerInfo.state = RUN;
-                controllerInfo.controller = controller;
-                controllerInfo.mIndex = motorIndex;
-                controllerInfo.eIndex = motorIndex;
-
-                // Initialize motor and encoder if controller is not running
-                if (controllers_manager_input.ControllerInfo[motorIndex].state == STOP)
-                {
-                    initialize_motor(controllerInfo.mIndex, cmd->properties.initialize_motor_controller.is_reversed);
-                    initialize_encoder(controllerInfo.eIndex);
-                }
-
-                if (xSemaphoreTake(controllers_manager_input.controller_state_mutex, portMAX_DELAY)) {
-                    controllers_manager_input.ControllerInfo[motorIndex] = controllerInfo;
-                    xSemaphoreGive(controllers_manager_input.controller_state_mutex);
-                }
+                    cmd->properties.initialize_motor_controller.integral_limit);
             }
         break; 
 
         case DELETE_MOTOR_CONTROLLER:
             {
-                if (xSemaphoreTake(controllers_manager_input.controller_state_mutex, portMAX_DELAY)) {
-                    uint8_t motorIndex = cmd->properties.delete_motor_controller.motor_index;
-
-                    controllers_manager_input.ControllerInfo[motorIndex].state = STOP;
-                    controllers_manager_input.ControllerInfo[motorIndex].controller = (pid_controller_t){0};
-                    
-                    // Stop motor
-                    stop_motor(controllers_manager_input.ControllerInfo[motorIndex].mIndex);
-
-                    // Set target speed to zero
-                    controllers_manager_input.TargetMotorSpeed[motorIndex] = 0;
-
-                    // Release controller state mutex
-                    xSemaphoreGive(controllers_manager_input.controller_state_mutex);
-                }
+                controllers_manager_delete_controller(
+                    &controllersManager,
+                    cmd->properties.delete_motor_controller.motor_index);
             }
         break;
 
         case SET_MOTOR_TARGET_SPEED:
             {
-                if (xSemaphoreTake(controllers_manager_input.controller_state_mutex, portMAX_DELAY)) {
-                    controllers_manager_input.TargetMotorSpeed[cmd->properties.set_motor_target_speed.motor_index] = cmd->properties.set_motor_target_speed.speed;
-
-                    // Release controller state mutex
-                    xSemaphoreGive(controllers_manager_input.controller_state_mutex);
-                }
+                controllers_manager_set_target_speed(
+                    &controllersManager,
+                    cmd->properties.set_motor_target_speed.motor_index,
+                    cmd->properties.set_motor_target_speed.speed);
             }
         break;
 
@@ -133,23 +83,10 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
 
         case GET_MOTOR_CONTROLLER_STATE:
             {
-                uint8_t motor_index = cmd->properties.get_motor_controller_state.motor_index;
-                const pid_controller_t* controller = &controllers_manager_input.ControllerInfo[motor_index].controller;
-                motor_controller_state state = {0};
-                if (controllers_manager_input.ControllerInfo[motor_index].state == RUN)
-                {
-                    if (xSemaphoreTake(controllers_manager_input.controller_state_mutex, portMAX_DELAY)) {
-                        state.motor_index = motor_index;
-                        state.kp = controller->kp;
-                        state.ki = controller->ki;
-                        state.kd = controller->kd;
-                        state.target_speed = controller->target_speed;
-                        state.current_speed = controller->previousSpeed; // Get state should always access after controller update
-                        state.error = controller->previousError;
-                        state.output = controller->motorPWM;
-                        xSemaphoreGive(controllers_manager_input.controller_state_mutex);
-                    }
-                }
+                motor_controller_state state = controllers_manager_get_motor_controller_state(
+                    &controllersManager,
+                    cmd->properties.get_motor_controller_state.motor_index);
+
                 command_callback((uint8_t*)&state, sizeof(motor_controller_state));
             }
         break;
@@ -168,11 +105,15 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
 
         // GPIO commands
         case INITIALIZE_GPIO_PIN:
-            initialize_gpio_pin(cmd->properties.initialize_gpio_pin.pin_number, cmd->properties.initialize_gpio_pin.mode);
+            initialize_gpio_pin(
+                cmd->properties.initialize_gpio_pin.pin_number,
+                cmd->properties.initialize_gpio_pin.mode);
         break;
 
         case SET_GPIO_PIN_STATE:
-            set_gpio_pin_state(cmd->properties.set_gpio_pin_state.pin_number, cmd->properties.set_gpio_pin_state.state);
+            set_gpio_pin_state(
+                cmd->properties.set_gpio_pin_state.pin_number,
+                cmd->properties.set_gpio_pin_state.state);
         break;
 
         case GET_GPIO_PIN_STATE:
@@ -201,7 +142,10 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
                 cmd->properties.initialize_mecanum_platform.is_reversed_0,
                 cmd->properties.initialize_mecanum_platform.is_reversed_1,
                 cmd->properties.initialize_mecanum_platform.is_reversed_2,
-                cmd->properties.initialize_mecanum_platform.is_reversed_3
+                cmd->properties.initialize_mecanum_platform.is_reversed_3,
+                cmd->properties.initialize_mecanum_platform.length,
+                cmd->properties.initialize_mecanum_platform.width,
+                cmd->properties.initialize_mecanum_platform.wheels_diameter
             );
         break;
 
@@ -227,7 +171,34 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
         break;
 
         case SET_PLATFORM_CONTROLLER:
-            // Start controller task
+            {
+            // Initialize controller manager which starts task for all controllers
+            if (controllers_manager_is_not_init(&controllersManager))
+            {
+                controllers_manager_init(&controllersManager);
+            }
+
+            plaform_controller_settings_t plaform_controller_settings = {
+                .kp = cmd->properties.set_platform_controller.kp,
+                .ki = cmd->properties.set_platform_controller.ki,
+                .kd = cmd->properties.set_platform_controller.kd,
+                .encoder_resolution = cmd->properties.set_platform_controller.encoder_resolution,
+                .integral_limit = cmd->properties.set_platform_controller.integral_limit
+            };
+
+            platform_initialize_controller(&controllersManager, plaform_controller_settings);
+            }
+        break;
+
+        case SET_PLATFORM_TARGET_VELOCITY:
+        {
+            platform_velocity_t platform_target_velocity = {
+                .x = cmd->properties.set_platform_target_velocity.x,
+                .y = cmd->properties.set_platform_target_velocity.y,
+                .t = cmd->properties.set_platform_target_velocity.t
+            };
+            platform_set_target_velocity(&controllersManager, platform_target_velocity);
+        }
         break;
         }
 }
