@@ -187,6 +187,7 @@ void initialize_mecanum_platform(uint8_t isReversed0, uint8_t isReversed1, uint8
     initialize_motor(MOTOR3, isReversed3);
     platform.is_initialized = true;
     platform.set_platform_velocity = set_mecaunm_platform_velocity;
+    platform.initialize_platform_controller = mecanum_platform_initialize_controller;
     platform.set_platform_target_velocity = mecanum_platform_set_target_velocity;
 
     platform.properties.mecanum.wheel_diameter = wheel_diameter;
@@ -253,6 +254,7 @@ void initialize_omni_platform(uint8_t isReversed0, uint8_t isReversed1, uint8_t 
 	initialize_motor(MOTOR2, isReversed2);
     platform.is_initialized = true;
     platform.set_platform_velocity = set_omni_platform_velocity;
+    platform.initialize_platform_controller = omni_platform_initialize_controller;
     platform.set_platform_target_velocity = omni_platform_set_target_velocity;
 
     platform.properties.omni.wheel_diameter = wheel_diameter;
