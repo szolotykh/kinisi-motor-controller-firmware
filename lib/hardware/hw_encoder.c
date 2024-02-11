@@ -8,12 +8,12 @@
 #include "hw_config.h"
 #include "stm32f4xx_hal.h"
 
-typedef struct encoder_status_t
+typedef struct
 {
 	bool isInitialized;
-}motor_status_t;
+}encoder_status_t;
 
-static motor_status_t encoder_status[NUMBER_ENCODERS];
+static encoder_status_t encoder_status[NUMBER_ENCODERS];
 
 static void initialize_encoder_timer(TIM_HandleTypeDef *htim, TIM_TypeDef *typeDef);
 

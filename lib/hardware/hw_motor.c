@@ -13,7 +13,7 @@ void set_motor_channel(TIM_HandleTypeDef *htim, uint32_t channel, uint16_t speed
 void init_channel(TIM_HandleTypeDef *htim, const pwm_channel_info_t *channel_info, TIM_TypeDef * timTypeDef);
 void init_motor_timer(const motor_info_t *motorInfo);
 
-typedef struct motor_status_t
+typedef struct
 {
 	bool isInitialized;
 	uint8_t isReversed;

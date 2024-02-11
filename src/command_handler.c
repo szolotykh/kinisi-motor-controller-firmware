@@ -13,16 +13,6 @@
 #include "hardware_i2c.h"
 #include "stdbool.h"
 
-
-controllers_manager_t controllersManager = {
-    .state = {
-        .TargetMotorSpeed = {0},
-        .ControllerInfo = {{.state = STOP}, {.state = STOP},{.state = STOP},{.state = STOP}},
-        .update_interval_ms = 100,
-        .controller_state_mutex = NULL
-    }
-};
-
 void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t*, uint8_t))
 {
     switch(cmd->commandType)
@@ -54,7 +44,6 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
         case INITIALIZE_MOTOR_CONTROLLER:
             {
                 controllers_manager_initialize_controller(
-                    &controllersManager,
                     cmd->properties.initialize_motor_controller.motor_index,
                     cmd->properties.initialize_motor_controller.encoder_index,
                     cmd->properties.initialize_motor_controller.kp,
@@ -69,7 +58,6 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
         case DELETE_MOTOR_CONTROLLER:
             {
                 controllers_manager_delete_controller(
-                    &controllersManager,
                     cmd->properties.delete_motor_controller.motor_index);
             }
         break;
@@ -77,7 +65,6 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
         case SET_MOTOR_TARGET_SPEED:
             {
                 controllers_manager_set_target_speed(
-                    &controllersManager,
                     cmd->properties.set_motor_target_speed.motor_index,
                     cmd->properties.set_motor_target_speed.speed);
             }
@@ -92,7 +79,6 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
         case GET_MOTOR_CONTROLLER_STATE:
             {
                 motor_controller_state state = controllers_manager_get_motor_controller_state(
-                    &controllersManager,
                     cmd->properties.get_motor_controller_state.motor_index);
 
                 command_callback((uint8_t*)&state, sizeof(motor_controller_state));
@@ -180,12 +166,6 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
 
         case SET_PLATFORM_CONTROLLER:
             {
-            // Initialize controller manager which starts task for all controllers
-            if (controllers_manager_is_not_init(&controllersManager))
-            {
-                controllers_manager_init(&controllersManager);
-            }
-
             plaform_controller_settings_t plaform_controller_settings = {
                 .kp = cmd->properties.set_platform_controller.kp,
                 .ki = cmd->properties.set_platform_controller.ki,
@@ -194,7 +174,7 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
                 .integral_limit = cmd->properties.set_platform_controller.integral_limit
             };
 
-            platform_initialize_controller(&controllersManager, plaform_controller_settings);
+            platform_initialize_controller(plaform_controller_settings);
             }
         break;
 
@@ -205,7 +185,7 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
                 .y = cmd->properties.set_platform_target_velocity.y,
                 .t = cmd->properties.set_platform_target_velocity.t
             };
-            platform_set_target_velocity(&controllersManager, platform_target_velocity);
+            platform_set_target_velocity(platform_target_velocity);
         }
         break;
         }

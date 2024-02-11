@@ -13,8 +13,8 @@
 
 // Function types definitions
 typedef void (*set_platform_velocity_t)(platform_velocity_t);
-typedef void (*set_platform_target_velocity_t)(controllers_manager_t*, platform_velocity_t);
-typedef void (*initialize_platform_controller_t)(controllers_manager_t*, plaform_controller_settings_t);
+typedef void (*set_platform_target_velocity_t)(platform_velocity_t);
+typedef void (*initialize_platform_controller_t)(plaform_controller_settings_t);
 
 // Mecanum platform settings
 typedef struct
@@ -98,7 +98,7 @@ void set_platform_velocity(platform_velocity_t platform_velocity){
     platform.set_platform_velocity(platform_velocity);
 }
 
-void platform_set_target_velocity(controllers_manager_t* controllers_manager, platform_velocity_t platform_target_velocity)
+void platform_set_target_velocity(platform_velocity_t platform_target_velocity)
 {
     if (!platform.is_initialized || !platform.is_controller_initialized)
     {
@@ -107,17 +107,17 @@ void platform_set_target_velocity(controllers_manager_t* controllers_manager, pl
 
     // TODO: Is controller initialized?
 
-    platform.set_platform_target_velocity(controllers_manager, platform_target_velocity);
+    platform.set_platform_target_velocity(platform_target_velocity);
 }
 
-void platform_initialize_controller(controllers_manager_t* controllers_manager, plaform_controller_settings_t plaform_controller_settings)
+void platform_initialize_controller(plaform_controller_settings_t plaform_controller_settings)
 {
     if (!platform.is_initialized)
     {
         return;
     }
     
-    platform.initialize_platform_controller(controllers_manager, plaform_controller_settings);
+    platform.initialize_platform_controller(plaform_controller_settings);
     platform.is_controller_initialized = 1;
 }
 
@@ -143,10 +143,9 @@ void set_mecaunm_platform_velocity(platform_velocity_t platform_velocity){
     set_motor_speed(MOTOR3, mecanum_velocity.motor3);
 }
 
-void mecanum_platform_initialize_controller(controllers_manager_t* controllers_manager, plaform_controller_settings_t plaform_controller_settings)
+void mecanum_platform_initialize_controller(plaform_controller_settings_t plaform_controller_settings)
 {
     controllers_manager_initialize_controller_multiple(
-        controllers_manager,
         BMOTOR0 | BMOTOR1 | BMOTOR2 | BMOTOR3,
          plaform_controller_settings.kp,
          plaform_controller_settings.ki,
@@ -155,7 +154,7 @@ void mecanum_platform_initialize_controller(controllers_manager_t* controllers_m
          plaform_controller_settings.integral_limit);
 }
 
-void mecanum_platform_set_target_velocity(controllers_manager_t* controllers_manager, platform_velocity_t platform_target_velocity)
+void mecanum_platform_set_target_velocity(platform_velocity_t platform_target_velocity)
 {
     double R =  platform.properties.mecanum.wheel_diameter / 2.0;
     double L =  platform.properties.mecanum.length;
@@ -168,7 +167,7 @@ void mecanum_platform_set_target_velocity(controllers_manager_t* controllers_man
 
     uint8_t motor_indexes[] = {MOTOR0, MOTOR1, MOTOR2, MOTOR3};
     double target_speeds[] = {V1, V2, V3, V4};
-    controllers_manager_set_target_speed_multiple(controllers_manager, motor_indexes, target_speeds, 4);
+    controllers_manager_set_target_speed_multiple(motor_indexes, target_speeds, 4);
 
 }
 
@@ -217,10 +216,9 @@ void set_omni_platform_velocity(platform_velocity_t platform_velocity)
     set_motor_speed(MOTOR2, V3);
 }
 
-void omni_platform_initialize_controller(controllers_manager_t* controllers_manager, plaform_controller_settings_t plaform_controller_settings)
+void omni_platform_initialize_controller(plaform_controller_settings_t plaform_controller_settings)
 {
     controllers_manager_initialize_controller_multiple(
-        controllers_manager,
         BMOTOR0 | BMOTOR1 | BMOTOR2,
         plaform_controller_settings.kp,
         plaform_controller_settings.ki,
@@ -229,7 +227,7 @@ void omni_platform_initialize_controller(controllers_manager_t* controllers_mana
         plaform_controller_settings.integral_limit);
 }
 
-void omni_platform_set_target_velocity(controllers_manager_t* controllers_manager, platform_velocity_t platform_target_velocity)
+void omni_platform_set_target_velocity(platform_velocity_t platform_target_velocity)
 {
     double R =  platform.properties.omni.wheel_diameter / 2.0; // Radius of the wheel in meters
     double L =  platform.properties.omni.robot_radius; // Distance from the center of the platform to the wheel in meters
@@ -239,7 +237,7 @@ void omni_platform_set_target_velocity(controllers_manager_t* controllers_manage
     
     uint8_t motor_indexes[] = {MOTOR0, MOTOR1, MOTOR2};
     double target_speeds[] = {V1, V2, V3};
-    controllers_manager_set_target_speed_multiple(controllers_manager, motor_indexes, target_speeds, 3);
+    controllers_manager_set_target_speed_multiple(motor_indexes, target_speeds, 3);
 }
 
 void initialize_omni_platform(uint8_t isReversed0, uint8_t isReversed1, uint8_t isReversed2, double wheel_diameter, double robot_radius)

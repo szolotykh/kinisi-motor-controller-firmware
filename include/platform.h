@@ -60,17 +60,15 @@ void set_platform_velocity(platform_velocity_t platform_velocity);
 // Controller functions
 /* Initialize controller for current platform
 Parameters:
-    controllers_manager: Pointer to the controller manager
     plaform_controller_settings: Platform controller settings
 */
-void platform_initialize_controller(controllers_manager_t* controllers_manager, plaform_controller_settings_t plaform_controller_settings);
+void platform_initialize_controller(plaform_controller_settings_t plaform_controller_settings);
 
 /* Set target velocity for current platform
 Parameters:
-    controllers_manager: Pointer to the controller manager
     platform_target_velocity: Platform target velocity. x, y and t are in meters per second
 */
-void platform_set_target_velocity(controllers_manager_t* controllers_manager, platform_velocity_t platform_target_velocity);
+void platform_set_target_velocity(platform_velocity_t platform_target_velocity);
 
 
 void encoder_update_state(encoder_index_t index, unsigned int value);
