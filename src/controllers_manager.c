@@ -98,14 +98,6 @@ void StartControllerTask(void *argument)
 
 void controllers_manager_init(controllers_manager_t* controllers_manager)
 {
-    controllers_manager_state_t controllers_manager_state = {
-        .TargetMotorSpeed = {0},
-        .ControllerInfo = {{.state = STOP}, {.state = STOP},{.state = STOP},{.state = STOP}},
-        .update_interval_ms = PID_CONTROLLER_UPDATE_INTERVAL,
-        .controller_state_mutex = NULL
-    };
-    controllers_manager->state = controllers_manager_state;
-
     controllers_manager->state.controller_state_mutex = xSemaphoreCreateMutex();
     if (controllers_manager->state.controller_state_mutex == NULL) {
         // Handle error: Failed to create the mutex

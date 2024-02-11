@@ -27,7 +27,7 @@ typedef struct pid_controller
     double T;
     double tau;
 
-    double target_speed
+    double target_speed;
 } pid_controller_t;
 
 // Initialize PID controller
