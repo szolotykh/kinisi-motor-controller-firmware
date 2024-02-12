@@ -77,6 +77,8 @@ Description: This command initializes an encoder and prepares it for use.
 Properties:
 - encoder_index (uint8_t): The index of the encoder to initialize.
   - Range: 0 to 3
+- encoder_resolution (double): Encoder resolution in ticks per revolution. The value can not be negative or zero.
+- is_reversed (bool): Whether or not the encoder is reversed.
 
 ### GET_ENCODER_VALUE (0x12)
 Description: This command retrieves the current value of the encoder.

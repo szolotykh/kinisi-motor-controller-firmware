@@ -27,8 +27,8 @@ void initialize_motor(motorIndex motorIndex, bool isReversed)
 	{
 		init_motor_timer(&motor_info[motorIndex]);
 		motor_status[motorIndex].isInitialized = true;
-		motor_status[motorIndex].isReversed = isReversed;
 	}
+	motor_status[motorIndex].isReversed = isReversed;
 }
 
 uint8_t motor_is_reversed(motorIndex motorIndex)

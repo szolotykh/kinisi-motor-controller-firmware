@@ -231,6 +231,17 @@
                         3
                     ],
                     "description": "The index of the encoder to initialize."
+                },
+                {
+                    "name": "encoder_resolution",
+                    "type": "double",
+                    "description": "Encoder resolution in ticks per revolution. The value can not be negative or zero."
+                },
+                {
+                    "name": "is_reversed",
+                    "type": "bool",
+                    "default": false,
+                    "description": "Whether or not the encoder is reversed."
                 }
             ],
             "category": "Encoder"

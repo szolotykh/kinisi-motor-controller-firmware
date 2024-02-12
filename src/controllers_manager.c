@@ -181,7 +181,7 @@ void controllers_manager_initialize_controller(uint8_t motor_index, uint8_t enco
     if (controllers_manager.state.Controller_info[motor_index].state == STOP)
     {
         initialize_motor(controller_info.mIndex, is_reversed);
-        initialize_encoder(controller_info.eIndex);
+        initialize_encoder(controller_info.eIndex, encoder_resolution, is_reversed);
     }
 
     if (xSemaphoreTake(controllers_manager.state.controller_state_mutex, portMAX_DELAY))
@@ -203,7 +203,7 @@ void controllers_manager_initialize_controller_multiple(uint8_t motor_selection,
             // assert(motor_is_initialized(motor_index) == 1);
 
             // Initialize encoder if not initialized
-            initialize_encoder(index);
+            initialize_encoder(index, motor_is_reversed(index), encoder_resolution);
         }
     }
 

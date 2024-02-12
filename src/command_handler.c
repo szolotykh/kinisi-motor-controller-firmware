@@ -87,7 +87,12 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
 
         // Encoder commands
         case INITIALIZE_ENCODER:
-            initialize_encoder(cmd->properties.initialize_encoder.encoder_index);
+            {
+            initialize_encoder(
+                cmd->properties.initialize_encoder.encoder_index,
+                cmd->properties.initialize_encoder.encoder_resolution,
+                cmd->properties.initialize_encoder.is_reversed);
+            }
         break;
 
         case GET_ENCODER_VALUE:
