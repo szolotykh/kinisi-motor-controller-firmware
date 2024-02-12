@@ -93,7 +93,7 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
         case GET_ENCODER_VALUE:
             {
             uint16_t value = get_encoder_value(cmd->properties.get_encoder_value.encoder_index);
-            command_callback((uint8_t*)&value, sizeof(unsigned int));
+            command_callback((uint8_t*)&value, sizeof(uint16_t));
             }
         break;
 
