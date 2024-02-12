@@ -100,7 +100,7 @@ void StartControllerTask(void *argument)
                     previousEncoderValue[index] = current_encoder_value;
 
                     // Caltulate current motor speed in radians per second from encoder ticks
-                    double current_motor_speed = 2.0 * M_PI * ((double)last_encoder_change / controller->encoder_resolution) * (1.0 / controller->T);
+                    double current_motor_speed = 2.0 * M_PI * ((double)last_encoder_change / encoder_get_resolution(index)) * (1.0 / controller->T);
 
                     // Calculate new velocity for motor
                     pid_controller_update(
@@ -166,8 +166,6 @@ void controllers_manager_initialize_controller(uint8_t motor_index, uint8_t enco
         kp,
         ki,
         kd,
-        is_reversed,
-        encoder_resolution,
         integral_limit
     );
 
@@ -227,8 +225,6 @@ void controllers_manager_initialize_controller_multiple(uint8_t motor_selection,
                     kp,
                     ki,
                     kd,
-                    motor_is_reversed(motor_index),
-                    encoder_resolution,
                     integral_limit
                 );
 

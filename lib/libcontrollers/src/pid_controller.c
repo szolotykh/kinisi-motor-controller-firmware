@@ -7,11 +7,8 @@
 int sing(int c);
 double limit_to_range(double value, double min_value, double max_value);
 
-void pid_controller_init(pid_controller_t* controller, double T, double kp, double ki, double kd, bool is_reversed, double encoder_resolution, double integral_limit)
+void pid_controller_init(pid_controller_t* controller, double T, double kp, double ki, double kd, double integral_limit)
 {
-    controller->is_reversed = is_reversed;
-    controller->encoder_resolution = encoder_resolution;
-
     controller->kp = kp;
     controller->ki = ki;
     controller->kd = kd;
@@ -23,7 +20,6 @@ void pid_controller_init(pid_controller_t* controller, double T, double kp, doub
     controller->previousSpeed = 0;
     controller->motorPWM = 0;
     controller->integrator = 0;
-    controller->encoder_resolution = encoder_resolution;
     controller->max_integral = 30.0;
     controller->min_integral = -30.0;
 

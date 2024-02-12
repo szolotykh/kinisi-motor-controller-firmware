@@ -34,6 +34,10 @@ uint8_t encoder_is_initialized(encoder_index_t index){
 	return encoder_status[index].is_initialized;
 }
 
+double encoder_get_resolution(encoder_index_t index){
+	return encoder_status[index].resolution;
+}
+
 uint16_t get_encoder_value(encoder_index_t index){
 
 	TIM_HandleTypeDef *htim = get_timer_handeler(encoder_info[index].timer);

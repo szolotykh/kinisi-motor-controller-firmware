@@ -22,3 +22,9 @@ Parameters:
     index: Encoder index
 */
 extern uint8_t encoder_is_initialized(encoder_index_t index);
+
+/* Get encoder resolution
+Parameters:
+    index: Encoder index
+*/
+extern double encoder_get_resolution(encoder_index_t index);

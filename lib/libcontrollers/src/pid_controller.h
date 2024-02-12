@@ -8,9 +8,6 @@
 
 typedef struct pid_controller
 {
-    bool is_reversed;
-    double encoder_resolution;
-
     double kp;
     double ki;
     double kd;
@@ -35,9 +32,7 @@ typedef struct pid_controller
 // kp: Proportional gain
 // ki: Integral gain
 // kd: Derivative gain
-// is_reversed: If true, the motor is reversed
 // integral_limit: Integral limit must be positive. If negative or zero, integral limit is disabled
-// encoder_resolution: Encoder resolution in pulses per revolution
-void pid_controller_init(pid_controller_t* controller, double T, double kp, double ki, double kd, bool is_reversed, double encoder_resolution, double integral_limit);
+void pid_controller_init(pid_controller_t* controller, double T, double kp, double ki, double kd, double integral_limit);
 double pid_controller_update(pid_controller_t* controller, double currentSpeed, double targetSpeed);
 
