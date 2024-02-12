@@ -38,7 +38,8 @@ uint16_t get_encoder_value(encoder_index_t index){
 
 	TIM_HandleTypeDef *htim = get_timer_handeler(encoder_info[index].timer);
 	if(encoder_status[index].is_reversed){
-		return 65535 - htim->Instance->CNT;
+		
+		return 65535 - htim->Instance->CNT + 1;
 	}
 	return htim->Instance->CNT;
 }

@@ -203,7 +203,7 @@ void controllers_manager_initialize_controller_multiple(uint8_t motor_selection,
             // assert(motor_is_initialized(motor_index) == 1);
 
             // Initialize encoder if not initialized
-            initialize_encoder(index, motor_is_reversed(index), encoder_resolution);
+            initialize_encoder(index, encoder_resolution, motor_is_reversed(index));
         }
     }
 
