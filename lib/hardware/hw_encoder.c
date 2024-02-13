@@ -8,27 +8,43 @@
 #include "hw_config.h"
 #include "stm32f4xx_hal.h"
 
-typedef struct encoder_status_t
+typedef struct
 {
-	bool isInitialized;
-}motor_status_t;
+	bool is_initialized;
+	double resolution; // Ticks per revolution
+	bool is_reversed;
+}encoder_status_t;
 
-static motor_status_t encoder_status[NUMBER_ENCODERS];
+static encoder_status_t encoder_status[NUMBER_ENCODERS] = {0};
 
 static void initialize_encoder_timer(TIM_HandleTypeDef *htim, TIM_TypeDef *typeDef);
 
-void initialize_encoder(encoder_index_t index) {
-	if(!encoder_status[index].isInitialized){
+void initialize_encoder(encoder_index_t index, double encoder_resolution, uint8_t is_reversed) {
+	if(!encoder_status[index].is_initialized){
 		TIM_HandleTypeDef *htim = get_timer_handeler(encoder_info[index].timer);
 		initialize_encoder_timer(htim, encoder_info[index].timer);
 		HAL_TIM_Encoder_Start(htim, TIM_CHANNEL_ALL);
-		encoder_status[index].isInitialized = true;
+		encoder_status[index].resolution = encoder_resolution;
+		encoder_status[index].is_reversed = is_reversed;
+		encoder_status[index].is_initialized = true;
 	}
 }
 
-unsigned int get_encoder_value(encoder_index_t index){
+uint8_t encoder_is_initialized(encoder_index_t index){
+	return encoder_status[index].is_initialized;
+}
+
+double encoder_get_resolution(encoder_index_t index){
+	return encoder_status[index].resolution;
+}
+
+uint16_t get_encoder_value(encoder_index_t index){
 
 	TIM_HandleTypeDef *htim = get_timer_handeler(encoder_info[index].timer);
+	if(encoder_status[index].is_reversed){
+		
+		return 65535 - htim->Instance->CNT + 1;
+	}
 	return htim->Instance->CNT;
 }
 

@@ -14,8 +14,8 @@ typedef struct commands_manager
     osThreadId_t threadHandler;
 } commands_manager_t;
 
-void command_callback_usb(uint8_t* resonse, uint16_t data_len);
-void command_callback_i2c(uint8_t* resonse, uint16_t data_len);
+void command_callback_usb(uint8_t* resonse, uint8_t data_len);
+void command_callback_i2c(uint8_t* resonse, uint8_t data_len);
 
 void commands_manager_init(commands_manager_t* commands_manager);
 

@@ -13,13 +13,7 @@
 #include "hardware_i2c.h"
 #include "stdbool.h"
 
-controllers_manager_t controllersManager;
-controllers_manager_input_t controllers_manager_input = {
-    .TargetVelocity = {0},
-    .ControllerInfo = {{.state = STOP}, {.state = STOP},{.state = STOP},{.state = STOP}}
-};
-
-void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t*, uint16_t))
+void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t*, uint8_t))
 {
     switch(cmd->commandType)
         {
@@ -31,8 +25,7 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
             {
             set_motor_speed(
                 cmd->properties.set_motor_speed.motor_index,
-                cmd->properties.set_motor_speed.direction,
-                cmd->properties.set_motor_speed.speed);
+                cmd->properties.set_motor_speed.pwm);
             }
         break;
 
@@ -50,68 +43,76 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
 
         case INITIALIZE_MOTOR_CONTROLLER:
             {
-            uint8_t motorIndex = cmd->properties.initialize_motor_controller.motor_index;
-            if (controllers_manager_is_not_init(&controllersManager))
-            {
-                controllers_manager_init(&controllersManager, &controllers_manager_input);
-            }
-
-            // SetMotorController
-            pid_controller_t controller; 
-            pid_controller_init(
-                &controller,
-                cmd->properties.initialize_motor_controller.kp,
-                cmd->properties.initialize_motor_controller.ki,
-                cmd->properties.initialize_motor_controller.kd
-            );
-
-            controller_info_t controllerInfo;
-            controllerInfo.state = STOP;
-            controllerInfo.controller = controller;
-            controllerInfo.mIndex = motorIndex;
-            controllerInfo.eIndex = motorIndex;
-
-            initialize_motor(controllerInfo.mIndex, false);
-            initialize_encoder(controllerInfo.eIndex);
-
-            controllers_manager_input.ControllerInfo[motorIndex] = controllerInfo;
-            controllers_manager_input.ControllerInfo[motorIndex].state = RUN;
+                controllers_manager_initialize_controller(
+                    cmd->properties.initialize_motor_controller.motor_index,
+                    cmd->properties.initialize_motor_controller.encoder_index,
+                    cmd->properties.initialize_motor_controller.kp,
+                    cmd->properties.initialize_motor_controller.ki,
+                    cmd->properties.initialize_motor_controller.kd,
+                    cmd->properties.initialize_motor_controller.is_reversed,
+                    cmd->properties.initialize_motor_controller.encoder_resolution,
+                    cmd->properties.initialize_motor_controller.integral_limit);
             }
         break; 
 
         case DELETE_MOTOR_CONTROLLER:
             {
-            controllers_manager_input.ControllerInfo[cmd->properties.delete_motor_controller.motor_index].state = STOPPING; // STOPPING
+                controllers_manager_delete_controller(
+                    cmd->properties.delete_motor_controller.motor_index);
             }
         break;
 
-        case SET_MOTOR_TARGET_VELOCITY:
+        case SET_MOTOR_TARGET_SPEED:
             {
-            signed short speed = cmd->properties.set_motor_target_velocity.speed;
-            signed short direction = cmd->properties.set_motor_target_velocity.direction;
-            controllers_manager_input.TargetVelocity[cmd->properties.set_motor_target_velocity.motor_index] = ((direction * 2) - 1) * speed;
+                controllers_manager_set_target_speed(
+                    cmd->properties.set_motor_target_speed.motor_index,
+                    cmd->properties.set_motor_target_speed.speed);
+            }
+        break;
+
+        case RESET_MOTOR_CONTROLLER:
+            {
+            // TODO: Implement
+            }
+        break;
+
+        case GET_MOTOR_CONTROLLER_STATE:
+            {
+                motor_controller_state state = controllers_manager_get_motor_controller_state(
+                    cmd->properties.get_motor_controller_state.motor_index);
+
+                command_callback((uint8_t*)&state, sizeof(motor_controller_state));
             }
         break;
 
         // Encoder commands
         case INITIALIZE_ENCODER:
-            initialize_encoder(cmd->properties.initialize_encoder.encoder_index);
+            {
+            initialize_encoder(
+                cmd->properties.initialize_encoder.encoder_index,
+                cmd->properties.initialize_encoder.encoder_resolution,
+                cmd->properties.initialize_encoder.is_reversed);
+            }
         break;
 
         case GET_ENCODER_VALUE:
             {
-            unsigned int value = get_encoder_value(cmd->properties.get_encoder_value.encoder_index);
-            command_callback((uint8_t*)&value, sizeof(unsigned int));
+            uint16_t value = get_encoder_value(cmd->properties.get_encoder_value.encoder_index);
+            command_callback((uint8_t*)&value, sizeof(uint16_t));
             }
         break;
 
         // GPIO commands
         case INITIALIZE_GPIO_PIN:
-            initialize_gpio_pin(cmd->properties.initialize_gpio_pin.pin_number, cmd->properties.initialize_gpio_pin.mode);
+            initialize_gpio_pin(
+                cmd->properties.initialize_gpio_pin.pin_number,
+                cmd->properties.initialize_gpio_pin.mode);
         break;
 
         case SET_GPIO_PIN_STATE:
-            set_gpio_pin_state(cmd->properties.set_gpio_pin_state.pin_number, cmd->properties.set_gpio_pin_state.state);
+            set_gpio_pin_state(
+                cmd->properties.set_gpio_pin_state.pin_number,
+                cmd->properties.set_gpio_pin_state.state);
         break;
 
         case GET_GPIO_PIN_STATE:
@@ -140,7 +141,10 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
                 cmd->properties.initialize_mecanum_platform.is_reversed_0,
                 cmd->properties.initialize_mecanum_platform.is_reversed_1,
                 cmd->properties.initialize_mecanum_platform.is_reversed_2,
-                cmd->properties.initialize_mecanum_platform.is_reversed_3
+                cmd->properties.initialize_mecanum_platform.is_reversed_3,
+                cmd->properties.initialize_mecanum_platform.length,
+                cmd->properties.initialize_mecanum_platform.width,
+                cmd->properties.initialize_mecanum_platform.wheels_diameter
             );
         break;
 
@@ -152,20 +156,42 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
                 cmd->properties.initialize_omni_platform.wheels_diameter,
                 cmd->properties.initialize_omni_platform.robot_radius
             );
-
-        case SET_PLATFORM_CONTROLLER:
-            // SetController
         break;
 
-        case SET_PLATFORM_VELOCITY_INPUT:
+        case SET_PLATFORM_VELOCITY:
             {
             platform_velocity_t platform_velocity = {
-                .x = cmd->properties.set_platform_velocity_input.x,
-                .y = cmd->properties.set_platform_velocity_input.y,
-                .t = cmd->properties.set_platform_velocity_input.t
+                .x = cmd->properties.set_platform_velocity.x,
+                .y = cmd->properties.set_platform_velocity.y,
+                .t = cmd->properties.set_platform_velocity.t
             };
             set_platform_velocity(platform_velocity);
             }
+        break;
+
+        case SET_PLATFORM_CONTROLLER:
+            {
+            plaform_controller_settings_t plaform_controller_settings = {
+                .kp = cmd->properties.set_platform_controller.kp,
+                .ki = cmd->properties.set_platform_controller.ki,
+                .kd = cmd->properties.set_platform_controller.kd,
+                .encoder_resolution = cmd->properties.set_platform_controller.encoder_resolution,
+                .integral_limit = cmd->properties.set_platform_controller.integral_limit
+            };
+
+            platform_initialize_controller(plaform_controller_settings);
+            }
+        break;
+
+        case SET_PLATFORM_TARGET_VELOCITY:
+        {
+            platform_velocity_t platform_target_velocity = {
+                .x = cmd->properties.set_platform_target_velocity.x,
+                .y = cmd->properties.set_platform_target_velocity.y,
+                .t = cmd->properties.set_platform_target_velocity.t
+            };
+            platform_set_target_velocity(platform_target_velocity);
+        }
         break;
         }
 }

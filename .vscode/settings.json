@@ -28,7 +28,10 @@
         "hw_config.h": "c",
         "freertos.h": "c",
         "hardware_i2c.h": "c",
-        "hw_encoder.h": "c"
+        "hw_encoder.h": "c",
+        "stdbool.h": "c",
+        "stdint.h": "c",
+        "type_traits": "c"
     },
     "C_Cpp.errorSquiggles": "disabled",
     "cmake.sourceDirectory": "D:/Development/kinisi-motor-controller-firmware/.pio/libdeps/native/Unity"

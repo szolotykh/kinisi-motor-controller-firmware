@@ -2,6 +2,7 @@
 // File name: motor.c
 //------------------------------------------------------------
 
+#include "math.h"
 #include "hw_motor.h"
 #include "hw_timers.h"
 #include "hw_config.h"
@@ -12,7 +13,7 @@ void set_motor_channel(TIM_HandleTypeDef *htim, uint32_t channel, uint16_t speed
 void init_channel(TIM_HandleTypeDef *htim, const pwm_channel_info_t *channel_info, TIM_TypeDef * timTypeDef);
 void init_motor_timer(const motor_info_t *motorInfo);
 
-typedef struct motor_status_t
+typedef struct
 {
 	bool isInitialized;
 	uint8_t isReversed;
@@ -26,12 +27,27 @@ void initialize_motor(motorIndex motorIndex, bool isReversed)
 	{
 		init_motor_timer(&motor_info[motorIndex]);
 		motor_status[motorIndex].isInitialized = true;
-		motor_status[motorIndex].isReversed = isReversed;
 	}
+	motor_status[motorIndex].isReversed = isReversed;
 }
 
-void set_motor_speed(motorIndex motorIndex, uint8_t direction, uint16_t speed)
+uint8_t motor_is_reversed(motorIndex motorIndex)
 {
+	return motor_status[motorIndex].isReversed;
+}
+
+uint8_t motor_is_initialized(motorIndex motorIndex)
+{
+	return motor_status[motorIndex].isInitialized;
+}
+
+void set_motor_speed(motorIndex motorIndex, double pwm)
+{
+	bool direction = pwm > 0;
+	if (pwm > 100.0) pwm = 100.0;
+	if (pwm < -100.0) pwm = -100.0;
+	uint16_t speed = fabs(pwm)*MOTOR_MAX_SPEED/100.0;
+
 	if(motor_status[motorIndex].isInitialized)
 	{
 		TIM_HandleTypeDef *htim = get_timer_handeler(motor_info[motorIndex].timer);

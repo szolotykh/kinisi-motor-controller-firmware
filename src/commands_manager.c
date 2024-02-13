@@ -64,12 +64,13 @@ void commands_manager_init(commands_manager_t* commands_manager)
     commands_manager->threadHandler = osThreadNew(CommandHandlerTask, NULL, &CommandsTask_attributes);
 }
 
-void command_callback_usb(uint8_t* resonse, uint16_t data_len)
+void command_callback_usb(uint8_t* resonse, uint8_t data_len)
 {
+    // Send response to USB interface
     CDC_Transmit_FS(resonse, data_len);
 }
 
-void command_callback_i2c(uint8_t* resonse, uint16_t data_len)
+void command_callback_i2c(uint8_t* resonse, uint8_t data_len)
 {
     // Send response to I2C interface
     send_external_i2c(resonse, data_len);
