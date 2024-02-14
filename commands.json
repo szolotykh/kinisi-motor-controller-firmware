@@ -283,11 +283,6 @@
                     "description": "The index of the encoder to start the odometry calculation for."
                 }
             ],
-            "response": {
-                "name": "odometry",
-                "type": "double",
-                "description": "The odometry of the encoder in radians."
-            },
             "category": "Encoder"
         },
         {
