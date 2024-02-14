@@ -1,5 +1,5 @@
 {
-    "version": "1.0.3",
+    "version": "1.0.4",
     "commands": [
         {
             "command": "INITIALIZE_MOTOR",
@@ -265,6 +265,84 @@
                 "name": "encoderValue",
                 "type": "uint16_t",
                 "description": "The current value of the encoder."
+            },
+            "category": "Encoder"
+        },
+        {
+            "command": "START_ENCODER_ODOMETRY",
+            "code": "0x13",
+            "description": "This command starts the odometry calculation for the specified encoder.",
+            "properties": [
+                {
+                    "name": "encoder_index",
+                    "type": "uint8_t",
+                    "range": [
+                        0,
+                        3
+                    ],
+                    "description": "The index of the encoder to start the odometry calculation for."
+                }
+            ],
+            "response": {
+                "name": "odometry",
+                "type": "double",
+                "description": "The odometry of the encoder in radians."
+            },
+            "category": "Encoder"
+        },
+        {
+            "command": "RESET_ENCODER_ODOMETRY",
+            "code": "0x14",
+            "description": "This command resets the odometry calculation for the specified encoder.",
+            "properties": [
+                {
+                    "name": "encoder_index",
+                    "type": "uint8_t",
+                    "range": [
+                        0,
+                        3
+                    ],
+                    "description": "The index of the encoder to reset the odometry calculation for."
+                }
+            ],
+            "category": "Encoder"
+        },
+        {
+            "command": "STOP_ENCODER_ODOMETRY",
+            "code": "0x15",
+            "description": "This command stops the odometry calculation for the specified encoder.",
+            "properties": [
+                {
+                    "name": "encoder_index",
+                    "type": "uint8_t",
+                    "range": [
+                        0,
+                        3
+                    ],
+                    "description": "The index of the encoder to stop the odometry calculation for."
+                }
+            ],
+            "category": "Encoder"
+        },
+        {
+            "command": "GET_ENCODER_ODOMETRY",
+            "code": "0x16",
+            "description": "This command retrieves the odometry of the specified encoder.",
+            "properties": [
+                {
+                    "name": "encoder_index",
+                    "type": "uint8_t",
+                    "range": [
+                        0,
+                        3
+                    ],
+                    "description": "The index of the encoder to retrieve the odometry for."
+                }
+            ],
+            "response": {
+                "name": "odometry",
+                "type": "double",
+                "description": "The odometry of the encoder in radians."
             },
             "category": "Encoder"
         },

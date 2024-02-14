@@ -4,6 +4,7 @@
 #include "controllers_manager.h"
 #include "commands.h"
 #include <cmsis_os.h>
+#include <semphr.h>
 #include <hw_config.h>
 #include <utils.h>
 #include <stdlib.h>

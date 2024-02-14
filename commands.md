@@ -1,6 +1,6 @@
 # Kinisi motor controller commands
 
-Version: 1.0.3
+Version: 1.0.4
 ---
 
 ## Commands
@@ -87,6 +87,34 @@ Properties:
   - Range: 0 to 3
 Response: 
  - encoderValue (uint16_t): The current value of the encoder.
+
+### START_ENCODER_ODOMETRY (0x13)
+Description: This command starts the odometry calculation for the specified encoder.
+Properties:
+- encoder_index (uint8_t): The index of the encoder to start the odometry calculation for.
+  - Range: 0 to 3
+Response: 
+ - odometry (double): The odometry of the encoder in radians.
+
+### RESET_ENCODER_ODOMETRY (0x14)
+Description: This command resets the odometry calculation for the specified encoder.
+Properties:
+- encoder_index (uint8_t): The index of the encoder to reset the odometry calculation for.
+  - Range: 0 to 3
+
+### STOP_ENCODER_ODOMETRY (0x15)
+Description: This command stops the odometry calculation for the specified encoder.
+Properties:
+- encoder_index (uint8_t): The index of the encoder to stop the odometry calculation for.
+  - Range: 0 to 3
+
+### GET_ENCODER_ODOMETRY (0x16)
+Description: This command retrieves the odometry of the specified encoder.
+Properties:
+- encoder_index (uint8_t): The index of the encoder to retrieve the odometry for.
+  - Range: 0 to 3
+Response: 
+ - odometry (double): The odometry of the encoder in radians.
 
 ### INITIALIZE_GPIO_PIN (0x20)
 Description: This command initializes a digital pin and prepares it for use.

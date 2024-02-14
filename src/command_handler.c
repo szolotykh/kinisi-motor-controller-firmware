@@ -3,6 +3,7 @@
 //------------------------------------------------------------
 #include "commands.h"
 #include "controllers_manager.h"
+#include "odometry_manager.h"
 #include <pid_controller.h>
 #include <cmsis_os.h>
 #include <message_queue.h>
@@ -99,6 +100,35 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
             {
             uint16_t value = get_encoder_value(cmd->properties.get_encoder_value.encoder_index);
             command_callback((uint8_t*)&value, sizeof(uint16_t));
+            }
+        break;
+
+        case START_ENCODER_ODOMETRY:
+            {
+            encoder_start_odometry(
+                cmd->properties.start_encoder_odometry.encoder_index);
+            }
+        break;
+
+        case RESET_ENCODER_ODOMETRY:
+            {
+            encoder_reset_odometry(
+                cmd->properties.reset_encoder_odometry.encoder_index);
+            }
+        break;
+
+        case GET_ENCODER_ODOMETRY:
+            {
+            double odometry = encoder_get_odometry(
+                cmd->properties.get_encoder_odometry.encoder_index);
+            command_callback((uint8_t*)&odometry, sizeof(double));
+            }
+        break;
+
+        case STOP_ENCODER_ODOMETRY:
+            {
+            encoder_stop_odometry(
+                cmd->properties.stop_encoder_odometry.encoder_index);
             }
         break;
 
