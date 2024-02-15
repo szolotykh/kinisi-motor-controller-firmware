@@ -69,7 +69,7 @@ static void initialize_encoder_timer(TIM_HandleTypeDef *htim, TIM_TypeDef *typeD
 	htim->Init.Period = 65535; // This value can't be 4294967295 since some of the timeers are 16 bit.
 	htim->Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
 	htim->Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
-	sConfig.EncoderMode = TIM_ENCODERMODE_TI1;
+	sConfig.EncoderMode = TIM_ENCODERMODE_TI12;
 	sConfig.IC1Polarity = TIM_ICPOLARITY_RISING;
 	sConfig.IC1Selection = TIM_ICSELECTION_DIRECTTI;
 	sConfig.IC1Prescaler = TIM_ICPSC_DIV1;
