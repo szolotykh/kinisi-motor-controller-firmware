@@ -76,7 +76,7 @@ void odometry_manager_initialize()
 }
 
 //------------------------------------------------------------
-uint8_t odometry_manager_is_initialized()
+uint8_t odometry_manager_is_not_initialized()
 {
     osThreadState_t status = osThreadGetState(odometry_manager_state.thread_handler);
     return status == osThreadError;
@@ -85,7 +85,7 @@ uint8_t odometry_manager_is_initialized()
 //------------------------------------------------------------
 void encoder_start_odometry(uint8_t encoder_index)
 {
-    if(odometry_manager_is_initialized() == 0)
+    if(odometry_manager_is_not_initialized())
     {
         odometry_manager_initialize();
     }
@@ -133,6 +133,8 @@ void encoder_stop_odometry(uint8_t encoder_index)
     // Obtain odometry mutex
     if (xSemaphoreTake(odometry_manager_state.odometry_mutex, portMAX_DELAY)) {
         odometry_manager_state.is_initialized[encoder_index] = 0;
+        odometry_manager_state.odometry[encoder_index] = 0;
+        odometry_manager_state.encoder_previous_value[encoder_index] = 0;
         xSemaphoreGive(odometry_manager_state.odometry_mutex);
     }
 }

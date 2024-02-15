@@ -39,7 +39,7 @@ void encoder_stop_odometry(uint8_t encoder_index);
 /*
 Is odometry manager initialized
 */
-uint8_t odometry_manager_is_initialized();
+uint8_t odometry_manager_is_not_initialized();
 
 /*
 Initialize odometry manager
