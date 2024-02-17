@@ -5,6 +5,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <platform.h>
 
 /*
 Start encoder odometry
@@ -45,3 +46,13 @@ uint8_t odometry_manager_is_not_initialized();
 Initialize odometry manager
 */
 void odometry_manager_initialize();
+
+/*
+Get platform odometry
+*/
+platform_odometry_t odometry_manager_get_platform_odometry();
+
+/*
+Reset platform odometry
+*/
+void odometry_manager_reset_platform_odometry();

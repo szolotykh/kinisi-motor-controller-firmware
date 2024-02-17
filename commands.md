@@ -93,8 +93,6 @@ Description: This command starts the odometry calculation for the specified enco
 Properties:
 - encoder_index (uint8_t): The index of the encoder to start the odometry calculation for.
   - Range: 0 to 3
-Response: 
- - odometry (double): The odometry of the encoder in radians.
 
 ### RESET_ENCODER_ODOMETRY (0x14)
 Description: This command resets the odometry calculation for the specified encoder.
@@ -202,4 +200,26 @@ Properties:
 - None
 Response: 
  - platform_velocity (object): The current velocity of the platform in meters per second.
+
+### START_PLATFORM_ODOMETRY (0x44)
+Description: This command starts the odometry calculation for the platform.
+Properties:
+- None
+
+### RESET_PLATFORM_ODOMETRY (0x45)
+Description: This command resets the odometry calculation for the platform.
+Properties:
+- None
+
+### STOP_PLATFORM_ODOMETRY (0x46)
+Description: This command stops the odometry calculation for the platform.
+Properties:
+- None
+
+### GET_PLATFORM_ODOMETRY (0x47)
+Description: This command retrieves the odometry of the platform in meters and radians.
+Properties:
+- None
+Response: 
+ - platform_odometry (object): The odometry of the platform in meters and radians.
 

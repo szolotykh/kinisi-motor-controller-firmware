@@ -615,7 +615,37 @@
                 "name": "platform_velocity",
                 "type": "object",
                 "description": "The current velocity of the platform in meters per second."
-            }
+            },
+            "category": "Platform"
+        },
+        {
+            "command": "START_PLATFORM_ODOMETRY",
+            "code": "0x44",
+            "description": "This command starts the odometry calculation for the platform.",
+            "category": "Platform"
+        },
+        {
+            "command": "RESET_PLATFORM_ODOMETRY",
+            "code": "0x45",
+            "description": "This command resets the odometry calculation for the platform.",
+            "category": "Platform"
+        },
+        {
+            "command": "STOP_PLATFORM_ODOMETRY",
+            "code": "0x46",
+            "description": "This command stops the odometry calculation for the platform.",
+            "category": "Platform"
+        },
+        {
+            "command": "GET_PLATFORM_ODOMETRY",
+            "code": "0x47",
+            "description": "This command retrieves the odometry of the platform in meters and radians.",
+            "response":{
+                "name": "platform_odometry",
+                "type": "object",
+                "description": "The odometry of the platform in meters and radians."
+            },
+            "category": "Platform"
         }
     ],
     "objects": [
@@ -683,6 +713,27 @@
                     "name": "t",
                     "type": "double",
                     "description": "Theta component of platform velocity in radians per second"
+                }
+            ]
+        },
+        {
+            "name": "platform_odometry",
+            "description": "The odometry of the platform in meters and radians.",
+            "properties": [
+                {
+                    "name": "x",
+                    "type": "double",
+                    "description": "X component of platform odometry in meters"
+                },
+                {
+                    "name": "y",
+                    "type": "double",
+                    "description": "Y component of platform odometry in meters"
+                },
+                {
+                    "name": "t",
+                    "type": "double",
+                    "description": "Theta component of platform odometry in radians"
                 }
             ]
         }

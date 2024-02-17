@@ -8,6 +8,7 @@
 #include <stdint.h>
 #include <math.h>
 #include <controllers_manager.h>
+#include <odometry_manager.h>
 
 #define SPEED_RESOLUTION 840
 
@@ -15,6 +16,7 @@
 typedef void (*set_platform_velocity_t)(platform_velocity_t);
 typedef void (*set_platform_target_velocity_t)(platform_velocity_t);
 typedef void (*initialize_platform_controller_t)(plaform_controller_settings_t);
+typedef platform_odometry_t (*update_platform_odometry_t)(uint8_t* motor_indexes, double* velocities, uint8_t motor_count);
 
 // Mecanum platform settings
 typedef struct
@@ -50,16 +52,13 @@ typedef struct
         mecanum_platform_settings_t mecanum;
         omni_platform_settings_t omni;
     } properties;
+
+    // Platform odometry
+    uint8_t is_odometry_enabled;
+    update_platform_odometry_t update_platform_odometry;
+
 } platform_t;
 
-typedef struct
-{
-    unsigned int value_n0;
-    unsigned int value_n1;
-    int velocity_n0;
-    int velocity_n1;
-    int acceleration_n0;
-} encoder_state_t;
 
 typedef struct mecanum_velocity_t
 {
@@ -73,8 +72,6 @@ typedef struct mecanum_velocity_t
 static platform_t platform = {
     .is_initialized = 0,
     .is_controller_initialized = 0};
-
-static encoder_state_t encoder_state[4];
 
 // Function definitions
 double verify_range(double c);
@@ -119,6 +116,21 @@ void platform_initialize_controller(plaform_controller_settings_t plaform_contro
     
     platform.initialize_platform_controller(plaform_controller_settings);
     platform.is_controller_initialized = 1;
+}
+
+platform_odometry_t platform_update_odometry(uint8_t* motor_indexes, double* velocities, uint8_t motor_count)
+{
+    if (!platform.is_initialized)
+    {
+        platform_odometry_t odometry = {
+            .x = 0,
+            .y = 0,
+            .t = 0
+        };
+        return odometry;
+    }
+
+    return platform.update_platform_odometry(motor_indexes, velocities, motor_count);
 }
 
 // ------------------------------------------------------------------------
@@ -171,6 +183,38 @@ void mecanum_platform_set_target_velocity(platform_velocity_t platform_target_ve
 
 }
 
+platform_odometry_t mecanum_platform_update_odometry(uint8_t* motor_indexes, double* velocities, uint8_t motor_count)
+{
+    platform_odometry_t odometry = {
+        .x = 0,
+        .y = 0,
+        .t = 0
+    };
+
+    // Motor count must be 4
+    if(motor_count != 4)
+    {
+        return odometry;
+    }
+
+    // TODO: VERIFY THIS CALCULATION
+    /*
+    // Calculate odometry (forwards kinematics)
+    double R =  platform.properties.mecanum.wheel_diameter / 2.0; // Radius of the wheel in meters
+    double L =  platform.properties.mecanum.length; // Distance from front to back wheels in meters
+    double W =  platform.properties.mecanum.width; // Distance between left and right wheels in meters
+    double V1 = velocities[0];
+    double V2 = velocities[1];
+    double V3 = velocities[2];
+    double V4 = velocities[3];
+
+    odometry.x = R/4 * (V1 + V2 + V3 + V4);
+    odometry.y = R/4 * (-V1 + V2 + V3 - V4);
+    odometry.t = R/(4 * (L + W)) * (V1 - V2 + V3 - V4);
+    */
+    return odometry;
+}
+
 void initialize_mecanum_platform(uint8_t isReversed0, uint8_t isReversed1, uint8_t isReversed2, uint8_t isReversed3, double length, double width, double wheel_diameter)
 {
     if (platform.is_initialized)
@@ -188,6 +232,7 @@ void initialize_mecanum_platform(uint8_t isReversed0, uint8_t isReversed1, uint8
     platform.set_platform_velocity = set_mecaunm_platform_velocity;
     platform.initialize_platform_controller = mecanum_platform_initialize_controller;
     platform.set_platform_target_velocity = mecanum_platform_set_target_velocity;
+    platform.update_platform_odometry = mecanum_platform_update_odometry;
 
     platform.properties.mecanum.wheel_diameter = wheel_diameter;
     platform.properties.mecanum.length = length;
@@ -240,6 +285,34 @@ void omni_platform_set_target_velocity(platform_velocity_t platform_target_veloc
     controllers_manager_set_target_speed_multiple(motor_indexes, target_speeds, 3);
 }
 
+platform_odometry_t omni_platform_update_odometry(uint8_t* motor_indexes, double* velocities, uint8_t motor_count)
+{
+    platform_odometry_t odometry = {
+        .x = 0,
+        .y = 0,
+        .t = 0
+    };
+
+    // Motor count must be 3
+    if(motor_count != 3)
+    {
+        return odometry;
+    }
+
+    // Calculate odometry (forwards kinematics)
+    double R =  platform.properties.omni.wheel_diameter / 2.0; // Radius of the wheel in meters
+    double L =  platform.properties.omni.robot_radius; // Distance from the center of the platform to the wheel in meters
+    double V1 = velocities[0];
+    double V2 = velocities[1];
+    double V3 = velocities[2];
+
+    odometry.x = R * (sqrt(3.0)/2 * V1 + sqrt(3.0)/2* V2);
+    odometry.y = R * (-0.5 * V1 + 0.5 * V2 + V3);
+    odometry.t = R/L * (V1 + V2 + V3);
+
+    return odometry;
+}
+
 void initialize_omni_platform(uint8_t isReversed0, uint8_t isReversed1, uint8_t isReversed2, double wheel_diameter, double robot_radius)
 {
     if (platform.is_initialized)
@@ -254,53 +327,42 @@ void initialize_omni_platform(uint8_t isReversed0, uint8_t isReversed1, uint8_t 
     platform.set_platform_velocity = set_omni_platform_velocity;
     platform.initialize_platform_controller = omni_platform_initialize_controller;
     platform.set_platform_target_velocity = omni_platform_set_target_velocity;
+    platform.update_platform_odometry = omni_platform_update_odometry;
 
     platform.properties.omni.wheel_diameter = wheel_diameter;
     platform.properties.omni.robot_radius = robot_radius;
 }
 
 // ------------------------------------------------------------------------
-// Encoder functions
+// Odometry functions
 
-void encoder_update_state(encoder_index_t index, unsigned int value)
+void platform_start_odometry()
 {
-    encoder_state[index].value_n1 = encoder_state[index].value_n0;
-    encoder_state[index].value_n0 = value;
-    encoder_state[index].velocity_n1 = encoder_state[index].velocity_n0;
-    encoder_state[index].velocity_n0 = encoder_state[index].value_n0 - encoder_state[index].value_n1;
-    encoder_state[index].acceleration_n0 = encoder_state[index].velocity_n0 - encoder_state[index].velocity_n1;
+    platform.is_odometry_enabled = 1;
 }
 
-unsigned int encoder_get_value(encoder_index_t index)
+uint8_t platform_is_odometry_enabled()
 {
-    return encoder_state[index].value_n0;
+    return platform.is_odometry_enabled;
 }
 
-int encoder_get_velocity(encoder_index_t index)
+void platform_reset_odometry()
 {
-    return encoder_state[index].velocity_n0;
+    // Reset odometry in odometry manager
+    odometry_manager_reset_platform_odometry();
 }
 
-int get_encoder_acceleration(encoder_index_t index)
+void platform_stop_odometry()
 {
-    return encoder_state[index].acceleration_n0;
+    platform.is_odometry_enabled = 0;
 }
 
-/*
-void init_motor_with_encoder(motorIndex mindex, encoder_index eindex)
+platform_odometry_t platform_get_odometry()
 {
-    initialize_motor(index);
-    initialize_encoder(index);
-    encoder_values[index] = get_encoder_value(index);
+    // Get current platform odometry from odometry manager
+    return odometry_manager_get_platform_odometry();
 }
-
-int get_motor_rps(motorIndex index)
-{
-
-}
-*/
-
-// ------------------------------------------------------------------------
+// --------------------------------------------------4----------------------
 // Utils functions
 
 double verify_range(double c)

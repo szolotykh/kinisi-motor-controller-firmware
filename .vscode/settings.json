@@ -31,7 +31,9 @@
         "hw_encoder.h": "c",
         "stdbool.h": "c",
         "stdint.h": "c",
-        "type_traits": "c"
+        "type_traits": "c",
+        "math.h": "c",
+        "odometry_manager.h": "c"
     },
     "C_Cpp.errorSquiggles": "disabled",
     "cmake.sourceDirectory": "D:/Development/kinisi-motor-controller-firmware/.pio/libdeps/native/Unity"
