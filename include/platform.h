@@ -23,7 +23,6 @@ typedef struct{
     double kp;
     double ki;
     double kd;
-    double encoder_resolution; // Encoder resolution in pulses per revolution
     double integral_limit; // Integral limit must be positive. If negative or zero, integral limit is disabled
 }plaform_controller_settings_t;
 
@@ -44,8 +43,9 @@ Parameters:
     length: Length of the platform in meters
     width: Width of the platform in meters
     wheel_diameter: Wheel diameter in meters
+    encoder_resolution: Encoder resolution in pulses per revolution
 */
-void initialize_mecanum_platform(uint8_t isReversed0, uint8_t isReversed1, uint8_t isReversed2, uint8_t isReversed3, double length, double width, double wheel_diameter);
+void initialize_mecanum_platform(uint8_t isReversed0, uint8_t isReversed1, uint8_t isReversed2, uint8_t isReversed3, double length, double width, double wheel_diameter, double encoder_resolution);
 
 /*
 Initialize omni platform
@@ -55,8 +55,9 @@ Parameters:
     isReversed2: If true, the motor 2 is reversed
     wheel_diameter: Wheel diameter in meters
     robot_radius: Robot radius in meters
+    encoder_resolution: Encoder resolution in pulses per revolution
 */
-void initialize_omni_platform(uint8_t isReversed0, uint8_t isReversed1, uint8_t isReversed2, double wheel_diameter, double robot_radius);
+void initialize_omni_platform(uint8_t isReversed0, uint8_t isReversed1, uint8_t isReversed2, double wheel_diameter, double robot_radius, double encoder_resolution);
 
 /*
 Set platform velocity

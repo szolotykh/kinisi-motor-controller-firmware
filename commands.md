@@ -158,6 +158,7 @@ Properties:
 - length (double): Length of the platform in meters.
 - width (double): Width of the platform in meters.
 - wheels_diameter (double): Diameter of the robot wheels in meters.
+- encoder_resolution (double): Encoder resolution in ticks per revolution. The value can not be negative. If platform does not have encoders, the value should be set to zero.
 
 ### INITIALIZE_OMNI_PLATFORM (0x31)
 Description: This command initializes a omni platform and prepares it for use.
@@ -167,6 +168,7 @@ Properties:
 - is_reversed_2 (bool): Determins if motor 2 is reversed.
 - wheels_diameter (double): Diameter of the robot wheels in millimeters.
 - robot_radius (double): Distance berween the center of the robot and the center of the wheels in millimeters.
+- encoder_resolution (double): Encoder resolution in ticks per revolution. The value can not be negative. If platform does not have encoders, the value should be set to zero.
 
 ### SET_PLATFORM_VELOCITY (0x40)
 Description: This command sets the velocity for the platform in PWM.
@@ -184,7 +186,6 @@ Properties:
 - kp (double): Proportional constant of PID
 - ki (double): Integral constant of PID
 - kd (double): Derivative constant of PID
-- encoder_resolution (double): Encoder resolution in ticks per revolution. The value can not be negative or zero.
 - integral_limit (double): Integral limit of PID controller. The value can not be negative or zero. If the value is zero or negative, the integral limit is disabled.
 
 ### SET_PLATFORM_TARGET_VELOCITY (0x42)

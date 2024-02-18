@@ -474,6 +474,12 @@
                     "type": "double",
                     "default": 1,
                     "description": "Diameter of the robot wheels in meters."
+                },
+                {
+                    "name": "encoder_resolution",
+                    "type": "double",
+                    "default": 0,
+                    "description": "Encoder resolution in ticks per revolution. The value can not be negative. If platform does not have encoders, the value should be set to zero."
                 }
             ],
             "category": "Platform"
@@ -512,6 +518,12 @@
                     "type": "double",
                     "default": 1,
                     "description": "Distance berween the center of the robot and the center of the wheels in millimeters."
+                },
+                {
+                    "name": "encoder_resolution",
+                    "type": "double",
+                    "default": 0,
+                    "description": "Encoder resolution in ticks per revolution. The value can not be negative. If platform does not have encoders, the value should be set to zero."
                 }
             ],
             "category": "Platform"
@@ -570,11 +582,6 @@
                     "name": "kd",
                     "type": "double",
                     "description": "Derivative constant of PID"
-                },
-                {
-                    "name": "encoder_resolution",
-                    "type": "double",
-                    "description": "Encoder resolution in ticks per revolution. The value can not be negative or zero."
                 },
                 {
                     "name": "integral_limit",

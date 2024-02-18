@@ -35,10 +35,9 @@ Parameters:
     kp: Proportional gain
     ki: Integral gain
     kd: Derivative gain
-    encoder_resolution: Encoder resolution in pulses per revolution
     integral_limit: Integral limit must be positive. If negative or zero, integral limit is disabled
 */
-void controllers_manager_initialize_controller_multiple(uint8_t motor_selection, double kp, double ki, double kd, double encoder_resolution, double integral_limit);
+void controllers_manager_initialize_controller_multiple(uint8_t motor_selection, double kp, double ki, double kd, double integral_limit);
 
 /*
 Delete controller for single motor

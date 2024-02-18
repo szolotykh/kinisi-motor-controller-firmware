@@ -190,22 +190,8 @@ void controllers_manager_initialize_controller(uint8_t motor_index, uint8_t enco
     }
 }
 
-void controllers_manager_initialize_controller_multiple(uint8_t motor_selection, double kp, double ki, double kd, double encoder_resolution, double integral_limit)
+void controllers_manager_initialize_controller_multiple(uint8_t motor_selection, double kp, double ki, double kd, double integral_limit)
 {
-    // Check if all selected motors and encoders are initialized
-    for (uint8_t index = 0; index < NUMBER_MOTORS; index++)
-    {
-        if (motor_selection & (1 << index))
-        {
-            // TODO Add assert here to check if motor initialized
-            // At this point motor should be initialized because platform already initialized
-            // assert(motor_is_initialized(motor_index) == 1);
-
-            // Initialize encoder if not initialized
-            initialize_encoder(index, encoder_resolution, motor_is_reversed(index));
-        }
-    }
-
     // Initialize controller manager which starts task for all controllers
     if (controllers_manager_is_not_init())
     {

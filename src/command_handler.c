@@ -174,7 +174,8 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
                 cmd->properties.initialize_mecanum_platform.is_reversed_3,
                 cmd->properties.initialize_mecanum_platform.length,
                 cmd->properties.initialize_mecanum_platform.width,
-                cmd->properties.initialize_mecanum_platform.wheels_diameter
+                cmd->properties.initialize_mecanum_platform.wheels_diameter,
+                cmd->properties.initialize_mecanum_platform.encoder_resolution
             );
         break;
 
@@ -184,7 +185,8 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
                 cmd->properties.initialize_omni_platform.is_reversed_1,
                 cmd->properties.initialize_omni_platform.is_reversed_2,
                 cmd->properties.initialize_omni_platform.wheels_diameter,
-                cmd->properties.initialize_omni_platform.robot_radius
+                cmd->properties.initialize_omni_platform.robot_radius,
+                cmd->properties.initialize_omni_platform.encoder_resolution
             );
         break;
 
@@ -205,7 +207,6 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
                 .kp = cmd->properties.set_platform_controller.kp,
                 .ki = cmd->properties.set_platform_controller.ki,
                 .kd = cmd->properties.set_platform_controller.kd,
-                .encoder_resolution = cmd->properties.set_platform_controller.encoder_resolution,
                 .integral_limit = cmd->properties.set_platform_controller.integral_limit
             };
 

@@ -164,7 +164,6 @@ void mecanum_platform_initialize_controller(plaform_controller_settings_t plafor
          plaform_controller_settings.kp,
          plaform_controller_settings.ki,
          plaform_controller_settings.kd,
-         plaform_controller_settings.encoder_resolution,
          plaform_controller_settings.integral_limit);
 }
 
@@ -226,7 +225,7 @@ void initialize_mecanum_platform_odometry()
     encoder_start_odometry(MOTOR3);
 }
 
-void initialize_mecanum_platform(uint8_t isReversed0, uint8_t isReversed1, uint8_t isReversed2, uint8_t isReversed3, double length, double width, double wheel_diameter)
+void initialize_mecanum_platform(uint8_t isReversed0, uint8_t isReversed1, uint8_t isReversed2, uint8_t isReversed3, double length, double width, double wheel_diameter, double encoder_resolution)
 {
     if (platform.is_initialized)
     {
@@ -235,10 +234,20 @@ void initialize_mecanum_platform(uint8_t isReversed0, uint8_t isReversed1, uint8
 
     platform.properties.mecanum.length = length;
     platform.properties.mecanum.width = width;
+
     initialize_motor(MOTOR0, isReversed0);
     initialize_motor(MOTOR1, isReversed1);
     initialize_motor(MOTOR2, isReversed2);
     initialize_motor(MOTOR3, isReversed3);
+
+    if (encoder_resolution > 0)
+    {
+        initialize_encoder(MOTOR0, encoder_resolution, isReversed0);
+        initialize_encoder(MOTOR1, encoder_resolution, isReversed1);
+        initialize_encoder(MOTOR2, encoder_resolution, isReversed2);
+        initialize_encoder(MOTOR3, encoder_resolution, isReversed3);
+    }
+
     platform.is_initialized = true;
     platform.set_platform_velocity = set_mecaunm_platform_velocity;
     platform.initialize_platform_controller = mecanum_platform_initialize_controller;
@@ -249,6 +258,8 @@ void initialize_mecanum_platform(uint8_t isReversed0, uint8_t isReversed1, uint8
     platform.properties.mecanum.wheel_diameter = wheel_diameter;
     platform.properties.mecanum.length = length;
     platform.properties.mecanum.width = width;
+
+
 }
 
 // ------------------------------------------------------------------------
@@ -280,7 +291,6 @@ void omni_platform_initialize_controller(plaform_controller_settings_t plaform_c
         plaform_controller_settings.kp,
         plaform_controller_settings.ki,
         plaform_controller_settings.kd,
-        plaform_controller_settings.encoder_resolution,
         plaform_controller_settings.integral_limit);
 }
 
@@ -333,7 +343,7 @@ void initialize_omni_platform_odometry()
     encoder_start_odometry(MOTOR2);
 }
 
-void initialize_omni_platform(uint8_t isReversed0, uint8_t isReversed1, uint8_t isReversed2, double wheel_diameter, double robot_radius)
+void initialize_omni_platform(uint8_t isReversed0, uint8_t isReversed1, uint8_t isReversed2, double wheel_diameter, double robot_radius, double encoder_resolution)
 {
     if (platform.is_initialized)
     {
@@ -343,6 +353,14 @@ void initialize_omni_platform(uint8_t isReversed0, uint8_t isReversed1, uint8_t 
     initialize_motor(MOTOR0, isReversed0);
 	initialize_motor(MOTOR1, isReversed1);
 	initialize_motor(MOTOR2, isReversed2);
+
+    if (encoder_resolution > 0)
+    {
+        initialize_encoder(MOTOR0, encoder_resolution, isReversed0);
+        initialize_encoder(MOTOR1, encoder_resolution, isReversed1);
+        initialize_encoder(MOTOR2, encoder_resolution, isReversed2);
+    }
+
     platform.is_initialized = true;
     platform.set_platform_velocity = set_omni_platform_velocity;
     platform.initialize_platform_controller = omni_platform_initialize_controller;
