@@ -223,5 +223,30 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
             platform_set_target_velocity(platform_target_velocity);
         }
         break;
+        
+        case START_PLATFORM_ODOMETRY:
+        {
+            platform_start_odometry();
         }
+        break;
+
+        case RESET_PLATFORM_ODOMETRY:
+        {
+            platform_reset_odometry();
+        }
+        break;
+
+        case GET_PLATFORM_ODOMETRY:
+        {
+            platform_odometry_t platform_odometry = platform_get_odometry();
+            command_callback((uint8_t*)&platform_odometry, sizeof(platform_odometry_t));
+        }
+        break;
+
+        case STOP_PLATFORM_ODOMETRY:
+        {
+            platform_stop_odometry();
+        }
+        break;
+    }
 }

@@ -16,6 +16,7 @@
 typedef void (*set_platform_velocity_t)(platform_velocity_t);
 typedef void (*set_platform_target_velocity_t)(platform_velocity_t);
 typedef void (*initialize_platform_controller_t)(plaform_controller_settings_t);
+typedef void (*initialize_platform_odometry_t)();
 typedef platform_odometry_t (*update_platform_odometry_t)(uint8_t* motor_indexes, double* velocities, uint8_t motor_count);
 
 // Mecanum platform settings
@@ -55,6 +56,7 @@ typedef struct
 
     // Platform odometry
     uint8_t is_odometry_enabled;
+    initialize_platform_odometry_t initialize_platform_odometry;
     update_platform_odometry_t update_platform_odometry;
 
 } platform_t;
@@ -192,7 +194,7 @@ platform_odometry_t mecanum_platform_update_odometry(uint8_t* motor_indexes, dou
     };
 
     // Motor count must be 4
-    if(motor_count != 4)
+    if(motor_count < 4)
     {
         return odometry;
     }
@@ -215,6 +217,15 @@ platform_odometry_t mecanum_platform_update_odometry(uint8_t* motor_indexes, dou
     return odometry;
 }
 
+void initialize_mecanum_platform_odometry()
+{
+    // Start odometry for each motor encoder
+    encoder_start_odometry(MOTOR0);
+    encoder_start_odometry(MOTOR1);
+    encoder_start_odometry(MOTOR2);
+    encoder_start_odometry(MOTOR3);
+}
+
 void initialize_mecanum_platform(uint8_t isReversed0, uint8_t isReversed1, uint8_t isReversed2, uint8_t isReversed3, double length, double width, double wheel_diameter)
 {
     if (platform.is_initialized)
@@ -232,6 +243,7 @@ void initialize_mecanum_platform(uint8_t isReversed0, uint8_t isReversed1, uint8
     platform.set_platform_velocity = set_mecaunm_platform_velocity;
     platform.initialize_platform_controller = mecanum_platform_initialize_controller;
     platform.set_platform_target_velocity = mecanum_platform_set_target_velocity;
+    platform.initialize_platform_odometry = initialize_mecanum_platform_odometry;
     platform.update_platform_odometry = mecanum_platform_update_odometry;
 
     platform.properties.mecanum.wheel_diameter = wheel_diameter;
@@ -293,8 +305,8 @@ platform_odometry_t omni_platform_update_odometry(uint8_t* motor_indexes, double
         .t = 0
     };
 
-    // Motor count must be 3
-    if(motor_count != 3)
+    // Motor count must be more than or equal 3
+    if(motor_count < 3)
     {
         return odometry;
     }
@@ -313,6 +325,14 @@ platform_odometry_t omni_platform_update_odometry(uint8_t* motor_indexes, double
     return odometry;
 }
 
+void initialize_omni_platform_odometry()
+{
+    // Start odometry for each motor encoder
+    encoder_start_odometry(MOTOR0);
+    encoder_start_odometry(MOTOR1);
+    encoder_start_odometry(MOTOR2);
+}
+
 void initialize_omni_platform(uint8_t isReversed0, uint8_t isReversed1, uint8_t isReversed2, double wheel_diameter, double robot_radius)
 {
     if (platform.is_initialized)
@@ -327,6 +347,7 @@ void initialize_omni_platform(uint8_t isReversed0, uint8_t isReversed1, uint8_t 
     platform.set_platform_velocity = set_omni_platform_velocity;
     platform.initialize_platform_controller = omni_platform_initialize_controller;
     platform.set_platform_target_velocity = omni_platform_set_target_velocity;
+    platform.initialize_platform_odometry = initialize_omni_platform_odometry;
     platform.update_platform_odometry = omni_platform_update_odometry;
 
     platform.properties.omni.wheel_diameter = wheel_diameter;
@@ -338,7 +359,13 @@ void initialize_omni_platform(uint8_t isReversed0, uint8_t isReversed1, uint8_t 
 
 void platform_start_odometry()
 {
+    // Initialize platform hardware for odometry if it is not initialized
+    platform.initialize_platform_odometry();
+
     platform.is_odometry_enabled = 1;
+    
+    // Initialize odometry manager if it is not initialized
+    odometry_manager_initialize();
 }
 
 uint8_t platform_is_odometry_enabled()

@@ -88,19 +88,6 @@ void odometry_manager_task(void *argument)
 }
 
 //------------------------------------------------------------
-void odometry_manager_initialize()
-{
-    odometry_manager_state.odometry_mutex = xSemaphoreCreateMutex();
-
-    const osThreadAttr_t CommandsTask_attributes = {
-        .name = "CommandsTask",
-        .stack_size = 128 * 8,
-        .priority = (osPriority_t) osPriorityNormal,
-    };
-    odometry_manager_state.thread_handler = osThreadNew(odometry_manager_task, &odometry_manager_state, &CommandsTask_attributes);
-}
-
-//------------------------------------------------------------
 uint8_t odometry_manager_is_not_initialized()
 {
     osThreadState_t status = osThreadGetState(odometry_manager_state.thread_handler);
@@ -108,12 +95,26 @@ uint8_t odometry_manager_is_not_initialized()
 }
 
 //------------------------------------------------------------
-void encoder_start_odometry(uint8_t encoder_index)
+void odometry_manager_initialize()
 {
     if(odometry_manager_is_not_initialized())
     {
-        odometry_manager_initialize();
+        odometry_manager_state.odometry_mutex = xSemaphoreCreateMutex();
+
+        const osThreadAttr_t CommandsTask_attributes = {
+            .name = "CommandsTask",
+            .stack_size = 128 * 8,
+            .priority = (osPriority_t) osPriorityNormal,
+        };
+        odometry_manager_state.thread_handler = osThreadNew(odometry_manager_task, &odometry_manager_state, &CommandsTask_attributes);
     }
+}
+
+//------------------------------------------------------------
+void encoder_start_odometry(uint8_t encoder_index)
+{
+    // Initialize odometry manager if it is not initialized
+    odometry_manager_initialize();
 
     if(encoder_is_initialized(encoder_index) == 0)
     {

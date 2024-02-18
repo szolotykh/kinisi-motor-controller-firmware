@@ -8,6 +8,11 @@
 #include <platform.h>
 
 /*
+Initialize odometry manager
+*/
+void odometry_manager_initialize();
+
+/*
 Start encoder odometry
 Parameters:
     encoder_index: Index of the encoder
