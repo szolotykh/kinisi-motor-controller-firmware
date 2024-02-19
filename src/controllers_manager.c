@@ -32,6 +32,7 @@ typedef struct controllers_manager_state
     double target_motor_speed[4]; // In radians per second
     controller_info_t Controller_info[4];
     uint32_t update_interval_ms;
+    uint16_t previousEncoderValue[4];
     SemaphoreHandle_t controller_state_mutex;
 } controllers_manager_state_t;
 
@@ -47,6 +48,7 @@ static controllers_manager_t controllers_manager = {
         .target_motor_speed = {0},
         .Controller_info = {{.state = STOP}, {.state = STOP},{.state = STOP},{.state = STOP}},
         .update_interval_ms = 100,
+        .previousEncoderValue = {0},
         .controller_state_mutex = NULL
     }
 };
@@ -65,7 +67,6 @@ void StartControllerTask(void *argument)
     const TickType_t xFrequency = pdMS_TO_TICKS(controllers_manager_state->update_interval_ms);
     TickType_t xLastWakeTime = xTaskGetTickCount();
     unsigned int seq = 0;
-    uint16_t previousEncoderValue[4] = { 0 };
 
     for(;;)
     {
@@ -88,7 +89,7 @@ void StartControllerTask(void *argument)
                     // Get current velocity from encoder
                     const uint16_t current_encoder_value = get_encoder_value(index);
                     // Calculate change in encoder value
-                    uint16_t raw_change = current_encoder_value - previousEncoderValue[index];
+                    uint16_t raw_change = current_encoder_value - controllers_manager_state->previousEncoderValue[index];
 
                     // Check for overflow and adjust
                     int last_encoder_change;
@@ -98,7 +99,7 @@ void StartControllerTask(void *argument)
                         last_encoder_change = raw_change; // No overflow or underflow
                     }
                     
-                    previousEncoderValue[index] = current_encoder_value;
+                    controllers_manager_state->previousEncoderValue[index] = current_encoder_value;
 
                     // Caltulate current motor speed in radians per second from encoder ticks
                     double current_motor_speed = 2.0 * M_PI * ((double)last_encoder_change / encoder_get_resolution(index)) * (1.0 / controller->T);
@@ -185,6 +186,7 @@ void controllers_manager_initialize_controller(uint8_t motor_index, uint8_t enco
 
     if (xSemaphoreTake(controllers_manager.state.controller_state_mutex, portMAX_DELAY))
     {
+        controllers_manager.state.previousEncoderValue[motor_index] = get_encoder_value(encoder_index);
         controllers_manager.state.Controller_info[motor_index] = controller_info;
         xSemaphoreGive(controllers_manager.state.controller_state_mutex);
     }
@@ -222,6 +224,7 @@ void controllers_manager_initialize_controller_multiple(uint8_t motor_selection,
                 controller_info.mIndex = motor_index;
                 controller_info.eIndex = motor_index;
 
+                controllers_manager.state.previousEncoderValue[motor_index] = get_encoder_value(motor_index);
                 controllers_manager.state.Controller_info[motor_index] = controller_info;
             }
         }

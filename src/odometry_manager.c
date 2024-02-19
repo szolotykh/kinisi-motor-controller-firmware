@@ -57,7 +57,14 @@ void odometry_manager_task(void *argument)
                 {
                     uint16_t encoder_value = get_encoder_value(i);
                     double resolution = encoder_get_resolution(i)/ (2 * M_PI); // Ticks per radians
-                    double encoder_values_change = encoder_value - state->encoder_previous_value[i];
+                    uint16_t encoder_values_change_raw = encoder_value - state->encoder_previous_value[i];
+
+                    // Check for overflow and adjust
+                    double encoder_values_change = encoder_values_change_raw;
+                    if (encoder_values_change_raw > 32768) { // Half of UINT16_MAX, detecting large backward movement (underflow)
+                        encoder_values_change = -(65536 - encoder_values_change_raw); // Adjust for underflow
+                    }
+
                     state->odometry_change[i] = encoder_values_change / resolution;
                     state->odometry[i] = state->odometry[i] + state->odometry_change[i];
 
@@ -135,6 +142,12 @@ void encoder_start_odometry(uint8_t encoder_index)
 //------------------------------------------------------------
 void encoder_reset_odometry(uint8_t encoder_index)
 {
+    // Return if odometry manager is not initialized
+    if (odometry_manager_is_not_initialized())
+    {
+        return;
+    }
+
     // Obtain odometry mutex
     if (xSemaphoreTake(odometry_manager_state.odometry_mutex, portMAX_DELAY))
     {
@@ -147,18 +160,30 @@ void encoder_reset_odometry(uint8_t encoder_index)
 double encoder_get_odometry(uint8_t encoder_index)
 {
     double odometry = 0;
-    // Obtain odometry mutex
-    if (xSemaphoreTake(odometry_manager_state.odometry_mutex, portMAX_DELAY))
+
+    // Check if odometry manager is initialized
+    if (!odometry_manager_is_not_initialized())
     {
-        odometry = odometry_manager_state.odometry[encoder_index];
-        xSemaphoreGive(odometry_manager_state.odometry_mutex);
+        // Obtain odometry mutex
+        if (xSemaphoreTake(odometry_manager_state.odometry_mutex, portMAX_DELAY))
+        {
+            odometry = odometry_manager_state.odometry[encoder_index];
+            xSemaphoreGive(odometry_manager_state.odometry_mutex);
+        }
     }
+    
     return odometry;
 }
 
 //------------------------------------------------------------
 void encoder_stop_odometry(uint8_t encoder_index)
 {
+    // Return if odometry manager is not initialized
+    if (odometry_manager_is_not_initialized())
+    {
+        return;
+    }
+
     // Obtain odometry mutex
     if (xSemaphoreTake(odometry_manager_state.odometry_mutex, portMAX_DELAY))
     {
@@ -172,17 +197,29 @@ void encoder_stop_odometry(uint8_t encoder_index)
 //------------------------------------------------------------
 platform_odometry_t odometry_manager_get_platform_odometry(){
     platform_odometry_t platform_odometry = {0};
-    // Obtain odometry mutex
-    if (xSemaphoreTake(odometry_manager_state.odometry_mutex, portMAX_DELAY))
+
+    // Check if odometry manager is initialized
+    if (!odometry_manager_is_not_initialized())
     {
-        platform_odometry = odometry_manager_state.platform_odometry;
-        xSemaphoreGive(odometry_manager_state.odometry_mutex);
+        // Obtain odometry mutex
+        if (xSemaphoreTake(odometry_manager_state.odometry_mutex, portMAX_DELAY))
+        {
+            platform_odometry = odometry_manager_state.platform_odometry;
+            xSemaphoreGive(odometry_manager_state.odometry_mutex);
+        }
     }
+
     return platform_odometry;
 }
 
 //------------------------------------------------------------
 void odometry_manager_reset_platform_odometry(){
+    // Return if odometry manager is not initialized
+    if (odometry_manager_is_not_initialized())
+    {
+        return;
+    }
+
     // Obtain odometry mutex
     if (xSemaphoreTake(odometry_manager_state.odometry_mutex, portMAX_DELAY))
     {

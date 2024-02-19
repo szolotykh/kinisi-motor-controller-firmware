@@ -267,9 +267,9 @@ void initialize_mecanum_platform(uint8_t isReversed0, uint8_t isReversed1, uint8
 
 void set_omni_platform_velocity(platform_velocity_t platform_velocity)
 {
-    double V1 = sqrt(3.0)/2 * platform_velocity.x - 1/2 * platform_velocity.y + platform_velocity.t;
-    double V2 = -sqrt(3.0)/2 * platform_velocity.x - 1/2 * platform_velocity.y + platform_velocity.t;
-    double V3 = -platform_velocity.y + platform_velocity.t;
+    double V1 = sqrt(3.0)/2.0 * platform_velocity.x - 0.5 * platform_velocity.y + platform_velocity.t;
+    double V2 = -sqrt(3.0)/2.0 * platform_velocity.x - 0.5 * platform_velocity.y + platform_velocity.t;
+    double V3 = platform_velocity.y + platform_velocity.t;
 
     double maxv = fmax(fabs(V1), fmax(fabs(V2), fabs(V3)));
     if (maxv > 100.0)
@@ -298,9 +298,9 @@ void omni_platform_set_target_velocity(platform_velocity_t platform_target_veloc
 {
     double R =  platform.properties.omni.wheel_diameter / 2.0; // Radius of the wheel in meters
     double L =  platform.properties.omni.robot_radius; // Distance from the center of the platform to the wheel in meters
-    double V1 = 1.0 / R * (sqrt(3.0)/2.0 * platform_target_velocity.x - 1.0/2.0 * platform_target_velocity.y + L * platform_target_velocity.t);
-    double V2 = 1.0 / R * (-sqrt(3.0)/2.0 * platform_target_velocity.x - 1.0/2.0 * platform_target_velocity.y + L * platform_target_velocity.t);
-    double V3 = 1.0 / R * (-platform_target_velocity.y + L * platform_target_velocity.t);
+    double V1 = 1.0 / R * (sqrt(3.0)/2.0 * platform_target_velocity.x - 0.5 * platform_target_velocity.y + L * platform_target_velocity.t);
+    double V2 = 1.0 / R * (-sqrt(3.0)/2.0 * platform_target_velocity.x - 0.5 * platform_target_velocity.y + L * platform_target_velocity.t);
+    double V3 = 1.0 / R * (platform_target_velocity.y + L * platform_target_velocity.t);
     
     uint8_t motor_indexes[] = {MOTOR0, MOTOR1, MOTOR2};
     double target_speeds[] = {V1, V2, V3};
@@ -324,13 +324,13 @@ platform_odometry_t omni_platform_update_odometry(uint8_t* motor_indexes, double
     // Calculate odometry (forwards kinematics)
     double R =  platform.properties.omni.wheel_diameter / 2.0; // Radius of the wheel in meters
     double L =  platform.properties.omni.robot_radius; // Distance from the center of the platform to the wheel in meters
-    double V1 = velocities[0];
-    double V2 = velocities[1];
-    double V3 = velocities[2];
+    double v1 = velocities[0];
+    double v2 = velocities[1];
+    double v3 = velocities[2];
 
-    odometry.x = R * (sqrt(3.0)/2 * V1 + sqrt(3.0)/2* V2);
-    odometry.y = R * (-0.5 * V1 + 0.5 * V2 + V3);
-    odometry.t = R/L * (V1 + V2 + V3);
+    odometry.x = R * (1/sqrt(3.0) * v1 - 1/sqrt(3.0) * v2);
+    odometry.y = R/3.0 * (-v1 - v2 + 2.0 * v3);
+    odometry.t = R/(3.0 * L) * (v1 + v2 + v3);
 
     return odometry;
 }
