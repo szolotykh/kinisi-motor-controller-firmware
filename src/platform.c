@@ -198,21 +198,20 @@ platform_odometry_t mecanum_platform_update_odometry(uint8_t* motor_indexes, dou
         return odometry;
     }
 
-    // TODO: VERIFY THIS CALCULATION
-    /*
     // Calculate odometry (forwards kinematics)
+    // TODO: Verify direction of y axis
     double R =  platform.properties.mecanum.wheel_diameter / 2.0; // Radius of the wheel in meters
     double L =  platform.properties.mecanum.length; // Distance from front to back wheels in meters
     double W =  platform.properties.mecanum.width; // Distance between left and right wheels in meters
-    double V1 = velocities[0];
-    double V2 = velocities[1];
-    double V3 = velocities[2];
-    double V4 = velocities[3];
+    double v1 = velocities[0];
+    double v2 = velocities[1];
+    double v3 = velocities[2];
+    double v4 = velocities[3];
 
-    odometry.x = R/4 * (V1 + V2 + V3 + V4);
-    odometry.y = R/4 * (-V1 + V2 + V3 - V4);
-    odometry.t = R/(4 * (L + W)) * (V1 - V2 + V3 - V4);
-    */
+    odometry.x = R/4.0 * (v1 + v2 + v3 + v4);
+    odometry.y = R/4.0 * (v1 - v2 + v3 - v4);
+    odometry.t = R/(2.0 * (L + W)) * (v1 + v2 - v3 - v4);
+
     return odometry;
 }
 
