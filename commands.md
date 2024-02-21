@@ -180,7 +180,7 @@ Properties:
 - t (double): Theta component of platform velocity in PWM
   - Range: -100.0 to 100.0
 
-### SET_PLATFORM_CONTROLLER (0x41)
+### START_PLATFORM_CONTROLLER (0x41)
 Description: This command sets the controller for the platform.
 Properties:
 - kp (double): Proportional constant of PID
@@ -202,22 +202,27 @@ Properties:
 Response: 
  - platform_velocity (object): The current velocity of the platform in meters per second.
 
-### START_PLATFORM_ODOMETRY (0x44)
+### STOP_PLATFORM_CONTROLLER (0x44)
+Description: This command stops the controller for the platform.
+Properties:
+- None
+
+### START_PLATFORM_ODOMETRY (0x45)
 Description: This command starts the odometry calculation for the platform.
 Properties:
 - None
 
-### RESET_PLATFORM_ODOMETRY (0x45)
+### RESET_PLATFORM_ODOMETRY (0x46)
 Description: This command resets the odometry calculation for the platform.
 Properties:
 - None
 
-### STOP_PLATFORM_ODOMETRY (0x46)
+### STOP_PLATFORM_ODOMETRY (0x47)
 Description: This command stops the odometry calculation for the platform.
 Properties:
 - None
 
-### GET_PLATFORM_ODOMETRY (0x47)
+### GET_PLATFORM_ODOMETRY (0x48)
 Description: This command retrieves the odometry of the platform in meters and radians.
 Properties:
 - None

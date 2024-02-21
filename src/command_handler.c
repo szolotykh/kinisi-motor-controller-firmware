@@ -201,16 +201,22 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
             }
         break;
 
-        case SET_PLATFORM_CONTROLLER:
+        case START_PLATFORM_CONTROLLER:
             {
             plaform_controller_settings_t plaform_controller_settings = {
-                .kp = cmd->properties.set_platform_controller.kp,
-                .ki = cmd->properties.set_platform_controller.ki,
-                .kd = cmd->properties.set_platform_controller.kd,
-                .integral_limit = cmd->properties.set_platform_controller.integral_limit
+                .kp = cmd->properties.start_platform_controller.kp,
+                .ki = cmd->properties.start_platform_controller.ki,
+                .kd = cmd->properties.start_platform_controller.kd,
+                .integral_limit = cmd->properties.start_platform_controller.integral_limit
             };
 
-            platform_initialize_controller(plaform_controller_settings);
+            platform_start_velocity_controller(plaform_controller_settings);
+            }
+        break;
+
+        case STOP_PLATFORM_CONTROLLER:
+            {
+            platform_stop_velocity_controller();
             }
         break;
 

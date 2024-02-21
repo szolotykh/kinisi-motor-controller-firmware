@@ -68,11 +68,11 @@ void set_platform_velocity(platform_velocity_t platform_velocity);
 
 // Controller functions
 /*
-Initialize controller for current platform
+Start velocity controller for current platform
 Parameters:
     plaform_controller_settings: Platform controller settings
 */
-void platform_initialize_controller(plaform_controller_settings_t plaform_controller_settings);
+void platform_start_velocity_controller(plaform_controller_settings_t plaform_controller_settings);
 
 /*
 Set target velocity for current platform
@@ -80,6 +80,11 @@ Parameters:
     platform_target_velocity: Platform target velocity. x, y and t are in meters per second
 */
 void platform_set_target_velocity(platform_velocity_t platform_target_velocity);
+
+/*
+Stop velocity controller for current platform
+*/
+void platform_stop_velocity_controller();
 
 // Odometry functions
 /*

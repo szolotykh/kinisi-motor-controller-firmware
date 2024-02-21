@@ -564,7 +564,7 @@
             "category": "Platform"
         },
         {
-            "command": "SET_PLATFORM_CONTROLLER",
+            "command": "START_PLATFORM_CONTROLLER",
             "code": "0x41",
             "description": "This command sets the controller for the platform.",
             "properties": [
@@ -626,26 +626,32 @@
             "category": "Platform"
         },
         {
-            "command": "START_PLATFORM_ODOMETRY",
+            "command": "STOP_PLATFORM_CONTROLLER",
             "code": "0x44",
+            "description": "This command stops the controller for the platform.",
+            "category": "Platform"
+        },
+        {
+            "command": "START_PLATFORM_ODOMETRY",
+            "code": "0x45",
             "description": "This command starts the odometry calculation for the platform.",
             "category": "Platform"
         },
         {
             "command": "RESET_PLATFORM_ODOMETRY",
-            "code": "0x45",
+            "code": "0x46",
             "description": "This command resets the odometry calculation for the platform.",
             "category": "Platform"
         },
         {
             "command": "STOP_PLATFORM_ODOMETRY",
-            "code": "0x46",
+            "code": "0x47",
             "description": "This command stops the odometry calculation for the platform.",
             "category": "Platform"
         },
         {
             "command": "GET_PLATFORM_ODOMETRY",
-            "code": "0x47",
+            "code": "0x48",
             "description": "This command retrieves the odometry of the platform in meters and radians.",
             "response":{
                 "name": "platform_odometry",

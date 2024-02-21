@@ -40,6 +40,13 @@ Parameters:
 void controllers_manager_initialize_controller_multiple(uint8_t motor_selection, double kp, double ki, double kd, double integral_limit);
 
 /*
+Stop controller for selected motor
+Parameters:
+    motor_index: Motor index
+*/
+void controllers_manager_stop_controller_multiple(uint8_t motor_selection);
+
+/*
 Delete controller for single motor
 Parameters:
     motor_index: Motor index

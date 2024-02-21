@@ -15,7 +15,8 @@
 // Function types definitions
 typedef void (*set_platform_velocity_t)(platform_velocity_t);
 typedef void (*set_platform_target_velocity_t)(platform_velocity_t);
-typedef void (*initialize_platform_controller_t)(plaform_controller_settings_t);
+typedef void (*start_platform_velocity_controller_t)(plaform_controller_settings_t);
+typedef void (*stop_platform_velocity_controller_t)();
 typedef void (*initialize_platform_odometry_t)();
 typedef platform_odometry_t (*update_platform_odometry_t)(uint8_t* motor_indexes, double* velocities, uint8_t motor_count);
 
@@ -46,7 +47,8 @@ typedef struct
     // Platform functions
     set_platform_velocity_t set_platform_velocity;
     set_platform_target_velocity_t set_platform_target_velocity;
-    initialize_platform_controller_t initialize_platform_controller;
+    start_platform_velocity_controller_t start_platform_velocity_controller;
+    stop_platform_velocity_controller_t stop_platform_velocity_controller;
 
     // Platform properties
     union {
@@ -104,20 +106,29 @@ void platform_set_target_velocity(platform_velocity_t platform_target_velocity)
         return;
     }
 
-    // TODO: Is controller initialized?
-
     platform.set_platform_target_velocity(platform_target_velocity);
 }
 
-void platform_initialize_controller(plaform_controller_settings_t plaform_controller_settings)
+void platform_start_velocity_controller(plaform_controller_settings_t plaform_controller_settings)
 {
     if (!platform.is_initialized)
     {
         return;
     }
     
-    platform.initialize_platform_controller(plaform_controller_settings);
+    platform.start_platform_velocity_controller(plaform_controller_settings);
     platform.is_controller_initialized = 1;
+}
+
+void platform_stop_velocity_controller()
+{
+    if (!platform.is_initialized || !platform.is_controller_initialized)
+    {
+        return;
+    }
+
+    platform.is_controller_initialized = 0;
+    platform.stop_platform_velocity_controller();
 }
 
 platform_odometry_t platform_update_odometry(uint8_t* motor_indexes, double* velocities, uint8_t motor_count)
@@ -137,7 +148,7 @@ platform_odometry_t platform_update_odometry(uint8_t* motor_indexes, double* vel
 
 // ------------------------------------------------------------------------
 // Mecanum platform functions
-void set_mecaunm_platform_velocity(platform_velocity_t platform_velocity){
+void mecaunm_platform_set_velocity(platform_velocity_t platform_velocity){
     // Normalize velocity
     int l = abs(platform_velocity.x) + abs(platform_velocity.y) + abs(platform_velocity.t);
     platform_velocity.x = sing(platform_velocity.x) * platform_velocity.x * platform_velocity.x / l;
@@ -157,7 +168,12 @@ void set_mecaunm_platform_velocity(platform_velocity_t platform_velocity){
     set_motor_speed(MOTOR3, mecanum_velocity.motor3);
 }
 
-void mecanum_platform_initialize_controller(plaform_controller_settings_t plaform_controller_settings)
+void mecanum_platform_stop_velocity_controller()
+{
+    controllers_manager_stop_controller_multiple(BMOTOR0 | BMOTOR1 | BMOTOR2 | BMOTOR3);
+}
+
+void mecanum_platform_start_velocity_controller(plaform_controller_settings_t plaform_controller_settings)
 {
     controllers_manager_initialize_controller_multiple(
         BMOTOR0 | BMOTOR1 | BMOTOR2 | BMOTOR3,
@@ -215,7 +231,7 @@ platform_odometry_t mecanum_platform_update_odometry(uint8_t* motor_indexes, dou
     return odometry;
 }
 
-void initialize_mecanum_platform_odometry()
+void mecanum_platform_start_odometry()
 {
     // Start odometry for each motor encoder
     encoder_start_odometry(MOTOR0);
@@ -248,17 +264,16 @@ void initialize_mecanum_platform(uint8_t isReversed0, uint8_t isReversed1, uint8
     }
 
     platform.is_initialized = true;
-    platform.set_platform_velocity = set_mecaunm_platform_velocity;
-    platform.initialize_platform_controller = mecanum_platform_initialize_controller;
+    platform.set_platform_velocity = mecaunm_platform_set_velocity;
+    platform.start_platform_velocity_controller = mecanum_platform_start_velocity_controller;
+    platform.stop_platform_velocity_controller = mecanum_platform_stop_velocity_controller;
     platform.set_platform_target_velocity = mecanum_platform_set_target_velocity;
-    platform.initialize_platform_odometry = initialize_mecanum_platform_odometry;
+    platform.initialize_platform_odometry = mecanum_platform_start_odometry;
     platform.update_platform_odometry = mecanum_platform_update_odometry;
 
     platform.properties.mecanum.wheel_diameter = wheel_diameter;
     platform.properties.mecanum.length = length;
     platform.properties.mecanum.width = width;
-
-
 }
 
 // ------------------------------------------------------------------------
@@ -283,7 +298,7 @@ void set_omni_platform_velocity(platform_velocity_t platform_velocity)
     set_motor_speed(MOTOR2, V3);
 }
 
-void omni_platform_initialize_controller(plaform_controller_settings_t plaform_controller_settings)
+void omni_platform_start_velocity_controller(plaform_controller_settings_t plaform_controller_settings)
 {
     controllers_manager_initialize_controller_multiple(
         BMOTOR0 | BMOTOR1 | BMOTOR2,
@@ -291,6 +306,11 @@ void omni_platform_initialize_controller(plaform_controller_settings_t plaform_c
         plaform_controller_settings.ki,
         plaform_controller_settings.kd,
         plaform_controller_settings.integral_limit);
+}
+
+void omni_platform_stop_velocity_controller()
+{
+    controllers_manager_stop_controller_multiple(BMOTOR0 | BMOTOR1 | BMOTOR2);
 }
 
 void omni_platform_set_target_velocity(platform_velocity_t platform_target_velocity)
@@ -362,7 +382,8 @@ void initialize_omni_platform(uint8_t isReversed0, uint8_t isReversed1, uint8_t 
 
     platform.is_initialized = true;
     platform.set_platform_velocity = set_omni_platform_velocity;
-    platform.initialize_platform_controller = omni_platform_initialize_controller;
+    platform.start_platform_velocity_controller = omni_platform_start_velocity_controller;
+    platform.stop_platform_velocity_controller = omni_platform_stop_velocity_controller;
     platform.set_platform_target_velocity = omni_platform_set_target_velocity;
     platform.initialize_platform_odometry = initialize_omni_platform_odometry;
     platform.update_platform_odometry = omni_platform_update_odometry;
