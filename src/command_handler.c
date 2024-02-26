@@ -3,6 +3,7 @@
 //------------------------------------------------------------
 #include "commands.h"
 #include "controllers_manager.h"
+#include "odometry_manager.h"
 #include <pid_controller.h>
 #include <cmsis_os.h>
 #include <message_queue.h>
@@ -102,6 +103,35 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
             }
         break;
 
+        case START_ENCODER_ODOMETRY:
+            {
+            encoder_start_odometry(
+                cmd->properties.start_encoder_odometry.encoder_index);
+            }
+        break;
+
+        case RESET_ENCODER_ODOMETRY:
+            {
+            encoder_reset_odometry(
+                cmd->properties.reset_encoder_odometry.encoder_index);
+            }
+        break;
+
+        case GET_ENCODER_ODOMETRY:
+            {
+            double odometry = encoder_get_odometry(
+                cmd->properties.get_encoder_odometry.encoder_index);
+            command_callback((uint8_t*)&odometry, sizeof(double));
+            }
+        break;
+
+        case STOP_ENCODER_ODOMETRY:
+            {
+            encoder_stop_odometry(
+                cmd->properties.stop_encoder_odometry.encoder_index);
+            }
+        break;
+
         // GPIO commands
         case INITIALIZE_GPIO_PIN:
             initialize_gpio_pin(
@@ -144,7 +174,8 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
                 cmd->properties.initialize_mecanum_platform.is_reversed_3,
                 cmd->properties.initialize_mecanum_platform.length,
                 cmd->properties.initialize_mecanum_platform.width,
-                cmd->properties.initialize_mecanum_platform.wheels_diameter
+                cmd->properties.initialize_mecanum_platform.wheels_diameter,
+                cmd->properties.initialize_mecanum_platform.encoder_resolution
             );
         break;
 
@@ -154,7 +185,8 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
                 cmd->properties.initialize_omni_platform.is_reversed_1,
                 cmd->properties.initialize_omni_platform.is_reversed_2,
                 cmd->properties.initialize_omni_platform.wheels_diameter,
-                cmd->properties.initialize_omni_platform.robot_radius
+                cmd->properties.initialize_omni_platform.robot_radius,
+                cmd->properties.initialize_omni_platform.encoder_resolution
             );
         break;
 
@@ -169,17 +201,22 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
             }
         break;
 
-        case SET_PLATFORM_CONTROLLER:
+        case START_PLATFORM_CONTROLLER:
             {
             plaform_controller_settings_t plaform_controller_settings = {
-                .kp = cmd->properties.set_platform_controller.kp,
-                .ki = cmd->properties.set_platform_controller.ki,
-                .kd = cmd->properties.set_platform_controller.kd,
-                .encoder_resolution = cmd->properties.set_platform_controller.encoder_resolution,
-                .integral_limit = cmd->properties.set_platform_controller.integral_limit
+                .kp = cmd->properties.start_platform_controller.kp,
+                .ki = cmd->properties.start_platform_controller.ki,
+                .kd = cmd->properties.start_platform_controller.kd,
+                .integral_limit = cmd->properties.start_platform_controller.integral_limit
             };
 
-            platform_initialize_controller(plaform_controller_settings);
+            platform_start_velocity_controller(plaform_controller_settings);
+            }
+        break;
+
+        case STOP_PLATFORM_CONTROLLER:
+            {
+            platform_stop_velocity_controller();
             }
         break;
 
@@ -193,5 +230,30 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
             platform_set_target_velocity(platform_target_velocity);
         }
         break;
+        
+        case START_PLATFORM_ODOMETRY:
+        {
+            platform_start_odometry();
         }
+        break;
+
+        case RESET_PLATFORM_ODOMETRY:
+        {
+            platform_reset_odometry();
+        }
+        break;
+
+        case GET_PLATFORM_ODOMETRY:
+        {
+            platform_odometry_t platform_odometry = platform_get_odometry();
+            command_callback((uint8_t*)&platform_odometry, sizeof(platform_odometry_t));
+        }
+        break;
+
+        case STOP_PLATFORM_ODOMETRY:
+        {
+            platform_stop_odometry();
+        }
+        break;
+    }
 }

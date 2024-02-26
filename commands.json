@@ -1,5 +1,5 @@
 {
-    "version": "1.0.3",
+    "version": "1.0.4",
     "commands": [
         {
             "command": "INITIALIZE_MOTOR",
@@ -269,6 +269,79 @@
             "category": "Encoder"
         },
         {
+            "command": "START_ENCODER_ODOMETRY",
+            "code": "0x13",
+            "description": "This command starts the odometry calculation for the specified encoder.",
+            "properties": [
+                {
+                    "name": "encoder_index",
+                    "type": "uint8_t",
+                    "range": [
+                        0,
+                        3
+                    ],
+                    "description": "The index of the encoder to start the odometry calculation for."
+                }
+            ],
+            "category": "Encoder"
+        },
+        {
+            "command": "RESET_ENCODER_ODOMETRY",
+            "code": "0x14",
+            "description": "This command resets the odometry calculation for the specified encoder.",
+            "properties": [
+                {
+                    "name": "encoder_index",
+                    "type": "uint8_t",
+                    "range": [
+                        0,
+                        3
+                    ],
+                    "description": "The index of the encoder to reset the odometry calculation for."
+                }
+            ],
+            "category": "Encoder"
+        },
+        {
+            "command": "STOP_ENCODER_ODOMETRY",
+            "code": "0x15",
+            "description": "This command stops the odometry calculation for the specified encoder.",
+            "properties": [
+                {
+                    "name": "encoder_index",
+                    "type": "uint8_t",
+                    "range": [
+                        0,
+                        3
+                    ],
+                    "description": "The index of the encoder to stop the odometry calculation for."
+                }
+            ],
+            "category": "Encoder"
+        },
+        {
+            "command": "GET_ENCODER_ODOMETRY",
+            "code": "0x16",
+            "description": "This command retrieves the odometry of the specified encoder.",
+            "properties": [
+                {
+                    "name": "encoder_index",
+                    "type": "uint8_t",
+                    "range": [
+                        0,
+                        3
+                    ],
+                    "description": "The index of the encoder to retrieve the odometry for."
+                }
+            ],
+            "response": {
+                "name": "odometry",
+                "type": "double",
+                "description": "The odometry of the encoder in radians."
+            },
+            "category": "Encoder"
+        },
+        {
             "command": "INITIALIZE_GPIO_PIN",
             "code": "0x20",
             "description": "This command initializes a digital pin and prepares it for use.",
@@ -401,6 +474,12 @@
                     "type": "double",
                     "default": 1,
                     "description": "Diameter of the robot wheels in meters."
+                },
+                {
+                    "name": "encoder_resolution",
+                    "type": "double",
+                    "default": 0,
+                    "description": "Encoder resolution in ticks per revolution. The value can not be negative. If platform does not have encoders, the value should be set to zero."
                 }
             ],
             "category": "Platform"
@@ -439,6 +518,12 @@
                     "type": "double",
                     "default": 1,
                     "description": "Distance berween the center of the robot and the center of the wheels in millimeters."
+                },
+                {
+                    "name": "encoder_resolution",
+                    "type": "double",
+                    "default": 0,
+                    "description": "Encoder resolution in ticks per revolution. The value can not be negative. If platform does not have encoders, the value should be set to zero."
                 }
             ],
             "category": "Platform"
@@ -479,7 +564,7 @@
             "category": "Platform"
         },
         {
-            "command": "SET_PLATFORM_CONTROLLER",
+            "command": "START_PLATFORM_CONTROLLER",
             "code": "0x41",
             "description": "This command sets the controller for the platform.",
             "properties": [
@@ -497,11 +582,6 @@
                     "name": "kd",
                     "type": "double",
                     "description": "Derivative constant of PID"
-                },
-                {
-                    "name": "encoder_resolution",
-                    "type": "double",
-                    "description": "Encoder resolution in ticks per revolution. The value can not be negative or zero."
                 },
                 {
                     "name": "integral_limit",
@@ -542,7 +622,43 @@
                 "name": "platform_velocity",
                 "type": "object",
                 "description": "The current velocity of the platform in meters per second."
-            }
+            },
+            "category": "Platform"
+        },
+        {
+            "command": "STOP_PLATFORM_CONTROLLER",
+            "code": "0x44",
+            "description": "This command stops the controller for the platform.",
+            "category": "Platform"
+        },
+        {
+            "command": "START_PLATFORM_ODOMETRY",
+            "code": "0x45",
+            "description": "This command starts the odometry calculation for the platform.",
+            "category": "Platform"
+        },
+        {
+            "command": "RESET_PLATFORM_ODOMETRY",
+            "code": "0x46",
+            "description": "This command resets the odometry calculation for the platform.",
+            "category": "Platform"
+        },
+        {
+            "command": "STOP_PLATFORM_ODOMETRY",
+            "code": "0x47",
+            "description": "This command stops the odometry calculation for the platform.",
+            "category": "Platform"
+        },
+        {
+            "command": "GET_PLATFORM_ODOMETRY",
+            "code": "0x48",
+            "description": "This command retrieves the odometry of the platform in meters and radians.",
+            "response":{
+                "name": "platform_odometry",
+                "type": "object",
+                "description": "The odometry of the platform in meters and radians."
+            },
+            "category": "Platform"
         }
     ],
     "objects": [
@@ -610,6 +726,27 @@
                     "name": "t",
                     "type": "double",
                     "description": "Theta component of platform velocity in radians per second"
+                }
+            ]
+        },
+        {
+            "name": "platform_odometry",
+            "description": "The odometry of the platform in meters and radians.",
+            "properties": [
+                {
+                    "name": "x",
+                    "type": "double",
+                    "description": "X component of platform odometry in meters"
+                },
+                {
+                    "name": "y",
+                    "type": "double",
+                    "description": "Y component of platform odometry in meters"
+                },
+                {
+                    "name": "t",
+                    "type": "double",
+                    "description": "Theta component of platform odometry in radians"
                 }
             ]
         }

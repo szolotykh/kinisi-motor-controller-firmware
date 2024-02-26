@@ -21,14 +21,6 @@ python generator.py <path_to_input_json> <path_to_output_file> --language <targe
 
 #### Examples:
 
-- For JavaScript:
-    ```
-    python generator.py commands.json kinisi_commands.js --language js
-    ```
-- For Python:
-    ```
-    python generator.py commands.json kinisi_commands.py --language python
-    ```
 - For C:
     ```
     python generator.py commands.json kinisi_commands.h --language c

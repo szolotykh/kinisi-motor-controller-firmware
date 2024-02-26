@@ -37,4 +37,4 @@ void toggle_gpio_pin_state(uint8_t pin);
 // Status LED
 void initialize_status_led();
 void set_status_led_state(uint8_t state);
-void toggle_status_led();
+void toggle_status_led_state();

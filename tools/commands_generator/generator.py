@@ -72,7 +72,7 @@ def generate_md_file(commands_data):
     md_content += "\n## Commands\n"
     for command in commands_data.get("commands", []):
         md_content += f"### {command['command']} ({command['code']})\n"
-        md_content += f"Description: {command['description']}\n"
+        md_content += f"Description: {command['description']}\\\n"
 
         # Generate property definitions
         md_content += f"Properties:\n"

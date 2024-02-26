@@ -15,6 +15,7 @@
 #ifdef MP_V3
 	// Motor configurations
 	#define NUMBER_MOTORS 4
+	#define NUMBER_ENCODERS 4
 
 	static const motor_info_t motor_info[NUMBER_MOTORS] = {
 		{
@@ -130,6 +131,7 @@
 #ifdef MP_V2
 	// Motor configurations
 	#define NUMBER_MOTORS 4
+	#define NUMBER_ENCODERS 4
 
 	static const motor_info_t motor_info[NUMBER_MOTORS] = {
 		{
@@ -241,6 +243,7 @@
 
 	// Motor configurations
 	#define NUMBER_MOTORS 4
+	#define NUMBER_ENCODERS 4
 
 	static const motor_info_t motor_info[NUMBER_MOTORS] = {
 		{
