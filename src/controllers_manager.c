@@ -257,6 +257,12 @@ void controllers_manager_stop_controller_multiple(uint8_t motor_selection)
 
 void controllers_manager_delete_controller(uint8_t motor_index)
 {
+    // Check if controller for this motor is running
+    if(controllers_manager.state.Controller_info[motor_index].state == STOP)
+    {
+        return;
+    }
+
     if (xSemaphoreTake(controllers_manager.state.controller_state_mutex, portMAX_DELAY)) {
 
         controllers_manager.state.Controller_info[motor_index].state = STOP;
@@ -275,6 +281,12 @@ void controllers_manager_delete_controller(uint8_t motor_index)
 
 void controllers_manager_set_target_speed(uint8_t motor_index, double target_speed)
 {
+    // Check if controller for this motor is running
+    if(controllers_manager.state.Controller_info[motor_index].state == STOP)
+    {
+        return;
+    }
+
     if (xSemaphoreTake(controllers_manager.state.controller_state_mutex, portMAX_DELAY)) {
         controllers_manager.state.target_motor_speed[motor_index] = target_speed;
         xSemaphoreGive(controllers_manager.state.controller_state_mutex);
@@ -295,6 +307,12 @@ void controllers_manager_set_target_speed_multiple(uint8_t* motor_indexes, doubl
 
 motor_controller_state controllers_manager_get_motor_controller_state(uint8_t motor_index)
 {
+    // Check if controller for this motor is running
+    if(controllers_manager.state.Controller_info[motor_index].state == STOP)
+    {
+        return;
+    }
+
     const pid_controller_t* controller = &controllers_manager.state.Controller_info[motor_index].controller;
     motor_controller_state state = {0};
     if (controllers_manager.state.Controller_info[motor_index].state == RUN)
