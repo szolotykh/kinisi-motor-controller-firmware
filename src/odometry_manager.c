@@ -84,8 +84,8 @@ void odometry_manager_task(void *argument)
                 }
                 
                 platform_odometry_t odometry_change = platform_update_odometry(motor_indexes, velocities, NUMBER_MOTORS);
-                state->platform_odometry.x += odometry_change.x;
-                state->platform_odometry.y += odometry_change.y;
+                state->platform_odometry.x += odometry_change.x * cosf(state->platform_odometry.t) - odometry_change.y * sinf(state->platform_odometry.t);
+                state->platform_odometry.y += odometry_change.x * sinf(state->platform_odometry.t) + odometry_change.y * cosf(state->platform_odometry.t);
                 state->platform_odometry.t += odometry_change.t;
             }
             osDelay(1);
