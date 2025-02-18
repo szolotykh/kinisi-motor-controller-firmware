@@ -170,6 +170,15 @@ Properties:
 - robot_radius (double): Distance berween the center of the robot and the center of the wheels in millimeters.
 - encoder_resolution (double): Encoder resolution in ticks per revolution. The value can not be negative. If platform does not have encoders, the value should be set to zero.
 
+### INITIALIZE_DIFFERENTIAL_PLATFORM (0x32)
+Description: This command initializes a differential platform and prepares it for use.\
+Properties:
+- is_reversed_0 (bool): Determins if motor 0 is reversed.
+- is_reversed_1 (bool): Determins if motor 1 is reversed.
+- wheel_diameter (double): Diameter of the robot wheels in meters.
+- wheel_base (double): Distance between the two wheels in meters.
+- encoder_resolution (double): Encoder resolution in ticks per revolution. The value can not be negative. If platform does not have encoders, the value should be set to zero.
+
 ### SET_PLATFORM_VELOCITY (0x40)
 Description: This command sets the velocity for the platform in PWM.\
 Properties:

@@ -190,6 +190,16 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
             );
         break;
 
+        case INITIALIZE_DIFFERENTIAL_PLATFORM:
+            initialize_differential_platform(
+                cmd->properties.initialize_differential_platform.is_reversed_0,
+                cmd->properties.initialize_differential_platform.is_reversed_1,
+                cmd->properties.initialize_differential_platform.wheel_diameter,
+                cmd->properties.initialize_differential_platform.wheel_base,
+                cmd->properties.initialize_differential_platform.encoder_resolution
+            );
+        break;
+
         case SET_PLATFORM_VELOCITY:
             {
             platform_velocity_t platform_velocity = {

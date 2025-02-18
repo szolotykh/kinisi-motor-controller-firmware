@@ -29,6 +29,21 @@ This script will:
 - Generate the command file `commands.h` from `commands.json` using the `generator.py` script.
 - Generate the documentation file `commands.md` from `commands.json` using the `generator.py` script.
 
+## Building the Project
+
+To build the project for the `genericSTM32F405RG` configuration, follow these steps:
+
+1. **Ensure you have PlatformIO installed**: The build process requires PlatformIO.
+
+2. **Navigate to the project directory**: Open a terminal and navigate to the root directory of your project.
+
+3. **Run the build command**: Execute the following command in the terminal:
+    ```sh
+    pio run -e genericSTM32F405RG
+    ```
+
+This command will build the project for the `genericSTM32F405RG` configuration.
+
 ## Links
 - [Kinisi Motion Controller firmware](https://github.com/szolotykh/kinisi-motor-controller-firmware)
 - [Kinisi Motion Controller hardware](https://github.com/szolotykh/kinisi-motor-controller-board)

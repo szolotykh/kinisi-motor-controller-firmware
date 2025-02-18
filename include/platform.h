@@ -60,6 +60,17 @@ Parameters:
 void initialize_omni_platform(uint8_t isReversed0, uint8_t isReversed1, uint8_t isReversed2, double wheel_diameter, double robot_radius, double encoder_resolution);
 
 /*
+Initialize differential platform
+Parameters:
+    isReversed0: If true, the motor 0 is reversed
+    isReversed1: If true, the motor 1 is reversed
+    wheel_diameter: Wheel diameter in meters
+    wheel_base: Wheel base in meters
+    encoder_resolution: Encoder resolution in pulses per revolution
+*/
+void initialize_differential_platform(uint8_t isReversed0, uint8_t isReversed1, double wheel_diameter, double wheel_base, double encoder_resolution);
+
+/*
 Set platform velocity
 Parameters:
     platform_velocity: Platform velocity. x, y and t are in PWM units [-100, 100]

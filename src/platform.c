@@ -35,6 +35,13 @@ typedef struct
     double robot_radius; // Distance from the center of the platform to the wheel in meters
 }  omni_platform_settings_t;
 
+// Differential platform settings
+typedef struct
+{
+    double wheel_diameter; // Wheel diameter in meters
+    double wheel_base; // Distance between the two wheels in meters
+}  differential_platform_settings_t;
+
 // Platform structure
 typedef struct
 {
@@ -54,6 +61,7 @@ typedef struct
     union {
         mecanum_platform_settings_t mecanum;
         omni_platform_settings_t omni;
+        differential_platform_settings_t differential;
     } properties;
 
     // Platform odometry
@@ -80,6 +88,12 @@ static platform_t platform = {
 // Function definitions
 double verify_range(double c);
 double sing(double c);
+void set_differential_platform_velocity(platform_velocity_t platform_velocity);
+void differential_platform_start_velocity_controller(plaform_controller_settings_t plaform_controller_settings);
+void differential_platform_stop_velocity_controller();
+void differential_platform_set_target_velocity(platform_velocity_t platform_target_velocity);
+void initialize_differential_platform_odometry();
+platform_odometry_t differential_platform_update_odometry(uint8_t* motor_indexes, double* velocities, uint8_t motor_count);
 
 // ------------------------------------------------------------------------
 // Platform functions
@@ -390,6 +404,100 @@ void initialize_omni_platform(uint8_t isReversed0, uint8_t isReversed1, uint8_t 
 
     platform.properties.omni.wheel_diameter = wheel_diameter;
     platform.properties.omni.robot_radius = robot_radius;
+}
+
+// ------------------------------------------------------------------------
+// Differential platform functions
+
+void initialize_differential_platform(uint8_t isReversed0, uint8_t isReversed1, double wheel_diameter, double wheel_base, double encoder_resolution)
+{
+    if (platform.is_initialized)
+    {
+        return;
+    }
+
+    initialize_motor(MOTOR0, isReversed0);
+    initialize_motor(MOTOR1, isReversed1);
+
+    if (encoder_resolution > 0)
+    {
+        initialize_encoder(MOTOR0, encoder_resolution, isReversed0);
+        initialize_encoder(MOTOR1, encoder_resolution, isReversed1);
+    }
+
+    platform.is_initialized = true;
+    platform.set_platform_velocity = set_differential_platform_velocity;
+    platform.start_platform_velocity_controller = differential_platform_start_velocity_controller;
+    platform.stop_platform_velocity_controller = differential_platform_stop_velocity_controller;
+    platform.set_platform_target_velocity = differential_platform_set_target_velocity;
+    platform.initialize_platform_odometry = initialize_differential_platform_odometry;
+    platform.update_platform_odometry = differential_platform_update_odometry;
+
+    platform.properties.differential.wheel_diameter = wheel_diameter;
+    platform.properties.differential.wheel_base = wheel_base;
+}
+
+void set_differential_platform_velocity(platform_velocity_t platform_velocity)
+{
+    double V0 = platform_velocity.x - platform_velocity.t * platform.properties.differential.wheel_base / 2.0;
+    double V1 = platform_velocity.x + platform_velocity.t * platform.properties.differential.wheel_base / 2.0;
+
+    set_motor_speed(MOTOR0, V0);
+    set_motor_speed(MOTOR1, V1);
+}
+
+void differential_platform_start_velocity_controller(plaform_controller_settings_t plaform_controller_settings)
+{
+    controllers_manager_initialize_controller_multiple(
+        BMOTOR0 | BMOTOR1,
+        plaform_controller_settings.kp,
+        plaform_controller_settings.ki,
+        plaform_controller_settings.kd,
+        plaform_controller_settings.integral_limit);
+}
+
+void differential_platform_stop_velocity_controller()
+{
+    controllers_manager_stop_controller_multiple(BMOTOR0 | BMOTOR1);
+}
+
+void differential_platform_set_target_velocity(platform_velocity_t platform_target_velocity)
+{
+    double V0 = platform_target_velocity.x - platform_target_velocity.t * platform.properties.differential.wheel_base / 2.0;
+    double V1 = platform_target_velocity.x + platform_target_velocity.t * platform.properties.differential.wheel_base / 2.0;
+
+    set_motor_speed(MOTOR0, V0);
+    set_motor_speed(MOTOR1, V1);
+}
+
+void initialize_differential_platform_odometry()
+{
+    encoder_start_odometry(MOTOR0);
+    encoder_start_odometry(MOTOR1);
+}
+
+platform_odometry_t differential_platform_update_odometry(uint8_t* motor_indexes, double* velocities, uint8_t motor_count)
+{
+    platform_odometry_t odometry = {
+        .x = 0,
+        .y = 0,
+        .t = 0
+    };
+
+    if (motor_count < 2)
+    {
+        return odometry;
+    }
+
+    double R = platform.properties.differential.wheel_diameter / 2.0;
+    double L = platform.properties.differential.wheel_base;
+    double v0 = velocities[0];
+    double v1 = velocities[1];
+
+    odometry.x = R / 2.0 * (v0 + v1);
+    odometry.t = R / L * (v1 - v0);
+
+    return odometry;
 }
 
 // ------------------------------------------------------------------------

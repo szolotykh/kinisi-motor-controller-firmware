@@ -529,6 +529,44 @@
             "category": "Platform"
         },
         {
+            "command": "INITIALIZE_DIFFERENTIAL_PLATFORM",
+            "code": "0x32",
+            "description": "This command initializes a differential platform and prepares it for use.",
+            "properties": [
+                {
+                    "name": "is_reversed_0",
+                    "type": "bool",
+                    "default": false,
+                    "description": "Determins if motor 0 is reversed."
+                },
+                {
+                    "name": "is_reversed_1",
+                    "type": "bool",
+                    "default": false,
+                    "description": "Determins if motor 1 is reversed."
+                },
+                {
+                    "name": "wheel_diameter",
+                    "type": "double",
+                    "default": 1,
+                    "description": "Diameter of the robot wheels in meters."
+                },
+                {
+                    "name": "wheel_base",
+                    "type": "double",
+                    "default": 1,
+                    "description": "Distance between the two wheels in meters."
+                },
+                {
+                    "name": "encoder_resolution",
+                    "type": "double",
+                    "default": 0,
+                    "description": "Encoder resolution in ticks per revolution. The value can not be negative. If platform does not have encoders, the value should be set to zero."
+                }
+            ],
+            "category": "Platform"
+        },
+        {
             "command": "SET_PLATFORM_VELOCITY",
             "code": "0x40",
             "description": "This command sets the velocity for the platform in PWM.",
@@ -618,7 +656,7 @@
             "command": "GET_PLATFORM_CURRENT_VELOCITY",
             "code": "0x43",
             "description": "This command gets the current velocity of the platform in meters per second.",
-            "response":{
+            "response": {
                 "name": "platform_velocity",
                 "type": "object",
                 "description": "The current velocity of the platform in meters per second."
@@ -653,7 +691,7 @@
             "command": "GET_PLATFORM_ODOMETRY",
             "code": "0x48",
             "description": "This command retrieves the odometry of the platform in meters and radians.",
-            "response":{
+            "response": {
                 "name": "platform_odometry",
                 "type": "object",
                 "description": "The odometry of the platform in meters and radians."
