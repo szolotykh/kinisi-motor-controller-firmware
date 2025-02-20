@@ -5,21 +5,24 @@
 #include "commands_handler.h"
 #include "message_queue.h"
 #include "hardware_i2c.h"
+#include "os_interface.h"
 #include <assert.h>
-#include <cmsis_os.h>
+#include <stdlib.h>
 
 // Change length of messages that command queue can store.
 // Max command + message lenght byte.
 #define MESSAGE_QUEUE_MAX_STR_LENGTH sizeof(controller_command_t) + 1
 
-void CommandHandlerTask(void *argument);
+typedef struct commands_manager
+{
+    thread_handle_t threadHandler;
+} commands_manager_t;
 
-const osThreadAttr_t CommandsTask_attributes = {
-  .name = "CommandsTask",
-  .stack_size = 128 * 8,
-  .priority = (osPriority_t) osPriorityNormal,
+static commands_manager_t commands_manager = {
+    .threadHandler = NULL
 };
 
+void CommandHandlerTask(void *argument);
 
 void CommandHandlerTask(void *argument)
 {
@@ -33,6 +36,8 @@ void CommandHandlerTask(void *argument)
     // Initialize USB and I2C interfaces
     MX_USB_DEVICE_Init();
     initialize_external_i2c();
+
+    const os_interface_t* os = get_os_interface();
 
     while(1)
     {
@@ -55,13 +60,14 @@ void CommandHandlerTask(void *argument)
         }
         
         // Small delay
-        osDelay(1);
+        os->delay_ms(1);
     }
 }
 
-void commands_manager_init(commands_manager_t* commands_manager)
+void commands_manager_start(void)
 {
-    commands_manager->threadHandler = osThreadNew(CommandHandlerTask, NULL, &CommandsTask_attributes);
+    const os_interface_t* os = get_os_interface();
+    commands_manager.threadHandler = os->create_thread(CommandHandlerTask, "CommandsTask", NULL);
 }
 
 void command_callback_usb(uint8_t* resonse, uint8_t data_len)

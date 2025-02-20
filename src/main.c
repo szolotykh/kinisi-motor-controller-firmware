@@ -5,15 +5,13 @@
 #include "stm32f4xx.h"
 #include "hw_gpio.h"
 #include "usb_device.h"
-#include <cmsis_os.h>
+#include "os_interface.h"
 #include "commands_manager.h"
 
 #define HAL_PCD_MODULE_ENABLED
 extern PCD_HandleTypeDef hpcd_USB_OTG_FS;
 
 void OTG_FS_IRQHandler(void);
-
-commands_manager_t commandsManager;
 
 int main(void)
 { 
@@ -22,9 +20,10 @@ int main(void)
     initialize_status_led();
     HAL_NVIC_SetPriority(PendSV_IRQn, 15, 0);
 
-    osKernelInitialize();
-    commands_manager_init(&commandsManager);
-    osKernelStart();
+    const os_interface_t* os = get_os_interface();
+    os->kernel_init();
+    commands_manager_start();
+    os->kernel_start();
 }
 
 void NMI_Handler(void)
