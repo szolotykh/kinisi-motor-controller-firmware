@@ -17,7 +17,11 @@ int main(void)
 { 
     HAL_Init();
     SystemClock_Config();
-    initialize_status_led();
+    
+    // Initialize GPIO interface
+    const gpio_interface_t* gpio = get_gpio_interface();
+    gpio->init_status_led();
+    
     HAL_NVIC_SetPriority(PendSV_IRQn, 15, 0);
 
     const os_interface_t* os = get_os_interface();

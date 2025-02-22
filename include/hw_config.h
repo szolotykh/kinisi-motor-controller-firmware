@@ -17,6 +17,10 @@
 	#define NUMBER_MOTORS 4
 	#define NUMBER_ENCODERS 4
 
+	// Status pin configurations
+	#define STATUS_LED_PORT GPIOA
+	#define STATUS_LED_PIN GPIO_PIN_2
+
 	static const motor_info_t motor_info[NUMBER_MOTORS] = {
 		{
 			.timer = TIM12,
@@ -122,16 +126,16 @@
 		{.port = GPIOB, .pin = GPIO_PIN_8}
 	};
 
-	// Status pin configurations
-	#define STATUS_LED_PORT GPIOA
-	#define STATUS_LED_PIN GPIO_PIN_2
-
 #endif
 //------------------------------------------------------------
 #ifdef MP_V2
 	// Motor configurations
 	#define NUMBER_MOTORS 4
 	#define NUMBER_ENCODERS 4
+
+	// Status pin configurations
+	#define STATUS_LED_PORT GPIOC
+	#define STATUS_LED_PIN GPIO_PIN_12
 
 	static const motor_info_t motor_info[NUMBER_MOTORS] = {
 		{
@@ -232,10 +236,6 @@
 		{.port = GPIOA, .pin = GPIO_PIN_5}
 	};
 
-	// Status pin configurations
-	#define STATUS_LED_PORT GPIOC
-	#define STATUS_LED_PIN GPIO_PIN_12
-
 #endif
 
 //------------------------------------------------------------
@@ -244,6 +244,10 @@
 	// Motor configurations
 	#define NUMBER_MOTORS 4
 	#define NUMBER_ENCODERS 4
+
+	// Status pin configurations
+	#define STATUS_LED_PORT GPIOA
+	#define STATUS_LED_PIN GPIO_PIN_2
 
 	static const motor_info_t motor_info[NUMBER_MOTORS] = {
 		{
@@ -323,7 +327,4 @@
 		{.port = GPIOA, .pin = GPIO_PIN_5}
 	};
 
-	// Status pin configurations
-	#define STATUS_LED_PORT GPIOC
-	#define STATUS_LED_PIN GPIO_PIN_12
 #endif

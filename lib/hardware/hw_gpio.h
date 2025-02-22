@@ -6,35 +6,37 @@
 
 #include "stdint.h"
 
-// GPIO Pins
-#define GPIO_0 0
-#define GPIO_1 1
-#define GPIO_2 2
-#define GPIO_3 3
-#define GPIO_4 4
-#define GPIO_5 5
-#define GPIO_6 6
-#define GPIO_7 7
-#define GPIO_8 8
-#define GPIO_9 9
+typedef uint8_t gpio_pin_t;
 
-#define LOW 0
-#define HIGH 1
+// Pin states
+#define GPIO_LOW     0
+#define GPIO_HIGH    1
 
-#define GPIO_MODE_INPUT 0
-#define GPIO_MODE_INPUT_PULLDOWN 0
-#define GPIO_MODE_INPUT_PULLUP 1
-#define GPIO_MODE_INPUT_NOPULL 2
-#define GPIO_MODE_OUTPUT 3
+// Pin modes
+#define GPIO_MODE_INPUT_PULLDOWN  0
+#define GPIO_MODE_INPUT_PULLUP    1
+#define GPIO_MODE_INPUT_NOPULL    2
+#define GPIO_MODE_OUTPUT          3
 
-// GPIO
-void initialize_gpio_pin(uint8_t pin, uint8_t mode);
-uint8_t get_gpio_pin_state(uint8_t pin);
-void set_gpio_pin_state(uint8_t pin, uint8_t state);
-void toggle_gpio_pin_state(uint8_t pin);
+// Interface functions
+typedef void (*initialize_pin_fn)(gpio_pin_t pin, uint8_t mode);
+typedef uint8_t (*get_pin_state_fn)(gpio_pin_t pin);
+typedef void (*set_pin_state_fn)(gpio_pin_t pin, uint8_t state);
+typedef void (*toggle_pin_fn)(gpio_pin_t pin);
+typedef void (*init_status_led_fn)(void);
+typedef void (*set_status_led_fn)(uint8_t state);
+typedef void (*toggle_status_led_fn)(void);
 
+// Interface structure
+typedef struct {
+    initialize_pin_fn initialize_pin;
+    get_pin_state_fn get_state;
+    set_pin_state_fn set_state;
+    toggle_pin_fn toggle;
+    init_status_led_fn init_status_led;
+    set_status_led_fn set_status_led;
+    toggle_status_led_fn toggle_status_led;
+} gpio_interface_t;
 
-// Status LED
-void initialize_status_led();
-void set_status_led_state(uint8_t state);
-void toggle_status_led_state();
+// Get the GPIO interface implementation
+const gpio_interface_t* get_gpio_interface(void);

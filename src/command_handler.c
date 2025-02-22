@@ -16,8 +16,10 @@
 
 void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t*, uint8_t))
 {
+    const gpio_interface_t* gpio = get_gpio_interface();
+
     switch(cmd->commandType)
-        {
+    {
         case INITIALIZE_MOTOR:
             initialize_motor(cmd->properties.initialize_motor.motor_index, cmd->properties.initialize_motor.is_reversed);
         break;
@@ -134,35 +136,35 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
 
         // GPIO commands
         case INITIALIZE_GPIO_PIN:
-            initialize_gpio_pin(
+            gpio->initialize_pin(
                 cmd->properties.initialize_gpio_pin.pin_number,
                 cmd->properties.initialize_gpio_pin.mode);
         break;
 
         case SET_GPIO_PIN_STATE:
-            set_gpio_pin_state(
+            gpio->set_state(
                 cmd->properties.set_gpio_pin_state.pin_number,
                 cmd->properties.set_gpio_pin_state.state);
         break;
 
         case GET_GPIO_PIN_STATE:
             {
-            uint8_t state = get_gpio_pin_state(cmd->properties.get_gpio_pin_state.pin_number);
+            uint8_t state = gpio->get_state(cmd->properties.get_gpio_pin_state.pin_number);
             command_callback((uint8_t*)&state, sizeof(uint8_t));
             }
         break;
 
         case TOGGLE_GPIO_PIN_STATE:
-            toggle_gpio_pin_state(cmd->properties.toggle_gpio_pin_state.pin_number);
+            gpio->toggle(cmd->properties.toggle_gpio_pin_state.pin_number);
         break;
 
         // Status LED commands
         case SET_STATUS_LED_STATE:
-            set_status_led_state(cmd->properties.set_status_led_state.state);
+            gpio->set_status_led(cmd->properties.set_status_led_state.state);
         break;
 
         case TOGGLE_STATUS_LED_STATE:
-            toggle_status_led_state();
+            gpio->toggle_status_led();
         break;
 
         // Platform commands
