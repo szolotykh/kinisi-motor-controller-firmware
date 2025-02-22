@@ -7,8 +7,19 @@
 #include <math.h>
 #include <stdlib.h>
 
+// Platform configuration
+static struct {
+    double wheel_radius;     // R = wheel_diameter/2
+    double robot_radius;     // L = distance from center to wheels
+    uint8_t is_initialized;
+} omni_config = {0};
+
 void set_omni_platform_velocity(platform_velocity_t platform_velocity)
 {
+    if (!omni_config.is_initialized) {
+        return;
+    }
+
     double V1 = sqrt(3.0)/2.0 * platform_velocity.x - 0.5 * platform_velocity.y + platform_velocity.t;
     double V2 = -sqrt(3.0)/2.0 * platform_velocity.x - 0.5 * platform_velocity.y + platform_velocity.t;
     double V3 = platform_velocity.y + platform_velocity.t;
@@ -21,13 +32,17 @@ void set_omni_platform_velocity(platform_velocity_t platform_velocity)
         V3 *= 100.0 / maxv;
     }
 
-    set_motor_speed(MOTOR0, V1);
-    set_motor_speed(MOTOR1, V2);
-    set_motor_speed(MOTOR2, V3);
+    controller_motors.set_speed(MOTOR0, V1);
+    controller_motors.set_speed(MOTOR1, V2);
+    controller_motors.set_speed(MOTOR2, V3);
 }
 
 void omni_platform_start_velocity_controller(plaform_controller_settings_t plaform_controller_settings)
 {
+    if (!omni_config.is_initialized) {
+        return;
+    }
+
     controllers_manager_initialize_controller_multiple(
         BMOTOR0 | BMOTOR1 | BMOTOR2,
         plaform_controller_settings.kp,
@@ -39,17 +54,32 @@ void omni_platform_start_velocity_controller(plaform_controller_settings_t plafo
 
 void omni_platform_stop_velocity_controller()
 {
+    if (!omni_config.is_initialized) {
+        return;
+    }
+
     controllers_manager_stop_controller_multiple(BMOTOR0 | BMOTOR1 | BMOTOR2);
 }
 
 void omni_platform_set_target_velocity(platform_velocity_t platform_target_velocity)
 {
-    double R = 0.0; // for actual code, read from a global or a struct
-    double L = 0.0; // referencing platform.properties.omni.
+    if (!omni_config.is_initialized || omni_config.wheel_radius == 0) {
+        return;
+    }
 
-    double V1 = 1.0 / R * (sqrt(3.0)/2.0 * platform_target_velocity.x - 0.5 * platform_target_velocity.y + L * platform_target_velocity.t);
-    double V2 = 1.0 / R * (-sqrt(3.0)/2.0 * platform_target_velocity.x - 0.5 * platform_target_velocity.y + L * platform_target_velocity.t);
-    double V3 = 1.0 / R * (platform_target_velocity.y + L * platform_target_velocity.t);
+    double V1 = 1.0 / omni_config.wheel_radius * 
+        (sqrt(3.0)/2.0 * platform_target_velocity.x - 
+         0.5 * platform_target_velocity.y + 
+         omni_config.robot_radius * platform_target_velocity.t);
+
+    double V2 = 1.0 / omni_config.wheel_radius * 
+        (-sqrt(3.0)/2.0 * platform_target_velocity.x - 
+         0.5 * platform_target_velocity.y + 
+         omni_config.robot_radius * platform_target_velocity.t);
+
+    double V3 = 1.0 / omni_config.wheel_radius * 
+        (platform_target_velocity.y + 
+         omni_config.robot_radius * platform_target_velocity.t);
     
     uint8_t motor_indexes[] = {MOTOR0, MOTOR1, MOTOR2};
     double target_speeds[] = {V1, V2, V3};
@@ -64,30 +94,31 @@ platform_odometry_t omni_platform_update_odometry(uint8_t* motor_indexes, double
         .t = 0
     };
 
-    if(motor_count < 3)
+    if(!omni_config.is_initialized || motor_count < 3 || omni_config.wheel_radius == 0)
     {
         return odometry;
     }
-
-    double R = 0.0;  // read these from global or store in struct
-    double L = 0.0;
 
     double v1 = velocities[0];
     double v2 = velocities[1];
     double v3 = velocities[2];
 
-    odometry.x = R * (1/sqrt(3.0) * v1 - 1/sqrt(3.0) * v2);
-    odometry.y = R/3.0 * (-v1 - v2 + 2.0 * v3);
-    odometry.t = R/(3.0 * L) * (v1 + v2 + v3);
+    odometry.x = omni_config.wheel_radius * (1/sqrt(3.0) * v1 - 1/sqrt(3.0) * v2);
+    odometry.y = omni_config.wheel_radius/3.0 * (-v1 - v2 + 2.0 * v3);
+    odometry.t = omni_config.wheel_radius/(3.0 * omni_config.robot_radius) * (v1 + v2 + v3);
 
     return odometry;
 }
 
 void initialize_omni_platform_odometry()
 {
-    encoder_start_odometry(MOTOR0);
-    encoder_start_odometry(MOTOR1);
-    encoder_start_odometry(MOTOR2);
+    if (!omni_config.is_initialized) {
+        return;
+    }
+
+    encoder_odometry.start(MOTOR0);
+    encoder_odometry.start(MOTOR1);
+    encoder_odometry.start(MOTOR2);
 }
 
 void initialize_omni_platform(
@@ -98,14 +129,18 @@ void initialize_omni_platform(
     double robot_radius,
     double encoder_resolution)
 {
-    initialize_motor(MOTOR0, isReversed0);
-    initialize_motor(MOTOR1, isReversed1);
-    initialize_motor(MOTOR2, isReversed2);
+    controller_motors.initialize(MOTOR0, isReversed0);
+    controller_motors.initialize(MOTOR1, isReversed1);
+    controller_motors.initialize(MOTOR2, isReversed2);
 
     if (encoder_resolution > 0)
     {
-        initialize_encoder(MOTOR0, encoder_resolution, isReversed0);
-        initialize_encoder(MOTOR1, encoder_resolution, isReversed1);
-        initialize_encoder(MOTOR2, encoder_resolution, isReversed2);
+        controller_encoders.initialize(MOTOR0, encoder_resolution, isReversed0);
+        controller_encoders.initialize(MOTOR1, encoder_resolution, isReversed1);
+        controller_encoders.initialize(MOTOR2, encoder_resolution, isReversed2);
     }
+
+    omni_config.wheel_radius = wheel_diameter / 2.0;
+    omni_config.robot_radius = robot_radius;
+    omni_config.is_initialized = 1;
 }
