@@ -32,9 +32,10 @@ void set_omni_platform_velocity(platform_velocity_t platform_velocity)
         V3 *= 100.0 / maxv;
     }
 
-    controller_motors.set_speed(MOTOR0, V1);
-    controller_motors.set_speed(MOTOR1, V2);
-    controller_motors.set_speed(MOTOR2, V3);
+    const hw_motor_interface_t* motors = get_motor_interface();
+    motors->set_speed(MOTOR0, V1);
+    motors->set_speed(MOTOR1, V2);
+    motors->set_speed(MOTOR2, V3);
 }
 
 void omni_platform_start_velocity_controller(plaform_controller_settings_t plaform_controller_settings)
@@ -116,9 +117,10 @@ void initialize_omni_platform_odometry()
         return;
     }
 
-    encoder_odometry.start(MOTOR0);
-    encoder_odometry.start(MOTOR1);
-    encoder_odometry.start(MOTOR2);
+    const encoder_odometry_interface_t* odometry = get_encoder_odometry_interface();
+    odometry->start(MOTOR0);
+    odometry->start(MOTOR1);
+    odometry->start(MOTOR2);
 }
 
 void initialize_omni_platform(
@@ -129,15 +131,18 @@ void initialize_omni_platform(
     double robot_radius,
     double encoder_resolution)
 {
-    controller_motors.initialize(MOTOR0, isReversed0);
-    controller_motors.initialize(MOTOR1, isReversed1);
-    controller_motors.initialize(MOTOR2, isReversed2);
+    const hw_motor_interface_t* motors = get_motor_interface();
+    const hw_encoder_interface_t* encoders = get_encoder_interface();
+
+    motors->initialize(MOTOR0, isReversed0);
+    motors->initialize(MOTOR1, isReversed1);
+    motors->initialize(MOTOR2, isReversed2);
 
     if (encoder_resolution > 0)
     {
-        controller_encoders.initialize(MOTOR0, encoder_resolution, isReversed0);
-        controller_encoders.initialize(MOTOR1, encoder_resolution, isReversed1);
-        controller_encoders.initialize(MOTOR2, encoder_resolution, isReversed2);
+        encoders->initialize(MOTOR0, encoder_resolution, isReversed0);
+        encoders->initialize(MOTOR1, encoder_resolution, isReversed1);
+        encoders->initialize(MOTOR2, encoder_resolution, isReversed2);
     }
 
     omni_config.wheel_radius = wheel_diameter / 2.0;

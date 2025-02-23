@@ -35,31 +35,19 @@ typedef struct {
     brake_motor_fn brake;
 } hw_motor_interface_t;
 
-// Global interface instance
-extern hw_motor_interface_t controller_motors;
+// Get the motor interface implementation
+const hw_motor_interface_t* get_motor_interface(void);
 
-// Initialize the interface with default implementations
+// Set mock interface for testing
+void hw_motor_set_interface(const hw_motor_interface_t* interface);
+
+// Initialize motor interface
 void hw_motor_init(void);
-
-// Allow setting mock implementations
-void hw_motor_set_interface(hw_motor_interface_t interface);
 
 // Default implementations
 void initialize_motor(motorIndex motorIndex, bool isReversed);
-
-/* Check if motor is reversed
-Parameters:
-    motorIndex: Motor index
-*/
 uint8_t motor_is_reversed(motorIndex motorIndex);
-
-/* Check if motor is initialized
-Parameters:
-    motorIndex: Motor index
-*/
 uint8_t motor_is_initialized(motorIndex motorIndex);
-
-// Set motor speed in PWM
 void set_motor_speed(motorIndex motorIndex, double pwm);
 void stop_motor(motorIndex motorIndex);
 void brake_motor(motorIndex motorIndex);

@@ -9,8 +9,7 @@
 #include "stm32f4xx_hal.h"
 #include "stdbool.h"
 
-// Default implementation of the interface
-hw_motor_interface_t controller_motors = {
+static const hw_motor_interface_t default_motor_interface = {
     .initialize = initialize_motor,
     .is_reversed = motor_is_reversed,
     .is_initialized = motor_is_initialized,
@@ -19,17 +18,18 @@ hw_motor_interface_t controller_motors = {
     .brake = brake_motor
 };
 
-void hw_motor_init(void) {
-    controller_motors.initialize = initialize_motor;
-    controller_motors.is_reversed = motor_is_reversed;
-    controller_motors.is_initialized = motor_is_initialized;
-    controller_motors.set_speed = set_motor_speed;
-    controller_motors.stop = stop_motor;
-    controller_motors.brake = brake_motor;
+static const hw_motor_interface_t* current_motor_interface = &default_motor_interface;
+
+const hw_motor_interface_t* get_motor_interface(void) {
+    return current_motor_interface;
 }
 
-void hw_motor_set_interface(hw_motor_interface_t interface) {
-    controller_motors = interface;
+void hw_motor_set_interface(const hw_motor_interface_t* interface) {
+    current_motor_interface = interface;
+}
+
+void hw_motor_init(void) {
+    current_motor_interface = &default_motor_interface;
 }
 
 // Internal helper functions and state

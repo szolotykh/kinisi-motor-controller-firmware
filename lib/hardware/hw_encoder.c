@@ -8,8 +8,7 @@
 #include "hw_config.h"
 #include "stm32f4xx_hal.h"
 
-// Default implementation of the interface
-hw_encoder_interface_t controller_encoders = {
+static const hw_encoder_interface_t default_encoder_interface = {
     .initialize = initialize_encoder,
     .get_value = get_encoder_value,
     .get_direction = get_encoder_direction,
@@ -17,16 +16,18 @@ hw_encoder_interface_t controller_encoders = {
     .get_resolution = encoder_get_resolution
 };
 
-void hw_encoder_init(void) {
-    controller_encoders.initialize = initialize_encoder;
-    controller_encoders.get_value = get_encoder_value;
-    controller_encoders.get_direction = get_encoder_direction;
-    controller_encoders.is_initialized = encoder_is_initialized;
-    controller_encoders.get_resolution = encoder_get_resolution;
+static const hw_encoder_interface_t* current_encoder_interface = &default_encoder_interface;
+
+const hw_encoder_interface_t* get_encoder_interface(void) {
+    return current_encoder_interface;
 }
 
-void hw_encoder_set_interface(hw_encoder_interface_t interface) {
-    controller_encoders = interface;
+void hw_encoder_set_interface(const hw_encoder_interface_t* interface) {
+    current_encoder_interface = interface;
+}
+
+void hw_encoder_init(void) {
+    current_encoder_interface = &default_encoder_interface;
 }
 
 // Internal state

@@ -29,28 +29,18 @@ typedef struct {
     encoder_get_resolution_fn get_resolution;
 } hw_encoder_interface_t;
 
-// Global interface instance
-extern hw_encoder_interface_t controller_encoders;
+// Get the encoder interface implementation
+const hw_encoder_interface_t* get_encoder_interface(void);
 
-// Initialize the interface with default implementations
+// Set mock interface for testing
+void hw_encoder_set_interface(const hw_encoder_interface_t* interface);
+
+// Initialize encoder interface
 void hw_encoder_init(void);
-
-// Allow setting mock implementations
-void hw_encoder_set_interface(hw_encoder_interface_t interface);
 
 // Default implementations
 extern void initialize_encoder(encoder_index_t index, double encoder_resolution, uint8_t is_reversed);
 extern uint16_t get_encoder_value(encoder_index_t index);
 extern uint8_t get_encoder_direction(encoder_index_t index);
-
-/* Check if encoder is initialized
-Parameters:
-    index: Encoder index
-*/
 extern uint8_t encoder_is_initialized(encoder_index_t index);
-
-/* Get encoder resolution
-Parameters:
-    index: Encoder index
-*/
 extern double encoder_get_resolution(encoder_index_t index);

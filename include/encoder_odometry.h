@@ -16,24 +16,17 @@ typedef struct {
     encoder_stop_odometry_fn stop;
 } encoder_odometry_interface_t;
 
-// Global interface instance
-extern encoder_odometry_interface_t encoder_odometry;
+// Get the encoder odometry interface implementation
+const encoder_odometry_interface_t* get_encoder_odometry_interface(void);
 
-// Initialize the interface with default implementations
+// Set mock interface for testing
+void encoder_odometry_set_interface(const encoder_odometry_interface_t* interface);
+
+// Initialize encoder odometry interface
 void encoder_odometry_init(void);
 
-// Allow setting mock implementations
-void encoder_odometry_set_interface(encoder_odometry_interface_t interface);
-
 // Default implementations
-// Start odometry for an encoder
 void encoder_start_odometry(uint8_t encoder_index);
-
-// Reset odometry for an encoder
 void encoder_reset_odometry(uint8_t encoder_index);
-
-// Get odometry value from encoder
 double encoder_get_odometry(uint8_t encoder_index);
-
-// Stop odometry for an encoder
 void encoder_stop_odometry(uint8_t encoder_index);
