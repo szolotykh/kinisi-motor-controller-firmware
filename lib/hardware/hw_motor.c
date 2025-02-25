@@ -9,6 +9,14 @@
 #include "stm32f4xx_hal.h"
 #include "stdbool.h"
 
+// Default implementations
+static void initialize_motor(motorIndex motorIndex, bool isReversed);
+static uint8_t motor_is_reversed(motorIndex motorIndex);
+static uint8_t motor_is_initialized(motorIndex motorIndex);
+static void set_motor_speed(motorIndex motorIndex, double pwm);
+static void stop_motor(motorIndex motorIndex);
+static void brake_motor(motorIndex motorIndex);
+
 static const hw_motor_interface_t default_motor_interface = {
     .initialize = initialize_motor,
     .is_reversed = motor_is_reversed,
@@ -45,7 +53,7 @@ typedef struct {
 static motor_status_t motor_status[NUMBER_MOTORS];
 
 // Default implementations
-void initialize_motor(motorIndex motorIndex, bool isReversed) {
+static void initialize_motor(motorIndex motorIndex, bool isReversed) {
     if(!motor_status[motorIndex].isInitialized) {
         init_motor_timer(&motor_info[motorIndex]);
         motor_status[motorIndex].isInitialized = true;
@@ -53,15 +61,15 @@ void initialize_motor(motorIndex motorIndex, bool isReversed) {
     motor_status[motorIndex].isReversed = isReversed;
 }
 
-uint8_t motor_is_reversed(motorIndex motorIndex) {
+static uint8_t motor_is_reversed(motorIndex motorIndex) {
     return motor_status[motorIndex].isReversed;
 }
 
-uint8_t motor_is_initialized(motorIndex motorIndex) {
+static uint8_t motor_is_initialized(motorIndex motorIndex) {
     return motor_status[motorIndex].isInitialized;
 }
 
-void set_motor_speed(motorIndex motorIndex, double pwm) {
+static void set_motor_speed(motorIndex motorIndex, double pwm) {
     bool direction = pwm > 0;
     if (pwm > 100.0) pwm = 100.0;
     if (pwm < -100.0) pwm = -100.0;
@@ -81,7 +89,7 @@ void set_motor_speed(motorIndex motorIndex, double pwm) {
     }
 }
 
-void stop_motor(motorIndex motorIndex) {
+static void stop_motor(motorIndex motorIndex) {
     if(motor_status[motorIndex].isInitialized) {
         TIM_HandleTypeDef *htim = get_timer_handeler(motor_info[motorIndex].timer);
         // Both channels are set to low
@@ -90,7 +98,7 @@ void stop_motor(motorIndex motorIndex) {
     }
 }
 
-void brake_motor(motorIndex motorIndex) {
+static void brake_motor(motorIndex motorIndex) {
     if(motor_status[motorIndex].isInitialized) {
         TIM_HandleTypeDef *htim = get_timer_handeler(motor_info[motorIndex].timer);
         // Both channels are set to high

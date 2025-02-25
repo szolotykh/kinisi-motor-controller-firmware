@@ -5,6 +5,8 @@
 #include "encoder_odometry.h"
 #include "odometry_manager.h"
 
+// Function declarations
+
 static const encoder_odometry_interface_t default_odometry_interface = {
     .start = encoder_start_odometry,
     .reset = encoder_reset_odometry,

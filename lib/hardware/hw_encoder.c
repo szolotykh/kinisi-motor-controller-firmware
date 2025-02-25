@@ -8,6 +8,13 @@
 #include "hw_config.h"
 #include "stm32f4xx_hal.h"
 
+// Default implementations
+static void initialize_encoder(encoder_index_t index, double encoder_resolution, uint8_t is_reversed);
+static uint16_t get_encoder_value(encoder_index_t index);
+static uint8_t get_encoder_direction(encoder_index_t index);
+static uint8_t encoder_is_initialized(encoder_index_t index);
+static double encoder_get_resolution(encoder_index_t index);
+
 static const hw_encoder_interface_t default_encoder_interface = {
     .initialize = initialize_encoder,
     .get_value = get_encoder_value,
@@ -42,7 +49,7 @@ static encoder_status_t encoder_status[NUMBER_ENCODERS] = {0};
 
 static void initialize_encoder_timer(TIM_HandleTypeDef *htim, TIM_TypeDef *typeDef);
 
-void initialize_encoder(encoder_index_t index, double encoder_resolution, uint8_t is_reversed) {
+static void initialize_encoder(encoder_index_t index, double encoder_resolution, uint8_t is_reversed) {
 	if(!encoder_status[index].is_initialized){
 		TIM_HandleTypeDef *htim = get_timer_handeler(encoder_info[index].timer);
 		initialize_encoder_timer(htim, encoder_info[index].timer);
@@ -53,15 +60,15 @@ void initialize_encoder(encoder_index_t index, double encoder_resolution, uint8_
 	}
 }
 
-uint8_t encoder_is_initialized(encoder_index_t index){
+static uint8_t encoder_is_initialized(encoder_index_t index){
 	return encoder_status[index].is_initialized;
 }
 
-double encoder_get_resolution(encoder_index_t index){
+static double encoder_get_resolution(encoder_index_t index){
 	return encoder_status[index].resolution;
 }
 
-uint16_t get_encoder_value(encoder_index_t index){
+static uint16_t get_encoder_value(encoder_index_t index){
 
 	TIM_HandleTypeDef *htim = get_timer_handeler(encoder_info[index].timer);
 	if(encoder_status[index].is_reversed){
@@ -71,7 +78,7 @@ uint16_t get_encoder_value(encoder_index_t index){
 	return htim->Instance->CNT;
 }
 
-uint8_t get_encoder_direction(encoder_index_t index){
+static uint8_t get_encoder_direction(encoder_index_t index){
 
 	// TODO: implement base on velocity
 	return 0;

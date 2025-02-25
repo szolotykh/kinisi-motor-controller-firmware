@@ -37,10 +37,3 @@ void hw_encoder_set_interface(const hw_encoder_interface_t* interface);
 
 // Initialize encoder interface
 void hw_encoder_init(void);
-
-// Default implementations
-extern void initialize_encoder(encoder_index_t index, double encoder_resolution, uint8_t is_reversed);
-extern uint16_t get_encoder_value(encoder_index_t index);
-extern uint8_t get_encoder_direction(encoder_index_t index);
-extern uint8_t encoder_is_initialized(encoder_index_t index);
-extern double encoder_get_resolution(encoder_index_t index);

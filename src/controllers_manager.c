@@ -53,6 +53,9 @@ static controllers_manager_t controllers_manager = {
     }
 };
 
+static const hw_motor_interface_t* motor = NULL;
+static const hw_encoder_interface_t* encoder = NULL;
+
 void StartControllerTask(void *argument)
 {
     /*
@@ -87,7 +90,7 @@ void StartControllerTask(void *argument)
                     pid_controller_t* controller = &controller_info->controller;
 
                     // Get current velocity from encoder
-                    const uint16_t current_encoder_value = get_encoder_value(index);
+                    const uint16_t current_encoder_value = encoder->get_value(index);
                     // Calculate change in encoder value
                     uint16_t raw_change = current_encoder_value - controllers_manager_state->previousEncoderValue[index];
 
@@ -102,7 +105,7 @@ void StartControllerTask(void *argument)
                     controllers_manager_state->previousEncoderValue[index] = current_encoder_value;
 
                     // Caltulate current motor speed in radians per second from encoder ticks
-                    double current_motor_speed = 2.0 * M_PI * ((double)last_encoder_change / encoder_get_resolution(index)) * (1.0 / controller->T);
+                    double current_motor_speed = 2.0 * M_PI * ((double)last_encoder_change / encoder->get_resolution(index)) * (1.0 / controller->T);
 
                     // Calculate new velocity for motor
                     pid_controller_update(
@@ -118,7 +121,7 @@ void StartControllerTask(void *argument)
                 if( controllers_manager_state->Controller_info[index].state == RUN )
                 {
                 // Set motor speed
-                set_motor_speed(
+                motor->set_speed(
                     controllers_manager_state->Controller_info[index].mIndex,
                     controllers_manager_state->Controller_info[index].controller.motorPWM);
                 }
@@ -132,6 +135,9 @@ void StartControllerTask(void *argument)
 
 void controllers_manager_init()
 {
+    motor = get_motor_interface();
+    encoder = get_encoder_interface();
+    
     controllers_manager.state.controller_state_mutex = xSemaphoreCreateMutex();
     if (controllers_manager.state.controller_state_mutex == NULL) {
         // Handle error: Failed to create the mutex
@@ -180,13 +186,13 @@ void controllers_manager_initialize_controller(uint8_t motor_index, uint8_t enco
     // Initialize motor and encoder if controller is not running
     if (controllers_manager.state.Controller_info[motor_index].state == STOP)
     {
-        initialize_motor(controller_info.mIndex, is_reversed);
-        initialize_encoder(controller_info.eIndex, encoder_resolution, is_reversed);
+        motor->initialize(controller_info.mIndex, is_reversed);
+        encoder->initialize(controller_info.eIndex, encoder_resolution, is_reversed);
     }
 
     if (xSemaphoreTake(controllers_manager.state.controller_state_mutex, portMAX_DELAY))
     {
-        controllers_manager.state.previousEncoderValue[motor_index] = get_encoder_value(encoder_index);
+        controllers_manager.state.previousEncoderValue[motor_index] = encoder->get_value(encoder_index);
         controllers_manager.state.Controller_info[motor_index] = controller_info;
         xSemaphoreGive(controllers_manager.state.controller_state_mutex);
     }
@@ -224,7 +230,7 @@ void controllers_manager_initialize_controller_multiple(uint8_t motor_selection,
                 controller_info.mIndex = motor_index;
                 controller_info.eIndex = motor_index;
 
-                controllers_manager.state.previousEncoderValue[motor_index] = get_encoder_value(motor_index);
+                controllers_manager.state.previousEncoderValue[motor_index] = encoder->get_value(motor_index);
                 controllers_manager.state.Controller_info[motor_index] = controller_info;
             }
         }
@@ -245,7 +251,7 @@ void controllers_manager_stop_controller_multiple(uint8_t motor_selection)
                 controllers_manager.state.Controller_info[motor_index].controller = (pid_controller_t){0};
 
                 // Stop motor
-                stop_motor(controllers_manager.state.Controller_info[motor_index].mIndex);
+                motor->stop(controllers_manager.state.Controller_info[motor_index].mIndex);
 
                 // Set target speed to zero
                 controllers_manager.state.target_motor_speed[motor_index] = 0;
@@ -269,7 +275,7 @@ void controllers_manager_delete_controller(uint8_t motor_index)
         controllers_manager.state.Controller_info[motor_index].controller = (pid_controller_t){0};
         
         // Stop motor
-        stop_motor(controllers_manager.state.Controller_info[motor_index].mIndex);
+        motor->stop(controllers_manager.state.Controller_info[motor_index].mIndex);
 
         // Set target speed to zero
         controllers_manager.state.target_motor_speed[motor_index] = 0;

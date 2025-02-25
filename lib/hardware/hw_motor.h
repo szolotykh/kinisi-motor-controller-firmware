@@ -43,11 +43,3 @@ void hw_motor_set_interface(const hw_motor_interface_t* interface);
 
 // Initialize motor interface
 void hw_motor_init(void);
-
-// Default implementations
-void initialize_motor(motorIndex motorIndex, bool isReversed);
-uint8_t motor_is_reversed(motorIndex motorIndex);
-uint8_t motor_is_initialized(motorIndex motorIndex);
-void set_motor_speed(motorIndex motorIndex, double pwm);
-void stop_motor(motorIndex motorIndex);
-void brake_motor(motorIndex motorIndex);

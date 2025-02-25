@@ -37,7 +37,8 @@
         "cmath": "c",
         "encoder_odometry.h": "c",
         "stdlib.h": "c",
-        "hw_timers.h": "c"
+        "hw_timers.h": "c",
+        "mock_platform_mecanum.h": "c"
     },
     "C_Cpp.errorSquiggles": "disabled",
     "cmake.sourceDirectory": "D:/Development/kinisi-motor-controller-firmware/.pio/libdeps/native/Unity"

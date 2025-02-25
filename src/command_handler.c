@@ -17,16 +17,19 @@
 void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t*, uint8_t))
 {
     const gpio_interface_t* gpio = get_gpio_interface();
+    const hw_motor_interface_t* motor = get_motor_interface();
+    const hw_encoder_interface_t* encoder = get_encoder_interface();
 
     switch(cmd->commandType)
     {
         case INITIALIZE_MOTOR:
-            initialize_motor(cmd->properties.initialize_motor.motor_index, cmd->properties.initialize_motor.is_reversed);
+            motor->initialize(cmd->properties.initialize_motor.motor_index, 
+                            cmd->properties.initialize_motor.is_reversed);
         break;
 
         case SET_MOTOR_SPEED:
             {
-            set_motor_speed(
+            motor->set_speed(
                 cmd->properties.set_motor_speed.motor_index,
                 cmd->properties.set_motor_speed.pwm);
             }
@@ -34,13 +37,13 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
 
         case STOP_MOTOR:
             {
-                stop_motor(cmd->properties.stop_motor.motor_index);
+                motor->stop(cmd->properties.stop_motor.motor_index);
             }
         break;
 
         case BRAKE_MOTOR:
             {
-                brake_motor(cmd->properties.brake_motor.motor_index);
+                motor->brake(cmd->properties.brake_motor.motor_index);
             }
         break;
 
@@ -91,7 +94,7 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
         // Encoder commands
         case INITIALIZE_ENCODER:
             {
-            initialize_encoder(
+            encoder->initialize(
                 cmd->properties.initialize_encoder.encoder_index,
                 cmd->properties.initialize_encoder.encoder_resolution,
                 cmd->properties.initialize_encoder.is_reversed);
@@ -100,37 +103,33 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
 
         case GET_ENCODER_VALUE:
             {
-            uint16_t value = get_encoder_value(cmd->properties.get_encoder_value.encoder_index);
+            uint16_t value = encoder->get_value(cmd->properties.get_encoder_value.encoder_index);
             command_callback((uint8_t*)&value, sizeof(uint16_t));
             }
         break;
 
         case START_ENCODER_ODOMETRY:
             {
-            encoder_start_odometry(
-                cmd->properties.start_encoder_odometry.encoder_index);
+            encoder_start_odometry(cmd->properties.start_encoder_odometry.encoder_index);
             }
         break;
 
         case RESET_ENCODER_ODOMETRY:
             {
-            encoder_reset_odometry(
-                cmd->properties.reset_encoder_odometry.encoder_index);
+            encoder_reset_odometry(cmd->properties.reset_encoder_odometry.encoder_index);
             }
         break;
 
         case GET_ENCODER_ODOMETRY:
             {
-            double odometry = encoder_get_odometry(
-                cmd->properties.get_encoder_odometry.encoder_index);
+            double odometry = encoder_get_odometry(cmd->properties.get_encoder_odometry.encoder_index);
             command_callback((uint8_t*)&odometry, sizeof(double));
             }
         break;
 
         case STOP_ENCODER_ODOMETRY:
             {
-            encoder_stop_odometry(
-                cmd->properties.stop_encoder_odometry.encoder_index);
+            encoder_stop_odometry(cmd->properties.stop_encoder_odometry.encoder_index);
             }
         break;
 

@@ -6,6 +6,7 @@
 #include "encoder_odometry.h"
 #include <math.h>
 #include <stdlib.h>
+#include <stdio.h>
 
 // Platform configuration
 static struct {
@@ -32,10 +33,14 @@ void set_omni_platform_velocity(platform_velocity_t platform_velocity)
         V3 *= 100.0 / maxv;
     }
 
+    printf("Calculated velocities: V1 = %f, V2 = %f, V3 = %f\n", V1, V2, V3);
+
     const hw_motor_interface_t* motors = get_motor_interface();
     motors->set_speed(MOTOR0, V1);
     motors->set_speed(MOTOR1, V2);
     motors->set_speed(MOTOR2, V3);
+
+    printf("Motor speeds set: MOTOR0 = %f, MOTOR1 = %f, MOTOR2 = %f\n", V1, V2, V3);
 }
 
 void omni_platform_start_velocity_controller(plaform_controller_settings_t plaform_controller_settings)
@@ -131,6 +136,10 @@ void initialize_omni_platform(
     double robot_radius,
     double encoder_resolution)
 {
+    if (omni_config.is_initialized) {
+        return;
+    }
+
     const hw_motor_interface_t* motors = get_motor_interface();
     const hw_encoder_interface_t* encoders = get_encoder_interface();
 
