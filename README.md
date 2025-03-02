@@ -44,6 +44,28 @@ To build the project for the `genericSTM32F405RG` configuration, follow these st
 
 This command will build the project for the `genericSTM32F405RG` configuration.
 
+## Running Tests
+
+To run all the tests for the project, follow these steps:
+
+1. **Ensure you have PlatformIO installed**: The testing process requires PlatformIO.
+
+2. **Navigate to the project directory**: Open a terminal and navigate to the root directory of your project.
+
+3. **Run the test command**: Execute the following command in the terminal:
+    ```sh
+    pio test -e test_native -e test_platforms
+    ```
+
+This command will run:
+- Unit tests for utilities, commands, and controller components under the `test_native` environment
+- Platform-specific tests for omni, mecanum, and differential platforms under the `test_platforms` environment
+
+You can also run specific test suites by using the `-f` flag:
+```sh
+pio test -e test_native -f test_commands
+```
+
 ## Links
 - [Kinisi Motion Controller firmware](https://github.com/szolotykh/kinisi-motor-controller-firmware)
 - [Kinisi Motion Controller hardware](https://github.com/szolotykh/kinisi-motor-controller-board)

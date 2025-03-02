@@ -3,7 +3,6 @@
 #include "platform_omni.h"
 #include "mock_platform_omni.h"
 #include "platform_types.h"
-#include "test_cases.h"
 #include <math.h>
 
 void setUp(void) {

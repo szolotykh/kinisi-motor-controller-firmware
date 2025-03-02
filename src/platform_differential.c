@@ -60,8 +60,9 @@ void differential_platform_set_target_velocity(platform_velocity_t platform_targ
     double V0 = platform_target_velocity.x - platform_target_velocity.t * differential_config.wheel_base / 2.0;
     double V1 = platform_target_velocity.x + platform_target_velocity.t * differential_config.wheel_base / 2.0;
 
-    set_motor_speed(MOTOR0, V0);
-    set_motor_speed(MOTOR1, V1);
+    const hw_motor_interface_t* motors = get_motor_interface();
+    motors->set_speed(MOTOR0, V0);
+    motors->set_speed(MOTOR1, V1);
 }
 
 platform_odometry_t differential_platform_update_odometry(uint8_t* motor_indexes, double* velocities, uint8_t motor_count)
