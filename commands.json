@@ -437,25 +437,25 @@
                     "name": "is_reversed_0",
                     "type": "bool",
                     "default": false,
-                    "description": "Determins if motor 0 is reversed."
+                    "description": "Determines if motor 0 is reversed."
                 },
                 {
                     "name": "is_reversed_1",
                     "type": "bool",
                     "default": false,
-                    "description": "Determins if motor 1 is reversed."
+                    "description": "Determines if motor 1 is reversed."
                 },
                 {
                     "name": "is_reversed_2",
                     "type": "bool",
                     "default": false,
-                    "description": "Determins if motor 2 is reversed."
+                    "description": "Determines if motor 2 is reversed."
                 },
                 {
                     "name": "is_reversed_3",
                     "type": "bool",
                     "default": false,
-                    "description": "Determins if motor 3 is reversed."
+                    "description": "Determines if motor 3 is reversed."
                 },
                 {
                     "name": "length",
@@ -493,19 +493,19 @@
                     "name": "is_reversed_0",
                     "type": "bool",
                     "default": false,
-                    "description": "Determins if motor 0 is reversed."
+                    "description": "Determines if motor 0 is reversed."
                 },
                 {
                     "name": "is_reversed_1",
                     "type": "bool",
                     "default": false,
-                    "description": "Determins if motor 1 is reversed."
+                    "description": "Determines if motor 1 is reversed."
                 },
                 {
                     "name": "is_reversed_2",
                     "type": "bool",
                     "default": false,
-                    "description": "Determins if motor 2 is reversed."
+                    "description": "Determines if motor 2 is reversed."
                 },
                 {
                     "name": "wheels_diameter",
@@ -537,13 +537,13 @@
                     "name": "is_reversed_0",
                     "type": "bool",
                     "default": false,
-                    "description": "Determins if motor 0 is reversed."
+                    "description": "Determines if motor 0 is reversed."
                 },
                 {
                     "name": "is_reversed_1",
                     "type": "bool",
                     "default": false,
-                    "description": "Determins if motor 1 is reversed."
+                    "description": "Determines if motor 1 is reversed."
                 },
                 {
                     "name": "wheel_diameter",
