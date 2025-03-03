@@ -17,21 +17,29 @@
 
 typedef unsigned char motorIndex;
 
-void initialize_motor(motorIndex motorIndex, bool isReversed);
+// Function pointer types for mocking
+typedef void (*initialize_motor_fn)(motorIndex motorIndex, bool isReversed);
+typedef uint8_t (*motor_is_reversed_fn)(motorIndex motorIndex);
+typedef uint8_t (*motor_is_initialized_fn)(motorIndex motorIndex);
+typedef void (*set_motor_speed_fn)(motorIndex motorIndex, double pwm);
+typedef void (*stop_motor_fn)(motorIndex motorIndex);
+typedef void (*brake_motor_fn)(motorIndex motorIndex);
 
-/* Check if motor is reversed
-Parameters:
-    motorIndex: Motor index
-*/
-uint8_t motor_is_reversed(motorIndex motorIndex);
+// Interface structure
+typedef struct {
+    initialize_motor_fn initialize;
+    motor_is_reversed_fn is_reversed;
+    motor_is_initialized_fn is_initialized;
+    set_motor_speed_fn set_speed;
+    stop_motor_fn stop;
+    brake_motor_fn brake;
+} hw_motor_interface_t;
 
-/* Check if motor is initialized
-Parameters:
-    motorIndex: Motor index
-*/
-uint8_t motor_is_initialized(motorIndex motorIndex);
+// Get the motor interface implementation
+const hw_motor_interface_t* get_motor_interface(void);
 
-// Set motor speed in PWM
-void set_motor_speed(motorIndex motorIndex, double pwm);
-void stop_motor(motorIndex motorIndex);
-void brake_motor(motorIndex motorIndex);
+// Set mock interface for testing
+void hw_motor_set_interface(const hw_motor_interface_t* interface);
+
+// Initialize motor interface
+void hw_motor_init(void);

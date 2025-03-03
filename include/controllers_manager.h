@@ -6,7 +6,6 @@
 #include "hw_motor.h"
 #include "hw_encoder.h"
 #include <pid_controller.h>
-#include <cmsis_os.h>
 #include "commands.h"
 
 // Define motor identifiers as bit masks

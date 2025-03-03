@@ -12,6 +12,9 @@
 
 #define ODOMETRY_UPDATE_INTERVAL 50
 
+// Add near the top of the file
+static const hw_encoder_interface_t* encoder = NULL;
+
 // Odometry manager state
 typedef struct
 {
@@ -55,8 +58,8 @@ void odometry_manager_task(void *argument)
             {
                 if(state->is_initialized[i])
                 {
-                    uint16_t encoder_value = get_encoder_value(i);
-                    double resolution = encoder_get_resolution(i)/ (2 * M_PI); // Ticks per radians
+                    uint16_t encoder_value = encoder->get_value(i);
+                    double resolution = encoder->get_resolution(i)/ (2 * M_PI); // Ticks per radians
                     uint16_t encoder_values_change_raw = encoder_value - state->encoder_previous_value[i];
 
                     // Check for overflow and adjust
@@ -106,6 +109,7 @@ void odometry_manager_initialize()
 {
     if(odometry_manager_is_not_initialized())
     {
+        encoder = get_encoder_interface();
         odometry_manager_state.odometry_mutex = xSemaphoreCreateMutex();
 
         const osThreadAttr_t CommandsTask_attributes = {
@@ -123,7 +127,7 @@ void encoder_start_odometry(uint8_t encoder_index)
     // Initialize odometry manager if it is not initialized
     odometry_manager_initialize();
 
-    if(encoder_is_initialized(encoder_index) == 0)
+    if(encoder->is_initialized(encoder_index) == 0)
     {
         return;
     }
@@ -134,7 +138,7 @@ void encoder_start_odometry(uint8_t encoder_index)
         odometry_manager_state.is_initialized[encoder_index] = 1;
         odometry_manager_state.odometry[encoder_index] = 0;
         // TODO: Should set previous value on first run of the update task
-        odometry_manager_state.encoder_previous_value[encoder_index] = get_encoder_value(encoder_index);
+        odometry_manager_state.encoder_previous_value[encoder_index] = encoder->get_value(encoder_index);
         xSemaphoreGive(odometry_manager_state.odometry_mutex);
     }
 }

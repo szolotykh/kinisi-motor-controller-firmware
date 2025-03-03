@@ -1,6 +1,6 @@
 # Kinisi motor controller commands
 
-Version: 1.0.4
+Version: 1.0.5
 ---
 
 ## Commands
@@ -151,10 +151,10 @@ Properties:
 ### INITIALIZE_MECANUM_PLATFORM (0x30)
 Description: This command initializes a mecanum platform and prepares it for use.\
 Properties:
-- is_reversed_0 (bool): Determins if motor 0 is reversed.
-- is_reversed_1 (bool): Determins if motor 1 is reversed.
-- is_reversed_2 (bool): Determins if motor 2 is reversed.
-- is_reversed_3 (bool): Determins if motor 3 is reversed.
+- is_reversed_0 (bool): Determines if motor 0 is reversed.
+- is_reversed_1 (bool): Determines if motor 1 is reversed.
+- is_reversed_2 (bool): Determines if motor 2 is reversed.
+- is_reversed_3 (bool): Determines if motor 3 is reversed.
 - length (double): Length of the platform in meters.
 - width (double): Width of the platform in meters.
 - wheels_diameter (double): Diameter of the robot wheels in meters.
@@ -163,11 +163,20 @@ Properties:
 ### INITIALIZE_OMNI_PLATFORM (0x31)
 Description: This command initializes a omni platform and prepares it for use.\
 Properties:
-- is_reversed_0 (bool): Determins if motor 0 is reversed.
-- is_reversed_1 (bool): Determins if motor 1 is reversed.
-- is_reversed_2 (bool): Determins if motor 2 is reversed.
+- is_reversed_0 (bool): Determines if motor 0 is reversed.
+- is_reversed_1 (bool): Determines if motor 1 is reversed.
+- is_reversed_2 (bool): Determines if motor 2 is reversed.
 - wheels_diameter (double): Diameter of the robot wheels in millimeters.
 - robot_radius (double): Distance berween the center of the robot and the center of the wheels in millimeters.
+- encoder_resolution (double): Encoder resolution in ticks per revolution. The value can not be negative. If platform does not have encoders, the value should be set to zero.
+
+### INITIALIZE_DIFFERENTIAL_PLATFORM (0x32)
+Description: This command initializes a differential platform and prepares it for use.\
+Properties:
+- is_reversed_0 (bool): Determines if motor 0 is reversed.
+- is_reversed_1 (bool): Determines if motor 1 is reversed.
+- wheel_diameter (double): Diameter of the robot wheels in meters.
+- wheel_base (double): Distance between the two wheels in meters.
 - encoder_resolution (double): Encoder resolution in ticks per revolution. The value can not be negative. If platform does not have encoders, the value should be set to zero.
 
 ### SET_PLATFORM_VELOCITY (0x40)
