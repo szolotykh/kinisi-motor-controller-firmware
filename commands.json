@@ -1,5 +1,5 @@
 {
-    "version": "1.0.5",
+    "version": "1.1.0",
     "commands": [
         {
             "command": "INITIALIZE_MOTOR",
@@ -112,6 +112,12 @@
                         3
                     ],
                     "description": "The index of the encoder to use for the controller."
+                },
+                {
+                    "name": "is_encoder_reversed",
+                    "type": "bool",
+                    "default": false,
+                    "description": "Reverses the encoder counting direction, independently of the motor's is_reversed. For closed-loop control the encoder must report a positive measured speed when a positive speed is commanded (negative feedback); if the controller runs away, flip this flag."
                 },
                 {
                     "name": "encoder_resolution",
@@ -458,6 +464,30 @@
                     "description": "Determines if motor 3 is reversed."
                 },
                 {
+                    "name": "is_encoder_reversed_0",
+                    "type": "bool",
+                    "default": false,
+                    "description": "Reverses encoder 0 counting direction, independently of motor 0's is_reversed_0. Set so the closed-loop feedback is negative (flip if the wheel runs away when given a target speed)."
+                },
+                {
+                    "name": "is_encoder_reversed_1",
+                    "type": "bool",
+                    "default": false,
+                    "description": "Reverses encoder 1 counting direction, independently of motor 1's is_reversed_1. Set so the closed-loop feedback is negative (flip if the wheel runs away when given a target speed)."
+                },
+                {
+                    "name": "is_encoder_reversed_2",
+                    "type": "bool",
+                    "default": false,
+                    "description": "Reverses encoder 2 counting direction, independently of motor 2's is_reversed_2. Set so the closed-loop feedback is negative (flip if the wheel runs away when given a target speed)."
+                },
+                {
+                    "name": "is_encoder_reversed_3",
+                    "type": "bool",
+                    "default": false,
+                    "description": "Reverses encoder 3 counting direction, independently of motor 3's is_reversed_3. Set so the closed-loop feedback is negative (flip if the wheel runs away when given a target speed)."
+                },
+                {
                     "name": "length",
                     "type": "double",
                     "default": 1,
@@ -508,6 +538,24 @@
                     "description": "Determines if motor 2 is reversed."
                 },
                 {
+                    "name": "is_encoder_reversed_0",
+                    "type": "bool",
+                    "default": false,
+                    "description": "Reverses encoder 0 counting direction, independently of motor 0's is_reversed_0. Set so the closed-loop feedback is negative (flip if the wheel runs away when given a target speed)."
+                },
+                {
+                    "name": "is_encoder_reversed_1",
+                    "type": "bool",
+                    "default": false,
+                    "description": "Reverses encoder 1 counting direction, independently of motor 1's is_reversed_1. Set so the closed-loop feedback is negative (flip if the wheel runs away when given a target speed)."
+                },
+                {
+                    "name": "is_encoder_reversed_2",
+                    "type": "bool",
+                    "default": false,
+                    "description": "Reverses encoder 2 counting direction, independently of motor 2's is_reversed_2. Set so the closed-loop feedback is negative (flip if the wheel runs away when given a target speed)."
+                },
+                {
                     "name": "wheels_diameter",
                     "type": "double",
                     "default": 1,
@@ -544,6 +592,18 @@
                     "type": "bool",
                     "default": false,
                     "description": "Determines if motor 1 is reversed."
+                },
+                {
+                    "name": "is_encoder_reversed_0",
+                    "type": "bool",
+                    "default": false,
+                    "description": "Reverses encoder 0 counting direction, independently of motor 0's is_reversed_0. Set so the closed-loop feedback is negative (flip if the wheel runs away when given a target speed)."
+                },
+                {
+                    "name": "is_encoder_reversed_1",
+                    "type": "bool",
+                    "default": false,
+                    "description": "Reverses encoder 1 counting direction, independently of motor 1's is_reversed_1. Set so the closed-loop feedback is negative (flip if the wheel runs away when given a target speed)."
                 },
                 {
                     "name": "wheel_diameter",

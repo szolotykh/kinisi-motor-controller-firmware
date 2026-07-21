@@ -50,14 +50,20 @@ static encoder_status_t encoder_status[NUMBER_ENCODERS] = {0};
 static void initialize_encoder_timer(TIM_HandleTypeDef *htim, TIM_TypeDef *typeDef);
 
 static void initialize_encoder(encoder_index_t index, double encoder_resolution, uint8_t is_reversed) {
+	// Only the hardware timer setup is one-time.
 	if(!encoder_status[index].is_initialized){
 		TIM_HandleTypeDef *htim = get_timer_handeler(encoder_info[index].timer);
 		initialize_encoder_timer(htim, encoder_info[index].timer);
 		HAL_TIM_Encoder_Start(htim, TIM_CHANNEL_ALL);
-		encoder_status[index].resolution = encoder_resolution;
-		encoder_status[index].is_reversed = is_reversed;
 		encoder_status[index].is_initialized = true;
 	}
+	// Always apply resolution and reverse so a re-init with new settings takes
+	// effect (matches initialize_motor, which always sets isReversed). Guarding
+	// these left the encoder un-reversed when a controller/platform re-init
+	// requested is_reversed=1 after an earlier init with is_reversed=0, which
+	// inverted the PID feedback and caused closed-loop runaway.
+	encoder_status[index].resolution = encoder_resolution;
+	encoder_status[index].is_reversed = is_reversed;
 }
 
 static uint8_t encoder_is_initialized(encoder_index_t index){

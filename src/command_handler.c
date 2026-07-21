@@ -56,6 +56,7 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
                     cmd->properties.initialize_motor_controller.ki,
                     cmd->properties.initialize_motor_controller.kd,
                     cmd->properties.initialize_motor_controller.is_reversed,
+                    cmd->properties.initialize_motor_controller.is_encoder_reversed,
                     cmd->properties.initialize_motor_controller.encoder_resolution,
                     cmd->properties.initialize_motor_controller.integral_limit);
             }
@@ -173,6 +174,10 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
                 cmd->properties.initialize_mecanum_platform.is_reversed_1,
                 cmd->properties.initialize_mecanum_platform.is_reversed_2,
                 cmd->properties.initialize_mecanum_platform.is_reversed_3,
+                cmd->properties.initialize_mecanum_platform.is_encoder_reversed_0,
+                cmd->properties.initialize_mecanum_platform.is_encoder_reversed_1,
+                cmd->properties.initialize_mecanum_platform.is_encoder_reversed_2,
+                cmd->properties.initialize_mecanum_platform.is_encoder_reversed_3,
                 cmd->properties.initialize_mecanum_platform.length,
                 cmd->properties.initialize_mecanum_platform.width,
                 cmd->properties.initialize_mecanum_platform.wheels_diameter,
@@ -185,6 +190,9 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
                 cmd->properties.initialize_omni_platform.is_reversed_0,
                 cmd->properties.initialize_omni_platform.is_reversed_1,
                 cmd->properties.initialize_omni_platform.is_reversed_2,
+                cmd->properties.initialize_omni_platform.is_encoder_reversed_0,
+                cmd->properties.initialize_omni_platform.is_encoder_reversed_1,
+                cmd->properties.initialize_omni_platform.is_encoder_reversed_2,
                 cmd->properties.initialize_omni_platform.wheels_diameter,
                 cmd->properties.initialize_omni_platform.robot_radius,
                 cmd->properties.initialize_omni_platform.encoder_resolution
@@ -195,6 +203,8 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
             initialize_differential_platform(
                 cmd->properties.initialize_differential_platform.is_reversed_0,
                 cmd->properties.initialize_differential_platform.is_reversed_1,
+                cmd->properties.initialize_differential_platform.is_encoder_reversed_0,
+                cmd->properties.initialize_differential_platform.is_encoder_reversed_1,
                 cmd->properties.initialize_differential_platform.wheel_diameter,
                 cmd->properties.initialize_differential_platform.wheel_base,
                 cmd->properties.initialize_differential_platform.encoder_resolution

@@ -12,6 +12,9 @@ void initialize_omni_platform(
     uint8_t isReversed0,
     uint8_t isReversed1,
     uint8_t isReversed2,
+    uint8_t isEncoderReversed0,
+    uint8_t isEncoderReversed1,
+    uint8_t isEncoderReversed2,
     double wheel_diameter,
     double robot_radius,
     double encoder_resolution);
