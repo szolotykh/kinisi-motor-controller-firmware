@@ -145,7 +145,10 @@ void controllers_manager_init()
 
     const osThreadAttr_t ControllerTask_attributes = {
         .name = "ControllerTask",
-        .stack_size = 128 * 8,
+        // The task runs double-precision PID math in software (the Cortex-M4
+        // FPU is single-precision only), which is stack hungry, so give it
+        // headroom beyond the previous 128*8 = 1024 bytes.
+        .stack_size = 512 * 8,
         .priority = (osPriority_t) osPriorityNormal,
         };
 
@@ -158,7 +161,7 @@ uint8_t controllers_manager_is_not_init()
     return status == osThreadError;
 }
 
-void controllers_manager_initialize_controller(uint8_t motor_index, uint8_t encoder_index, double kp, double ki, double kd, bool is_reversed, double encoder_resolution, double integral_limit)
+void controllers_manager_initialize_controller(uint8_t motor_index, uint8_t encoder_index, double kp, double ki, double kd, bool is_reversed, bool is_encoder_reversed, double encoder_resolution, double integral_limit)
 {
     // Initialize controller manager which starts task for all controllers
     if (controllers_manager_is_not_init())
@@ -183,12 +186,16 @@ void controllers_manager_initialize_controller(uint8_t motor_index, uint8_t enco
     controller_info.mIndex = motor_index;
     controller_info.eIndex = encoder_index;
 
-    // Initialize motor and encoder if controller is not running
-    if (controllers_manager.state.Controller_info[motor_index].state == STOP)
-    {
-        motor->initialize(controller_info.mIndex, is_reversed);
-        encoder->initialize(controller_info.eIndex, encoder_resolution, is_reversed);
-    }
+    // Always (re-)apply motor and encoder settings so re-initializing a running
+    // controller updates its reverse flags / resolution without a board reset.
+    // The hardware timer setup inside these is separately guarded; only the
+    // settings are updated. previousEncoderValue is re-read below, so any change
+    // to the encoder's reverse frame stays consistent (no glitch tick).
+    // Encoder direction is configured independently of the motor via
+    // is_encoder_reversed, giving the closed loop negative feedback regardless
+    // of how the encoder is wired relative to the motor.
+    motor->initialize(controller_info.mIndex, is_reversed);
+    encoder->initialize(controller_info.eIndex, encoder_resolution, is_encoder_reversed);
 
     if (xSemaphoreTake(controllers_manager.state.controller_state_mutex, portMAX_DELAY))
     {
@@ -313,10 +320,13 @@ void controllers_manager_set_target_speed_multiple(uint8_t* motor_indexes, doubl
 
 motor_controller_state controllers_manager_get_motor_controller_state(uint8_t motor_index)
 {
-    // Check if controller for this motor is running
+    // Check if controller for this motor is running. A bare `return;` here is
+    // undefined behavior in a struct-returning function: the caller then
+    // transmits uninitialized stack memory (0xA5 FreeRTOS fill) as the reply.
+    // Return a zeroed state instead so a not-running controller reads as zeros.
     if(controllers_manager.state.Controller_info[motor_index].state == STOP)
     {
-        return;
+        return (motor_controller_state){0};
     }
 
     const pid_controller_t* controller = &controllers_manager.state.Controller_info[motor_index].controller;

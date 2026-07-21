@@ -11,6 +11,8 @@ extern "C" {
 void initialize_differential_platform(
     uint8_t isReversed0,
     uint8_t isReversed1,
+    uint8_t isEncoderReversed0,
+    uint8_t isEncoderReversed1,
     double wheel_diameter,
     double wheel_base,
     double encoder_resolution);

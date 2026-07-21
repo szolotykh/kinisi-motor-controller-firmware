@@ -147,6 +147,10 @@ void initialize_mecanum_platform(
     uint8_t isReversed1,
     uint8_t isReversed2,
     uint8_t isReversed3,
+    uint8_t isEncoderReversed0,
+    uint8_t isEncoderReversed1,
+    uint8_t isEncoderReversed2,
+    uint8_t isEncoderReversed3,
     double length,
     double width,
     double wheel_diameter,
@@ -162,14 +166,30 @@ void initialize_mecanum_platform(
 
     if (encoder_resolution > 0)
     {
-        encoders->initialize(MOTOR0, encoder_resolution, isReversed0);
-        encoders->initialize(MOTOR1, encoder_resolution, isReversed1);
-        encoders->initialize(MOTOR2, encoder_resolution, isReversed2);
-        encoders->initialize(MOTOR3, encoder_resolution, isReversed3);
+        // Encoder direction configured independently of the motor.
+        encoders->initialize(MOTOR0, encoder_resolution, isEncoderReversed0);
+        encoders->initialize(MOTOR1, encoder_resolution, isEncoderReversed1);
+        encoders->initialize(MOTOR2, encoder_resolution, isEncoderReversed2);
+        encoders->initialize(MOTOR3, encoder_resolution, isEncoderReversed3);
     }
 
     mecanum_config.wheel_radius = wheel_diameter / 2.0;
     mecanum_config.length = length;
     mecanum_config.width = width;
     mecanum_config.is_initialized = 1;
+
+    // Register this platform's operations into the global platform dispatcher
+    // (see platform.c). Without this, platform.is_initialized stays 0 and the
+    // platform.* function pointers stay NULL, so set_platform_velocity() and
+    // the other dispatched calls silently no-op. Not hardware-tested yet.
+    platform.set_platform_velocity = mecaunm_platform_set_velocity;
+    platform.set_platform_target_velocity = mecanum_platform_set_target_velocity;
+    platform.start_platform_velocity_controller = mecanum_platform_start_velocity_controller;
+    platform.stop_platform_velocity_controller = mecanum_platform_stop_velocity_controller;
+    platform.initialize_platform_odometry = mecanum_platform_start_odometry;
+    platform.update_platform_odometry = mecanum_platform_update_odometry;
+    platform.properties.mecanum.wheel_diameter = wheel_diameter;
+    platform.properties.mecanum.length = length;
+    platform.properties.mecanum.width = width;
+    platform.is_initialized = 1;
 }

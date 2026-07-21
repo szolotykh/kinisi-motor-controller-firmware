@@ -33,14 +33,10 @@ void set_omni_platform_velocity(platform_velocity_t platform_velocity)
         V3 *= 100.0 / maxv;
     }
 
-    printf("Calculated velocities: V1 = %f, V2 = %f, V3 = %f\n", V1, V2, V3);
-
     const hw_motor_interface_t* motors = get_motor_interface();
     motors->set_speed(MOTOR0, V1);
     motors->set_speed(MOTOR1, V2);
     motors->set_speed(MOTOR2, V3);
-
-    printf("Motor speeds set: MOTOR0 = %f, MOTOR1 = %f, MOTOR2 = %f\n", V1, V2, V3);
 }
 
 void omni_platform_start_velocity_controller(plaform_controller_settings_t plaform_controller_settings)
@@ -132,14 +128,17 @@ void initialize_omni_platform(
     uint8_t isReversed0,
     uint8_t isReversed1,
     uint8_t isReversed2,
+    uint8_t isEncoderReversed0,
+    uint8_t isEncoderReversed1,
+    uint8_t isEncoderReversed2,
     double wheel_diameter,
     double robot_radius,
     double encoder_resolution)
 {
-    if (omni_config.is_initialized) {
-        return;
-    }
-
+    // Re-initialization is allowed: calling this again re-applies motor/encoder
+    // reverse flags, resolution and dimensions without a board reset. The
+    // hardware timer setup inside motor/encoder initialize is separately
+    // guarded, so only the settings are updated.
     const hw_motor_interface_t* motors = get_motor_interface();
     const hw_encoder_interface_t* encoders = get_encoder_interface();
 
@@ -149,12 +148,28 @@ void initialize_omni_platform(
 
     if (encoder_resolution > 0)
     {
-        encoders->initialize(MOTOR0, encoder_resolution, isReversed0);
-        encoders->initialize(MOTOR1, encoder_resolution, isReversed1);
-        encoders->initialize(MOTOR2, encoder_resolution, isReversed2);
+        // Encoder direction configured independently of the motor.
+        encoders->initialize(MOTOR0, encoder_resolution, isEncoderReversed0);
+        encoders->initialize(MOTOR1, encoder_resolution, isEncoderReversed1);
+        encoders->initialize(MOTOR2, encoder_resolution, isEncoderReversed2);
     }
 
     omni_config.wheel_radius = wheel_diameter / 2.0;
     omni_config.robot_radius = robot_radius;
     omni_config.is_initialized = 1;
+
+    // Register this platform's operations into the global platform dispatcher.
+    // Without this, platform.is_initialized stays 0 and platform.* function
+    // pointers stay NULL, so set_platform_velocity() (and the other dispatched
+    // calls in platform.c) silently no-op -- i.e. "set platform velocity does
+    // nothing".
+    platform.set_platform_velocity = set_omni_platform_velocity;
+    platform.set_platform_target_velocity = omni_platform_set_target_velocity;
+    platform.start_platform_velocity_controller = omni_platform_start_velocity_controller;
+    platform.stop_platform_velocity_controller = omni_platform_stop_velocity_controller;
+    platform.initialize_platform_odometry = initialize_omni_platform_odometry;
+    platform.update_platform_odometry = omni_platform_update_odometry;
+    platform.properties.omni.wheel_diameter = wheel_diameter;
+    platform.properties.omni.robot_radius = robot_radius;
+    platform.is_initialized = 1;
 }
