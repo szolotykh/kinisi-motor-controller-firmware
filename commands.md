@@ -1,6 +1,6 @@
 # Kinisi motor controller commands
 
-Version: 1.0.5
+Version: 1.1.0
 ---
 
 ## Commands
@@ -39,6 +39,7 @@ Properties:
 - is_reversed (bool): Whether or not the motor is reversed.
 - encoder_index (uint8_t): The index of the encoder to use for the controller.
   - Range: 0 to 3
+- is_encoder_reversed (bool): Reverses the encoder counting direction, independently of the motor's is_reversed. For closed-loop control the encoder must report a positive measured speed when a positive speed is commanded (negative feedback); if the controller runs away, flip this flag.
 - encoder_resolution (double): Encoder resolution in ticks per revolution. The value can not be negative or zero.
 - kp (double): Proportional constant of PID
 - ki (double): Integral constant of PID
@@ -155,6 +156,10 @@ Properties:
 - is_reversed_1 (bool): Determines if motor 1 is reversed.
 - is_reversed_2 (bool): Determines if motor 2 is reversed.
 - is_reversed_3 (bool): Determines if motor 3 is reversed.
+- is_encoder_reversed_0 (bool): Reverses encoder 0 counting direction, independently of motor 0's is_reversed_0. Set so the closed-loop feedback is negative (flip if the wheel runs away when given a target speed).
+- is_encoder_reversed_1 (bool): Reverses encoder 1 counting direction, independently of motor 1's is_reversed_1. Set so the closed-loop feedback is negative (flip if the wheel runs away when given a target speed).
+- is_encoder_reversed_2 (bool): Reverses encoder 2 counting direction, independently of motor 2's is_reversed_2. Set so the closed-loop feedback is negative (flip if the wheel runs away when given a target speed).
+- is_encoder_reversed_3 (bool): Reverses encoder 3 counting direction, independently of motor 3's is_reversed_3. Set so the closed-loop feedback is negative (flip if the wheel runs away when given a target speed).
 - length (double): Length of the platform in meters.
 - width (double): Width of the platform in meters.
 - wheels_diameter (double): Diameter of the robot wheels in meters.
@@ -166,6 +171,9 @@ Properties:
 - is_reversed_0 (bool): Determines if motor 0 is reversed.
 - is_reversed_1 (bool): Determines if motor 1 is reversed.
 - is_reversed_2 (bool): Determines if motor 2 is reversed.
+- is_encoder_reversed_0 (bool): Reverses encoder 0 counting direction, independently of motor 0's is_reversed_0. Set so the closed-loop feedback is negative (flip if the wheel runs away when given a target speed).
+- is_encoder_reversed_1 (bool): Reverses encoder 1 counting direction, independently of motor 1's is_reversed_1. Set so the closed-loop feedback is negative (flip if the wheel runs away when given a target speed).
+- is_encoder_reversed_2 (bool): Reverses encoder 2 counting direction, independently of motor 2's is_reversed_2. Set so the closed-loop feedback is negative (flip if the wheel runs away when given a target speed).
 - wheels_diameter (double): Diameter of the robot wheels in millimeters.
 - robot_radius (double): Distance berween the center of the robot and the center of the wheels in millimeters.
 - encoder_resolution (double): Encoder resolution in ticks per revolution. The value can not be negative. If platform does not have encoders, the value should be set to zero.
@@ -175,6 +183,8 @@ Description: This command initializes a differential platform and prepares it fo
 Properties:
 - is_reversed_0 (bool): Determines if motor 0 is reversed.
 - is_reversed_1 (bool): Determines if motor 1 is reversed.
+- is_encoder_reversed_0 (bool): Reverses encoder 0 counting direction, independently of motor 0's is_reversed_0. Set so the closed-loop feedback is negative (flip if the wheel runs away when given a target speed).
+- is_encoder_reversed_1 (bool): Reverses encoder 1 counting direction, independently of motor 1's is_reversed_1. Set so the closed-loop feedback is negative (flip if the wheel runs away when given a target speed).
 - wheel_diameter (double): Diameter of the robot wheels in meters.
 - wheel_base (double): Distance between the two wheels in meters.
 - encoder_resolution (double): Encoder resolution in ticks per revolution. The value can not be negative. If platform does not have encoders, the value should be set to zero.

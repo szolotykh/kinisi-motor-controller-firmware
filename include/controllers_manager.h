@@ -26,7 +26,7 @@ Parameters:
     encoder_resolution: Encoder resolution in pulses per revolution
     integral_limit: Integral limit must be positive. If negative or zero, integral limit is disabled
 */
-void controllers_manager_initialize_controller(uint8_t motor_index, uint8_t encoder_index, double kp, double ki, double kd, bool is_reversed, double encoder_resolution, double integral_limit);
+void controllers_manager_initialize_controller(uint8_t motor_index, uint8_t encoder_index, double kp, double ki, double kd, bool is_reversed, bool is_encoder_reversed, double encoder_resolution, double integral_limit);
 
 /* Initialize controller for multiple motors
 Parameters:

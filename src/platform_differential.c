@@ -102,6 +102,8 @@ void initialize_differential_platform_odometry()
 void initialize_differential_platform(
     uint8_t isReversed0,
     uint8_t isReversed1,
+    uint8_t isEncoderReversed0,
+    uint8_t isEncoderReversed1,
     double wheel_diameter,
     double wheel_base,
     double encoder_resolution)
@@ -114,11 +116,26 @@ void initialize_differential_platform(
 
     if (encoder_resolution > 0)
     {
-        encoders->initialize(MOTOR0, encoder_resolution, isReversed0);
-        encoders->initialize(MOTOR1, encoder_resolution, isReversed1);
+        // Encoder direction configured independently of the motor.
+        encoders->initialize(MOTOR0, encoder_resolution, isEncoderReversed0);
+        encoders->initialize(MOTOR1, encoder_resolution, isEncoderReversed1);
     }
 
     differential_config.wheel_radius = wheel_diameter / 2.0;
     differential_config.wheel_base = wheel_base;
     differential_config.is_initialized = 1;
+
+    // Register this platform's operations into the global platform dispatcher
+    // (see platform.c). Without this, platform.is_initialized stays 0 and the
+    // platform.* function pointers stay NULL, so set_platform_velocity() and
+    // the other dispatched calls silently no-op. Not hardware-tested yet.
+    platform.set_platform_velocity = set_differential_platform_velocity;
+    platform.set_platform_target_velocity = differential_platform_set_target_velocity;
+    platform.start_platform_velocity_controller = differential_platform_start_velocity_controller;
+    platform.stop_platform_velocity_controller = differential_platform_stop_velocity_controller;
+    platform.initialize_platform_odometry = initialize_differential_platform_odometry;
+    platform.update_platform_odometry = differential_platform_update_odometry;
+    platform.properties.differential.wheel_diameter = wheel_diameter;
+    platform.properties.differential.wheel_base = wheel_base;
+    platform.is_initialized = 1;
 }
