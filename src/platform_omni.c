@@ -21,9 +21,10 @@ void set_omni_platform_velocity(platform_velocity_t platform_velocity)
         return;
     }
 
-    double V1 = sqrt(3.0)/2.0 * platform_velocity.x - 0.5 * platform_velocity.y + platform_velocity.t;
-    double V2 = -sqrt(3.0)/2.0 * platform_velocity.x - 0.5 * platform_velocity.y + platform_velocity.t;
-    double V3 = platform_velocity.y + platform_velocity.t;
+    // Frame convention (REP-103): +x forward, +y strafe left, +t rotate CCW.
+    double V1 = sqrt(3.0)/2.0 * platform_velocity.x + 0.5 * platform_velocity.y + platform_velocity.t;
+    double V2 = -sqrt(3.0)/2.0 * platform_velocity.x + 0.5 * platform_velocity.y + platform_velocity.t;
+    double V3 = -platform_velocity.y + platform_velocity.t;
 
     double maxv = fmax(fabs(V1), fmax(fabs(V2), fabs(V3)));
     if (maxv > 100.0)
@@ -69,18 +70,19 @@ void omni_platform_set_target_velocity(platform_velocity_t platform_target_veloc
         return;
     }
 
+    // Frame convention (REP-103): +x forward, +y strafe left, +t rotate CCW.
     double V1 = 1.0 / omni_config.wheel_radius * 
-        (sqrt(3.0)/2.0 * platform_target_velocity.x - 
+        (sqrt(3.0)/2.0 * platform_target_velocity.x + 
          0.5 * platform_target_velocity.y + 
          omni_config.robot_radius * platform_target_velocity.t);
 
     double V2 = 1.0 / omni_config.wheel_radius * 
-        (-sqrt(3.0)/2.0 * platform_target_velocity.x - 
+        (-sqrt(3.0)/2.0 * platform_target_velocity.x + 
          0.5 * platform_target_velocity.y + 
          omni_config.robot_radius * platform_target_velocity.t);
 
     double V3 = 1.0 / omni_config.wheel_radius * 
-        (platform_target_velocity.y + 
+        (-platform_target_velocity.y + 
          omni_config.robot_radius * platform_target_velocity.t);
     
     uint8_t motor_indexes[] = {MOTOR0, MOTOR1, MOTOR2};
@@ -105,8 +107,9 @@ platform_odometry_t omni_platform_update_odometry(uint8_t* motor_indexes, double
     double v2 = velocities[1];
     double v3 = velocities[2];
 
+    // Forward kinematics matches the inverse convention above (+y strafe left).
     odometry.x = omni_config.wheel_radius * (1/sqrt(3.0) * v1 - 1/sqrt(3.0) * v2);
-    odometry.y = omni_config.wheel_radius/3.0 * (-v1 - v2 + 2.0 * v3);
+    odometry.y = omni_config.wheel_radius/3.0 * (v1 + v2 - 2.0 * v3);
     odometry.t = omni_config.wheel_radius/(3.0 * omni_config.robot_radius) * (v1 + v2 + v3);
 
     return odometry;

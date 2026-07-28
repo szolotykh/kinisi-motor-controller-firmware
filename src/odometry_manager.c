@@ -9,6 +9,7 @@
 #include <platform.h>
 #include <hw_config.h>
 #include <platform.h>
+#include <odometry_integrator.h>
 
 #define ODOMETRY_UPDATE_INTERVAL 50
 
@@ -59,16 +60,8 @@ void odometry_manager_task(void *argument)
                 if(state->is_initialized[i])
                 {
                     uint16_t encoder_value = encoder->get_value(i);
-                    double resolution = encoder->get_resolution(i)/ (2 * M_PI); // Ticks per radians
-                    uint16_t encoder_values_change_raw = encoder_value - state->encoder_previous_value[i];
-
-                    // Check for overflow and adjust
-                    double encoder_values_change = encoder_values_change_raw;
-                    if (encoder_values_change_raw > 32768) { // Half of UINT16_MAX, detecting large backward movement (underflow)
-                        encoder_values_change = -(65536 - encoder_values_change_raw); // Adjust for underflow
-                    }
-
-                    state->odometry_change[i] = encoder_values_change / resolution;
+                    state->odometry_change[i] = odometry_integrator_wheel_delta(
+                        state->encoder_previous_value[i], encoder_value, encoder->get_resolution(i));
                     state->odometry[i] = state->odometry[i] + state->odometry_change[i];
 
                     state->encoder_previous_value[i] = encoder_value;
@@ -87,9 +80,14 @@ void odometry_manager_task(void *argument)
                 }
                 
                 platform_odometry_t odometry_change = platform_update_odometry(motor_indexes, velocities, NUMBER_MOTORS);
-                state->platform_odometry.x += odometry_change.x;
-                state->platform_odometry.y += odometry_change.y;
-                state->platform_odometry.t += odometry_change.t;
+
+                // odometry_change is expressed in the ROBOT BODY frame. Rotate
+                // it into the world frame by the current heading and accumulate
+                // (see odometry_integrator_accumulate). Without this, driving
+                // while turning corrupts x/y (a small circle unrolls into
+                // metres of phantom translation).
+                state->platform_odometry = odometry_integrator_accumulate(
+                    state->platform_odometry, odometry_change);
             }
             osDelay(1);
             xSemaphoreGive(state->odometry_mutex);

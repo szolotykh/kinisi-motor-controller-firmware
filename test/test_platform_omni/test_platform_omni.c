@@ -17,7 +17,7 @@ void setUp(void) {
     encoder_odometry_set_interface((const encoder_odometry_interface_t*)mock_encoder_odometry_get_interface());
 
     // Initialize platform with test values
-    initialize_omni_platform(1, 0, 1, 0.1, 0.2, 1000.0);
+    initialize_omni_platform(1, 0, 1, 0, 0, 0, 0.1, 0.2, 1000.0);
 }
 
 void tearDown(void) {
@@ -32,7 +32,7 @@ void test_initialize_omni_platform(void) {
     double robot_radius = 0.2;
     double encoder_resolution = 1000.0;
 
-    initialize_omni_platform(1, 0, 1, wheel_diameter, robot_radius, encoder_resolution);
+    initialize_omni_platform(1, 0, 1, 0, 0, 0, wheel_diameter, robot_radius, encoder_resolution);
 
     TEST_ASSERT_EQUAL(3, mock_get_initialize_motor_calls());
     TEST_ASSERT_EQUAL(3, mock_get_initialize_encoder_calls());
@@ -101,9 +101,9 @@ void test_omni_platform_set_target_velocity(void) {
     // With wheel_radius = 0.05m and robot_radius = 0.2m
     // Expected speeds (rad/s):
     // V1 = 1/0.05 * (sqrt(3)/2 * 1.0 - 0.5 * 0.5 + 0.2 * 0.1)
-    double expected_v1 = (sqrt(3.0)/2.0 * 1.0 - 0.5 * 0.5 + 0.2 * 0.1) / 0.05;
-    double expected_v2 = (-sqrt(3.0)/2.0 * 1.0 - 0.5 * 0.5 + 0.2 * 0.1) / 0.05;
-    double expected_v3 = (0.5 + 0.2 * 0.1) / 0.05;
+    double expected_v1 = (sqrt(3.0)/2.0 * 1.0 + 0.5 * 0.5 + 0.2 * 0.1) / 0.05;
+    double expected_v2 = (-sqrt(3.0)/2.0 * 1.0 + 0.5 * 0.5 + 0.2 * 0.1) / 0.05;
+    double expected_v3 = (-0.5 + 0.2 * 0.1) / 0.05;
 
     TEST_ASSERT_FLOAT_WITHIN(0.01, expected_v1, target_speeds[0]);
     TEST_ASSERT_FLOAT_WITHIN(0.01, expected_v2, target_speeds[1]);
@@ -120,7 +120,7 @@ void test_omni_platform_update_odometry(void) {
     // Expected odometry:
     // x = 0.05 * (1/sqrt(3) * 1.0 - 1/sqrt(3) * -1.0)
     double expected_x = 0.05 * (1.0/sqrt(3.0) - (-1.0)/sqrt(3.0));
-    double expected_y = 0.05/3.0 * (-1.0 - (-1.0) + 2.0 * 2.0);
+    double expected_y = 0.05/3.0 * (1.0 + (-1.0) - 2.0 * 2.0);
     double expected_t = 0.05/(3.0 * 0.2) * (1.0 + (-1.0) + 2.0);
 
     TEST_ASSERT_FLOAT_WITHIN(0.001, expected_x, odometry.x);

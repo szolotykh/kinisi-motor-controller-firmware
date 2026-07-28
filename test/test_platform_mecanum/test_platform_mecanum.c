@@ -18,7 +18,7 @@ void setUp(void) {
     encoder_odometry_set_interface((const encoder_odometry_interface_t*)mock_encoder_odometry_get_interface());
 
     // Initialize platform with test values
-    initialize_mecanum_platform(1, 0, 1, 0, 0.4, 0.3, 0.1, 1000.0);
+    initialize_mecanum_platform(1, 0, 1, 0, 0, 0, 0, 0, 0.4, 0.3, 0.1, 1000.0);
 }
 
 void tearDown(void) {
