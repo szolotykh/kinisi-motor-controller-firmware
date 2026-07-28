@@ -43,6 +43,21 @@ double pid_controller_update(pid_controller_t* controller, double currentSpeed, 
     double kd = controller->kd;
     controller->target_speed = targetSpeed;
 
+    // Hard stop on a zero setpoint. The incremental output below keeps a
+    // residual motorPWM and integrator; when the wheel then creeps slower than
+    // the encoder can resolve, currentSpeed quantizes to 0 so the error is 0
+    // and nothing drives that residual back down -> the motor keeps crawling.
+    // Force the output and internal state to zero so "stop" really stops.
+    if (targetSpeed < 1e-6 && targetSpeed > -1e-6)
+    {
+        controller->integrator = 0.0;
+        controller->differentiator = 0.0;
+        controller->previousError = -currentSpeed;
+        controller->previousSpeed = currentSpeed;
+        controller->motorPWM = 0.0;
+        return controller->motorPWM;
+    }
+
     // Calculate error
     double error = targetSpeed - currentSpeed;
 

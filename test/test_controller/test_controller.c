@@ -99,6 +99,45 @@ void test_encoder2(void)
   TEST_ASSERT_EQUAL_INT(v0, -300);
 }
 
+// Regression: a zero target speed must force a true stop. Previously the
+// incremental output (motorPWM += ... + integrator) kept a residual PWM that
+// made the motor creep at speeds too low for the encoder to measure, so the
+// loop could not sense (and therefore never corrected) the motion.
+void test_Pid_Zero_Target_Forces_Stop(void)
+{
+    pid_controller_t c;
+    pid_controller_init(&c, 0.1, 0.8, 0.2, 0.0, 30.0);
+
+    // Wind the controller up with a nonzero target while the wheel reads 0,
+    // so motorPWM and the integrator both accumulate to nonzero values.
+    for (int i = 0; i < 20; i++) {
+        pid_controller_update(&c, 0.0, 5.0);
+    }
+    TEST_ASSERT_TRUE(c.motorPWM != 0.0);
+
+    // Command a stop while the wheel still creeps below encoder resolution
+    // (measured speed quantizes to 0): output and integrator must go to zero.
+    double pwm = pid_controller_update(&c, 0.0, 0.0);
+    TEST_ASSERT_TRUE(pwm == 0.0);
+    TEST_ASSERT_TRUE(c.motorPWM == 0.0);
+    TEST_ASSERT_TRUE(c.integrator == 0.0);
+}
+
+// The stop must be sticky: repeated zero commands (with the wheel unable to
+// report the residual creep) must not let the output ramp back up.
+void test_Pid_Zero_Target_Does_Not_Creep(void)
+{
+    pid_controller_t c;
+    pid_controller_init(&c, 0.1, 0.8, 0.2, 0.0, 30.0);
+    for (int i = 0; i < 20; i++) {
+        pid_controller_update(&c, 0.0, 5.0);
+    }
+    for (int i = 0; i < 15; i++) {
+        double pwm = pid_controller_update(&c, 0.0, 0.0);
+        TEST_ASSERT_TRUE(pwm == 0.0);
+    }
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_Velocity_X_100);
@@ -107,5 +146,7 @@ int main(void) {
     RUN_TEST(test_Velocity_Zero);
     RUN_TEST(test_encoder1);
     RUN_TEST(test_encoder2);
+    RUN_TEST(test_Pid_Zero_Target_Forces_Stop);
+    RUN_TEST(test_Pid_Zero_Target_Does_Not_Creep);
     return UNITY_END();
 }
