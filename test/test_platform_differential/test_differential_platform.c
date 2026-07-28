@@ -7,6 +7,8 @@
 // Function declarations for platform_differential.h functions
 extern void initialize_differential_platform(uint8_t isReversed0, 
                                            uint8_t isReversed1, 
+                                           uint8_t isEncoderReversed0, 
+                                           uint8_t isEncoderReversed1, 
                                            double wheel_diameter, 
                                            double wheel_base, 
                                            double encoder_resolution);
@@ -36,7 +38,7 @@ void setUp(void) {
     encoder_odometry_set_interface(mock_encoder_odometry_get_interface());
 
     // Initialize platform with test values
-    initialize_differential_platform(0, 0, 0.1, 0.3, 1000.0);
+    initialize_differential_platform(0, 0, 0, 0, 0.1, 0.3, 1000.0);
 }
 
 void tearDown(void) {
@@ -63,6 +65,8 @@ void test_initialize_differential_platform(void) {
     initialize_differential_platform(
         isReversed0,
         isReversed1,
+        0,
+        0,
         wheel_diameter,
         wheel_base,
         encoder_resolution

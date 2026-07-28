@@ -1,7 +1,11 @@
 #include "mock_platform_omni.h"
 #include "controllers_manager.h"
+#include "platform_common.h"
 #include <string.h>
 #include <stdio.h>
+
+// Global platform instance required by the linked platform_*.c files.
+platform_t platform = {0};
 
 // Mock tracking variables
 static motorIndex last_motor = 0;
