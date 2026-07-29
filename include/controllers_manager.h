@@ -67,6 +67,16 @@ Parameters:
 void controllers_manager_brake_multiple(uint8_t motor_selection);
 
 /*
+Reset the closed-loop controller for a single motor: clears the PID runtime
+state (integrator windup, differentiator, error/speed history, accumulated
+output) and re-zeros the target speed, while keeping the controller running
+with its existing tuning. No-op if no controller is running for the motor.
+Parameters:
+    motor_index: Motor index
+*/
+void controllers_manager_reset_controller(uint8_t motor_index);
+
+/*
 Delete controller for single motor
 Parameters:
     motor_index: Motor index

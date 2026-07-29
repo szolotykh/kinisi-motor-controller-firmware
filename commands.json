@@ -1,5 +1,5 @@
 {
-    "version": "1.2.0",
+    "version": "1.3.0",
     "commands": [
         {
             "command": "INITIALIZE_MOTOR",
@@ -172,7 +172,7 @@
         {
             "command": "RESET_MOTOR_CONTROLLER",
             "code": "0x07",
-            "description": "This command resets the controller for the specified motor. Ignored if the motor is currently owned by an active platform (one of its wheels).",
+            "description": "This command resets the closed-loop controller for the specified motor: it clears the accumulated PID state (integrator windup, derivative history and internal output) and re-zeros the target speed, while keeping the controller running with its existing tuning (kp/ki/kd). Use it to recover from integrator windup or to bring a motor cleanly to a stop without deleting and re-initializing the controller. No effect if no controller is running for that motor, and ignored if the motor is currently owned by an active platform (one of its wheels).",
             "properties": [
                 {
                     "name": "motor_index",

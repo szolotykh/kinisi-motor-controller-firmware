@@ -138,6 +138,51 @@ void test_Pid_Zero_Target_Does_Not_Creep(void)
     }
 }
 
+// pid_controller_reset must clear the accumulated runtime state (integrator
+// windup, differentiator, error/speed history, output and target) so a wound-up
+// controller starts fresh on its next update.
+void test_Pid_Reset_Clears_Runtime_State(void)
+{
+    pid_controller_t c;
+    pid_controller_init(&c, 0.1, 0.8, 0.2, 0.1, 30.0);
+
+    // Wind the controller up so its runtime fields accumulate nonzero values.
+    for (int i = 0; i < 20; i++) {
+        pid_controller_update(&c, 0.0, 5.0);
+    }
+    TEST_ASSERT_TRUE(c.motorPWM != 0.0);
+    TEST_ASSERT_TRUE(c.integrator != 0.0);
+
+    pid_controller_reset(&c);
+
+    TEST_ASSERT_EQUAL_DOUBLE(0.0, c.integrator);
+    TEST_ASSERT_EQUAL_DOUBLE(0.0, c.differentiator);
+    TEST_ASSERT_EQUAL_DOUBLE(0.0, c.previousError);
+    TEST_ASSERT_EQUAL_DOUBLE(0.0, c.previousSpeed);
+    TEST_ASSERT_EQUAL_DOUBLE(0.0, c.motorPWM);
+    TEST_ASSERT_EQUAL_DOUBLE(0.0, c.target_speed);
+}
+
+// pid_controller_reset must keep the controller's tuning (gains, sampling time,
+// tau and integral limits) so it stays configured and running after a reset.
+void test_Pid_Reset_Preserves_Tuning(void)
+{
+    pid_controller_t c;
+    pid_controller_init(&c, 0.1, 0.8, 0.2, 0.1, 30.0);
+    for (int i = 0; i < 20; i++) {
+        pid_controller_update(&c, 0.0, 5.0);
+    }
+
+    pid_controller_reset(&c);
+
+    TEST_ASSERT_EQUAL_DOUBLE(0.8, c.kp);
+    TEST_ASSERT_EQUAL_DOUBLE(0.2, c.ki);
+    TEST_ASSERT_EQUAL_DOUBLE(0.1, c.kd);
+    TEST_ASSERT_EQUAL_DOUBLE(0.1, c.T);
+    TEST_ASSERT_EQUAL_DOUBLE(30.0, c.max_integral);
+    TEST_ASSERT_EQUAL_DOUBLE(-30.0, c.min_integral);
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_Velocity_X_100);
@@ -148,5 +193,7 @@ int main(void) {
     RUN_TEST(test_encoder2);
     RUN_TEST(test_Pid_Zero_Target_Forces_Stop);
     RUN_TEST(test_Pid_Zero_Target_Does_Not_Creep);
+    RUN_TEST(test_Pid_Reset_Clears_Runtime_State);
+    RUN_TEST(test_Pid_Reset_Preserves_Tuning);
     return UNITY_END();
 }

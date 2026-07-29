@@ -1,6 +1,6 @@
 # Kinisi motor controller commands
 
-Version: 1.2.0
+Version: 1.3.0
 ---
 
 ## Commands
@@ -54,7 +54,7 @@ Properties:
 - speed (double): The speed of the motor.
 
 ### RESET_MOTOR_CONTROLLER (0x07)
-Description: This command resets the controller for the specified motor. Ignored if the motor is currently owned by an active platform (one of its wheels).\
+Description: This command resets the closed-loop controller for the specified motor: it clears the accumulated PID state (integrator windup, derivative history and internal output) and re-zeros the target speed, while keeping the controller running with its existing tuning (kp/ki/kd). Use it to recover from integrator windup or to bring a motor cleanly to a stop without deleting and re-initializing the controller. No effect if no controller is running for that motor, and ignored if the motor is currently owned by an active platform (one of its wheels).\
 Properties:
 - motor_index (uint8_t): The index of the motor to reset the controller for.
   - Range: 0 to 3

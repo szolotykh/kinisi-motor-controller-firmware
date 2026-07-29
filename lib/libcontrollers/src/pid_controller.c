@@ -31,6 +31,17 @@ void pid_controller_init(pid_controller_t* controller, double T, double kp, doub
     controller->max_integral = integral_limit;
     controller->min_integral = -integral_limit;
 }
+// Reset the runtime state of the PID controller, keeping its tuning.
+void pid_controller_reset(pid_controller_t* controller)
+{
+    controller->integrator = 0.0;
+    controller->differentiator = 0.0;
+    controller->previousError = 0.0;
+    controller->previousSpeed = 0.0;
+    controller->motorPWM = 0.0;
+    controller->target_speed = 0.0;
+}
+
 // Update the PID controller
 // currentSpeed: Current speed of the motor in radians per second
 // targetSpeed: Target speed of the motor in radians per second

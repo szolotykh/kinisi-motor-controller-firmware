@@ -136,7 +136,8 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
             // STOP_MOTOR TODO on reporting the ignore back to the host).
             if (!platform_owns_motor(cmd->properties.reset_motor_controller.motor_index))
             {
-                // TODO: Implement
+                controllers_manager_reset_controller(
+                    cmd->properties.reset_motor_controller.motor_index);
             }
             }
         break;

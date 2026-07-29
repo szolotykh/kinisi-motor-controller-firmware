@@ -311,6 +311,26 @@ void controllers_manager_brake_multiple(uint8_t motor_selection)
     }
 }
 
+void controllers_manager_reset_controller(uint8_t motor_index)
+{
+    // Nothing to reset if no controller is running for this motor. The state
+    // mutex may not exist yet (manager never initialized), so return before
+    // touching it, mirroring the early-out in the stop/delete helpers.
+    if (controllers_manager.state.Controller_info[motor_index].state == STOP)
+    {
+        return;
+    }
+
+    if (xSemaphoreTake(controllers_manager.state.controller_state_mutex, portMAX_DELAY))
+    {
+        // Clear accumulated PID history (windup, differentiator, output) and
+        // re-zero the target, but keep the controller RUNNING with its tuning.
+        pid_controller_reset(&controllers_manager.state.Controller_info[motor_index].controller);
+        controllers_manager.state.target_motor_speed[motor_index] = 0;
+        xSemaphoreGive(controllers_manager.state.controller_state_mutex);
+    }
+}
+
 void controllers_manager_delete_controller(uint8_t motor_index)
 {
     // Check if controller for this motor is running
