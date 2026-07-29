@@ -188,6 +188,7 @@ void initialize_mecanum_platform(
     platform.stop_platform_velocity_controller = mecanum_platform_stop_velocity_controller;
     platform.initialize_platform_odometry = mecanum_platform_start_odometry;
     platform.update_platform_odometry = mecanum_platform_update_odometry;
+    platform.motor_mask = BMOTOR0 | BMOTOR1 | BMOTOR2 | BMOTOR3;
     platform.properties.mecanum.wheel_diameter = wheel_diameter;
     platform.properties.mecanum.length = length;
     platform.properties.mecanum.width = width;

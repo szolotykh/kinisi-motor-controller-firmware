@@ -35,6 +35,22 @@ void platform_set_target_velocity(platform_velocity_t platform_target_velocity);
 // Stop velocity controller for current platform
 void platform_stop_velocity_controller();
 
+// Actively brake all platform motors (short brake). Stops the velocity
+// controller if running so the closed loop does not override the brake.
+// The motors resist motion until a new command is issued.
+void platform_brake();
+
+// Let all platform motors coast freely (high impedance). Stops the velocity
+// controller if running so the closed loop does not override the coast.
+// The motors spin down without resistance.
+void platform_coast();
+
+// Returns 1 if the given motor index is currently owned/driven by the active
+// platform (i.e. a platform is initialized and this motor is one of its
+// wheels), 0 otherwise. Used to protect platform wheels from direct
+// single-motor commands.
+uint8_t platform_owns_motor(uint8_t motor_index);
+
 // Start calculating platform odometry
 void platform_start_odometry();
 

@@ -1,18 +1,18 @@
 # Kinisi motor controller commands
 
-Version: 1.1.0
+Version: 1.2.0
 ---
 
 ## Commands
 ### INITIALIZE_MOTOR (0x01)
-Description: This command initializes a motor and prepares it for use.\
+Description: This command initializes a motor and prepares it for use. Ignored if the motor is currently owned by an active platform (one of its wheels), so platform wheels are not reconfigured out from under the platform.\
 Properties:
 - motor_index (uint8_t): The index of the motor to initialize.
   - Range: 0 to 3
 - is_reversed (bool): Whether or not the motor is reversed.
 
 ### SET_MOTOR_SPEED (0x02)
-Description: This command sets the speed of the specified motor in PWM.\
+Description: This command sets the speed of the specified motor in PWM. Ignored if the motor is currently owned by an active platform (one of its wheels); use the platform velocity commands to drive platform wheels.\
 Properties:
 - motor_index (uint8_t): The index of the motor to set the speed for.
   - Range: 0 to 3
@@ -20,19 +20,19 @@ Properties:
   - Range: -100.0 to 100.0
 
 ### STOP_MOTOR (0x03)
-Description: This command stops motor by setting its speed to 0.\
+Description: Coasts the motor to a stop: both H-bridge outputs are driven low, leaving the motor terminals open (high impedance) so it free-wheels and spins down gradually under its own friction. This also stops that motor's closed-loop speed controller if one is running (started via INITIALIZE_MOTOR_CONTROLLER), so the PID loop cannot re-drive the motor; to command the motor by target speed again you must re-initialize its controller. This is a single-motor command and is ignored if the motor is currently owned by an active platform (one of its wheels); to stop a platform, use STOP_PLATFORM_CONTROLLER, COAST_PLATFORM or BRAKE_PLATFORM instead. Use STOP_MOTOR for a soft, low-stress stop; use BRAKE_MOTOR when you need the motor to hold position and stop quickly.\
 Properties:
 - motor_index (uint8_t): The index of the motor to set the speed for.
   - Range: 0 to 3
 
 ### BRAKE_MOTOR (0x04)
-Description: This command brakes motor.\
+Description: Actively brakes the motor (short brake): both H-bridge outputs are driven high, shorting the motor terminals together so the motor's own back-EMF resists rotation and it stops quickly and holds position. This also stops that motor's closed-loop speed controller if one is running (started via INITIALIZE_MOTOR_CONTROLLER), so the PID loop cannot re-drive the motor; to command the motor by target speed again you must re-initialize its controller. This is a single-motor command and is ignored if the motor is currently owned by an active platform (one of its wheels); to brake a platform, use BRAKE_PLATFORM (or STOP_PLATFORM_CONTROLLER / COAST_PLATFORM) instead. Use BRAKE_MOTOR for a fast, holding stop; use STOP_MOTOR to let the motor coast freely instead.\
 Properties:
 - motor_index (uint8_t): The index of the motor to set the speed for.
   - Range: 0 to 3
 
 ### INITIALIZE_MOTOR_CONTROLLER (0x05)
-Description: This command sets the controller for the specified motor.\
+Description: This command sets the controller for the specified motor. Ignored if the motor is currently owned by an active platform (one of its wheels), so it cannot create a competing controller on a platform wheel.\
 Properties:
 - motor_index (uint8_t): The index of the motor to set the controller for.
   - Range: 0 to 3
@@ -47,14 +47,14 @@ Properties:
 - integral_limit (double): Integral limit of PID controller. The value can not be negative or zero. If the value is zero or negative, the integral limit is disabled.
 
 ### SET_MOTOR_TARGET_SPEED (0x06)
-Description: This command sets the target speed for the specified motor in radians.\
+Description: This command sets the target speed for the specified motor in radians. Ignored if the motor is currently owned by an active platform (one of its wheels); use SET_PLATFORM_TARGET_VELOCITY to drive platform wheels.\
 Properties:
 - motor_index (uint8_t): The index of the motor to set the target velocity for.
   - Range: 0 to 3
 - speed (double): The speed of the motor.
 
 ### RESET_MOTOR_CONTROLLER (0x07)
-Description: This command resets the controller for the specified motor.\
+Description: This command resets the controller for the specified motor. Ignored if the motor is currently owned by an active platform (one of its wheels).\
 Properties:
 - motor_index (uint8_t): The index of the motor to reset the controller for.
   - Range: 0 to 3
@@ -68,7 +68,7 @@ Response:
  - motor_controller_state (object): The state of the controller for the specified motor.
 
 ### DELETE_MOTOR_CONTROLLER (0x09)
-Description: This command deletes the controller for the specified motor.\
+Description: This command deletes the controller for the specified motor. Ignored if the motor is currently owned by an active platform (one of its wheels); use STOP_PLATFORM_CONTROLLER to stop the platform controller instead.\
 Properties:
 - motor_index (uint8_t): The index of the motor to delete the controller for.
   - Range: 0 to 3
@@ -150,7 +150,7 @@ Properties:
 - None
 
 ### INITIALIZE_MECANUM_PLATFORM (0x30)
-Description: This command initializes a mecanum platform and prepares it for use.\
+Description: This command initializes a mecanum (4-wheel) platform and prepares it for use. It uses motor and encoder indices 0, 1, 2 and 3 (one per wheel), which correspond to the is_reversed_0..3 and is_encoder_reversed_0..3 parameters. All four motor slots are occupied by this platform.\
 Properties:
 - is_reversed_0 (bool): Determines if motor 0 is reversed.
 - is_reversed_1 (bool): Determines if motor 1 is reversed.
@@ -166,7 +166,7 @@ Properties:
 - encoder_resolution (double): Encoder resolution in ticks per revolution. The value can not be negative. If platform does not have encoders, the value should be set to zero.
 
 ### INITIALIZE_OMNI_PLATFORM (0x31)
-Description: This command initializes a omni platform and prepares it for use.\
+Description: This command initializes an omni (3-wheel) platform and prepares it for use. It uses motor and encoder indices 0, 1 and 2 (one per wheel), which correspond to the is_reversed_0..2 and is_encoder_reversed_0..2 parameters. Motor index 3 is not used by this platform and stays free for other purposes.\
 Properties:
 - is_reversed_0 (bool): Determines if motor 0 is reversed.
 - is_reversed_1 (bool): Determines if motor 1 is reversed.
@@ -179,7 +179,7 @@ Properties:
 - encoder_resolution (double): Encoder resolution in ticks per revolution. The value can not be negative. If platform does not have encoders, the value should be set to zero.
 
 ### INITIALIZE_DIFFERENTIAL_PLATFORM (0x32)
-Description: This command initializes a differential platform and prepares it for use.\
+Description: This command initializes a differential (2-wheel) platform and prepares it for use. It uses motor and encoder index 0 for the left wheel and index 1 for the right wheel, which correspond to the is_reversed_0/1 and is_encoder_reversed_0/1 parameters. Motor indices 2 and 3 are not used by this platform and stay free for other purposes.\
 Properties:
 - is_reversed_0 (bool): Determines if motor 0 is reversed.
 - is_reversed_1 (bool): Determines if motor 1 is reversed.
@@ -247,4 +247,14 @@ Properties:
 - None
 Response: 
  - platform_odometry (object): The odometry of the platform in meters and radians.
+
+### BRAKE_PLATFORM (0x49)
+Description: This command actively brakes all of this platform's wheel motors (short brake) so they resist motion and hold position, and stops the platform velocity controller if it is running (you must call START_PLATFORM_CONTROLLER again to resume closed-loop platform control). Motors used outside this platform are not affected. The motors resist motion until a new command is issued.\
+Properties:
+- None
+
+### COAST_PLATFORM (0x4A)
+Description: This command lets all of this platform's wheel motors coast freely (high impedance) so they spin down without resistance, and stops the platform velocity controller if it is running (you must call START_PLATFORM_CONTROLLER again to resume closed-loop platform control). Motors used outside this platform are not affected. The motors spin down without resistance.\
+Properties:
+- None
 

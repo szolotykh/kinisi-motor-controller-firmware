@@ -172,6 +172,7 @@ void initialize_omni_platform(
     platform.stop_platform_velocity_controller = omni_platform_stop_velocity_controller;
     platform.initialize_platform_odometry = initialize_omni_platform_odometry;
     platform.update_platform_odometry = omni_platform_update_odometry;
+    platform.motor_mask = BMOTOR0 | BMOTOR1 | BMOTOR2;
     platform.properties.omni.wheel_diameter = wheel_diameter;
     platform.properties.omni.robot_radius = robot_radius;
     platform.is_initialized = 1;

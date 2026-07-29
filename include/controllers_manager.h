@@ -46,6 +46,27 @@ Parameters:
 void controllers_manager_stop_controller_multiple(uint8_t motor_selection);
 
 /*
+Stop the closed-loop controller for a single motor WITHOUT touching the motor
+hardware. Safe to call when no controller is running (no-op). The caller is
+responsible for the hardware action (coast/brake) afterwards. Use this to make
+open-loop motor commands persist by first taking the motor out of closed-loop
+control.
+Parameters:
+    motor_index: Motor index
+*/
+void controllers_manager_stop_controller(uint8_t motor_index);
+
+/*
+Brake selected motors: stops their controllers and actively brakes the motors
+(short brake) so they resist motion. Use this instead of
+controllers_manager_stop_controller_multiple when you want an active hold
+rather than a free coast.
+Parameters:
+    motor_selection: Bit mask of selected motors
+*/
+void controllers_manager_brake_multiple(uint8_t motor_selection);
+
+/*
 Delete controller for single motor
 Parameters:
     motor_index: Motor index

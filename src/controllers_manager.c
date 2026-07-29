@@ -268,6 +268,49 @@ void controllers_manager_stop_controller_multiple(uint8_t motor_selection)
     }
 }
 
+void controllers_manager_stop_controller(uint8_t motor_index)
+{
+    // If no controller is running for this motor there is nothing to stop, and
+    // the state mutex may not exist yet (manager never initialized), so return
+    // before touching it. This mirrors the early-out in
+    // controllers_manager_delete_controller and keeps open-loop motor commands
+    // safe when no controller was ever created.
+    if (controllers_manager.state.Controller_info[motor_index].state == STOP)
+    {
+        return;
+    }
+
+    if (xSemaphoreTake(controllers_manager.state.controller_state_mutex, portMAX_DELAY))
+    {
+        controllers_manager.state.Controller_info[motor_index].state = STOP;
+        controllers_manager.state.Controller_info[motor_index].controller = (pid_controller_t){0};
+        controllers_manager.state.target_motor_speed[motor_index] = 0;
+        xSemaphoreGive(controllers_manager.state.controller_state_mutex);
+    }
+}
+
+void controllers_manager_brake_multiple(uint8_t motor_selection)
+{
+    if (xSemaphoreTake(controllers_manager.state.controller_state_mutex, portMAX_DELAY))
+    {
+        for (uint8_t motor_index = 0; motor_index < NUMBER_MOTORS; motor_index++)
+        {
+            if (motor_selection & (1 << motor_index))
+            {
+                controllers_manager.state.Controller_info[motor_index].state = STOP;
+                controllers_manager.state.Controller_info[motor_index].controller = (pid_controller_t){0};
+
+                // Actively brake motor (short brake) so it resists motion
+                motor->brake(controllers_manager.state.Controller_info[motor_index].mIndex);
+
+                // Set target speed to zero
+                controllers_manager.state.target_motor_speed[motor_index] = 0;
+            }
+        }
+        xSemaphoreGive(controllers_manager.state.controller_state_mutex);
+    }
+}
+
 void controllers_manager_delete_controller(uint8_t motor_index)
 {
     // Check if controller for this motor is running

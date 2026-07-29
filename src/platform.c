@@ -62,6 +62,36 @@ void platform_stop_velocity_controller() {
     platform.stop_platform_velocity_controller();
 }
 
+void platform_brake() {
+    if (!platform.is_initialized) {
+        return;
+    }
+
+    // Drop out of closed-loop control so the PID task stops overriding the
+    // motor PWM, then actively brake only this platform's own wheel motors.
+    // motor_mask excludes any motor used for something outside the platform.
+    platform.is_controller_initialized = 0;
+    controllers_manager_brake_multiple(platform.motor_mask);
+}
+
+void platform_coast() {
+    if (!platform.is_initialized) {
+        return;
+    }
+
+    // Drop out of closed-loop control so the PID task stops overriding the
+    // motor PWM, then let only this platform's own wheel motors coast freely.
+    platform.is_controller_initialized = 0;
+    controllers_manager_stop_controller_multiple(platform.motor_mask);
+}
+
+uint8_t platform_owns_motor(uint8_t motor_index) {
+    if (!platform.is_initialized) {
+        return 0;
+    }
+    return (platform.motor_mask & (1 << motor_index)) ? 1 : 0;
+}
+
 platform_odometry_t platform_update_odometry(uint8_t* motor_indexes, double* velocities, uint8_t motor_count) {
     if (!platform.is_initialized) {
         platform_odometry_t odometry = {
