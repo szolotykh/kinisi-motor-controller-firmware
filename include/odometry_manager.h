@@ -61,3 +61,19 @@ platform_odometry_t odometry_manager_get_platform_odometry();
 Reset platform odometry
 */
 void odometry_manager_reset_platform_odometry();
+
+/*
+Set the global odometry task update frequency (Hz). A single task integrates all
+encoder and platform odometry, so this is global. The value is quantized to the
+1 ms RTOS tick (period_ms = 1000 / frequency_hz). Ignored if frequency_hz is 0.
+Parameters:
+    frequency_hz: Odometry update frequency in Hz
+*/
+void odometry_manager_set_frequency(uint16_t frequency_hz);
+
+/*
+Get the current global odometry task update frequency (Hz).
+Returns:
+    Odometry update frequency in Hz
+*/
+uint16_t odometry_manager_get_frequency();

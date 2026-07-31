@@ -111,3 +111,22 @@ Returns:
 motor_controller_state controllers_manager_get_motor_controller_state(uint8_t motor_index);
 
 
+/*
+Set the global update frequency (Hz) of the closed-loop controller task. All
+controllers share one loop, so this applies to every running controller and to
+controllers created afterwards; each PID's sampling time is updated to match.
+The value is quantized to the 1 ms RTOS tick (period_ms = 1000 / frequency_hz).
+Ignored if frequency_hz is 0.
+Parameters:
+    frequency_hz: Controller update frequency in Hz
+*/
+void controllers_manager_set_frequency(uint16_t frequency_hz);
+
+/*
+Get the current global update frequency (Hz) of the closed-loop controller task.
+Returns:
+    Controller update frequency in Hz
+*/
+uint16_t controllers_manager_get_frequency();
+
+

@@ -2,6 +2,7 @@
 #include "platform_types.h"
 #include "platform_common.h"
 #include "pid_controller.h"
+#include "loop_frequency.h"
 
 #include <limits.h>
 
@@ -183,6 +184,29 @@ void test_Pid_Reset_Preserves_Tuning(void)
     TEST_ASSERT_EQUAL_DOUBLE(-30.0, c.min_integral);
 }
 
+// loop_frequency_hz_to_period_ms converts a task frequency (Hz) to the RTOS
+// tick period (ms): the defaults, the 1 ms clamp (max 1000 Hz), integer
+// quantization and the invalid (zero) case.
+void test_Loop_Frequency_To_Period(void)
+{
+    TEST_ASSERT_EQUAL_UINT32(100, loop_frequency_hz_to_period_ms(10));  // controller default
+    TEST_ASSERT_EQUAL_UINT32(50,  loop_frequency_hz_to_period_ms(20));  // odometry default
+    TEST_ASSERT_EQUAL_UINT32(1,   loop_frequency_hz_to_period_ms(1000));
+    TEST_ASSERT_EQUAL_UINT32(1,   loop_frequency_hz_to_period_ms(2000)); // clamped to 1 ms
+    TEST_ASSERT_EQUAL_UINT32(333, loop_frequency_hz_to_period_ms(3));    // quantized (1000/3)
+    TEST_ASSERT_EQUAL_UINT32(0,   loop_frequency_hz_to_period_ms(0));    // invalid
+}
+
+// loop_period_ms_to_frequency_hz is the inverse used by the GET commands,
+// including the zero-period guard.
+void test_Loop_Period_To_Frequency(void)
+{
+    TEST_ASSERT_EQUAL_UINT16(10,   loop_period_ms_to_frequency_hz(100));
+    TEST_ASSERT_EQUAL_UINT16(20,   loop_period_ms_to_frequency_hz(50));
+    TEST_ASSERT_EQUAL_UINT16(1000, loop_period_ms_to_frequency_hz(1));
+    TEST_ASSERT_EQUAL_UINT16(0,    loop_period_ms_to_frequency_hz(0));
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_Velocity_X_100);
@@ -195,5 +219,7 @@ int main(void) {
     RUN_TEST(test_Pid_Zero_Target_Does_Not_Creep);
     RUN_TEST(test_Pid_Reset_Clears_Runtime_State);
     RUN_TEST(test_Pid_Reset_Preserves_Tuning);
+    RUN_TEST(test_Loop_Frequency_To_Period);
+    RUN_TEST(test_Loop_Period_To_Frequency);
     return UNITY_END();
 }

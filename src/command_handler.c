@@ -117,6 +117,20 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
             }
         break;
 
+        case SET_CONTROLLER_FREQUENCY:
+            {
+                controllers_manager_set_frequency(
+                    cmd->properties.set_controller_frequency.frequency);
+            }
+        break;
+
+        case GET_CONTROLLER_FREQUENCY:
+            {
+                uint16_t frequency = controllers_manager_get_frequency();
+                command_callback((uint8_t*)&frequency, sizeof(uint16_t));
+            }
+        break;
+
         case SET_MOTOR_TARGET_SPEED:
             {
                 // Ignored if the motor is owned by an active platform (see the
@@ -184,6 +198,20 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
             {
             double odometry = encoder_get_odometry(cmd->properties.get_encoder_odometry.encoder_index);
             command_callback((uint8_t*)&odometry, sizeof(double));
+            }
+        break;
+
+        case SET_ODOMETRY_FREQUENCY:
+            {
+                odometry_manager_set_frequency(
+                    cmd->properties.set_odometry_frequency.frequency);
+            }
+        break;
+
+        case GET_ODOMETRY_FREQUENCY:
+            {
+                uint16_t frequency = odometry_manager_get_frequency();
+                command_callback((uint8_t*)&frequency, sizeof(uint16_t));
             }
         break;
 

@@ -1,5 +1,5 @@
 {
-    "version": "1.3.0",
+    "version": "1.4.0",
     "commands": [
         {
             "command": "INITIALIZE_MOTOR",
@@ -225,6 +225,35 @@
             "category": "Motor Controller"
         },
         {
+            "command": "SET_CONTROLLER_FREQUENCY",
+            "code": "0x0A",
+            "description": "This command sets the global update frequency (in Hz) of the closed-loop motor controller task. All motor controllers share a single control loop, so this frequency is global and affects every currently running controller as well as any created afterwards; the PID sampling time is updated to match. The value is quantized to the 1 ms RTOS tick (period_ms = 1000 / frequency), so effective frequencies are 1000/N Hz. Defaults to 10 Hz (100 ms) at start-up.",
+            "properties": [
+                {
+                    "name": "frequency",
+                    "type": "uint16_t",
+                    "range": [
+                        1,
+                        1000
+                    ],
+                    "description": "The controller update frequency in Hz."
+                }
+            ],
+            "category": "Motor Controller"
+        },
+        {
+            "command": "GET_CONTROLLER_FREQUENCY",
+            "code": "0x0B",
+            "description": "This command retrieves the current global update frequency (in Hz) of the closed-loop motor controller task.",
+            "properties": [],
+            "response": {
+                "name": "frequency",
+                "type": "uint16_t",
+                "description": "The current controller update frequency in Hz."
+            },
+            "category": "Motor Controller"
+        },
+        {
             "command": "INITIALIZE_ENCODER",
             "code": "0x11",
             "description": "This command initializes an encoder and prepares it for use.",
@@ -344,6 +373,35 @@
                 "name": "odometry",
                 "type": "double",
                 "description": "The odometry of the encoder in radians."
+            },
+            "category": "Encoder"
+        },
+        {
+            "command": "SET_ODOMETRY_FREQUENCY",
+            "code": "0x17",
+            "description": "This command sets the global update frequency (in Hz) of the odometry task. A single odometry task integrates all encoder and platform odometry, so this frequency is global. The value is quantized to the 1 ms RTOS tick (period_ms = 1000 / frequency), so effective frequencies are 1000/N Hz. Defaults to 20 Hz (50 ms) at start-up.",
+            "properties": [
+                {
+                    "name": "frequency",
+                    "type": "uint16_t",
+                    "range": [
+                        1,
+                        1000
+                    ],
+                    "description": "The odometry update frequency in Hz."
+                }
+            ],
+            "category": "Encoder"
+        },
+        {
+            "command": "GET_ODOMETRY_FREQUENCY",
+            "code": "0x18",
+            "description": "This command retrieves the current global update frequency (in Hz) of the odometry task.",
+            "properties": [],
+            "response": {
+                "name": "frequency",
+                "type": "uint16_t",
+                "description": "The current odometry update frequency in Hz."
             },
             "category": "Encoder"
         },

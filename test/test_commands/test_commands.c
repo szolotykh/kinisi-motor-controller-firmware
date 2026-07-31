@@ -25,6 +25,7 @@ void test_set_motor_controller_command(void)
         0x00,               // motor_index
         0x00,               // is_reversed
         0x00,               // encoder_index
+        0x00,               // is_encoder_reversed
         // encoder_resolution (not testing this value)
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         // kp = 0.3
@@ -44,9 +45,29 @@ void test_set_motor_controller_command(void)
     TEST_ASSERT_DOUBLE_WITHIN(0.01, 0.1, command->properties.initialize_motor_controller.kd);
 }
 
+void test_set_controller_frequency_command(void)
+{
+    // [commandType][frequency LE uint16] -> 500 Hz = 0x01F4
+    char buffer[] = {0x0A, 0xF4, 0x01};
+    controller_command_t* command = (controller_command_t*)(&buffer[0]);
+    TEST_ASSERT_EQUAL_INT(command->commandType, SET_CONTROLLER_FREQUENCY);
+    TEST_ASSERT_EQUAL_UINT16(500, command->properties.set_controller_frequency.frequency);
+}
+
+void test_set_odometry_frequency_command(void)
+{
+    // [commandType][frequency LE uint16] -> 20 Hz = 0x0014
+    char buffer[] = {0x17, 0x14, 0x00};
+    controller_command_t* command = (controller_command_t*)(&buffer[0]);
+    TEST_ASSERT_EQUAL_INT(command->commandType, SET_ODOMETRY_FREQUENCY);
+    TEST_ASSERT_EQUAL_UINT16(20, command->properties.set_odometry_frequency.frequency);
+}
+
 int main(void) {
     UNITY_BEGIN(); 
     RUN_TEST(test_set_motor_speed_command);
     RUN_TEST(test_set_motor_controller_command);
+    RUN_TEST(test_set_controller_frequency_command);
+    RUN_TEST(test_set_odometry_frequency_command);
     return UNITY_END();
 }

@@ -1,6 +1,6 @@
 # Kinisi motor controller commands
 
-Version: 1.3.0
+Version: 1.4.0
 ---
 
 ## Commands
@@ -73,6 +73,19 @@ Properties:
 - motor_index (uint8_t): The index of the motor to delete the controller for.
   - Range: 0 to 3
 
+### SET_CONTROLLER_FREQUENCY (0x0A)
+Description: This command sets the global update frequency (in Hz) of the closed-loop motor controller task. All motor controllers share a single control loop, so this frequency is global and affects every currently running controller as well as any created afterwards; the PID sampling time is updated to match. The value is quantized to the 1 ms RTOS tick (period_ms = 1000 / frequency), so effective frequencies are 1000/N Hz. Defaults to 10 Hz (100 ms) at start-up.\
+Properties:
+- frequency (uint16_t): The controller update frequency in Hz.
+  - Range: 1 to 1000
+
+### GET_CONTROLLER_FREQUENCY (0x0B)
+Description: This command retrieves the current global update frequency (in Hz) of the closed-loop motor controller task.\
+Properties:
+- None
+Response: 
+ - frequency (uint16_t): The current controller update frequency in Hz.
+
 ### INITIALIZE_ENCODER (0x11)
 Description: This command initializes an encoder and prepares it for use.\
 Properties:
@@ -114,6 +127,19 @@ Properties:
   - Range: 0 to 3
 Response: 
  - odometry (double): The odometry of the encoder in radians.
+
+### SET_ODOMETRY_FREQUENCY (0x17)
+Description: This command sets the global update frequency (in Hz) of the odometry task. A single odometry task integrates all encoder and platform odometry, so this frequency is global. The value is quantized to the 1 ms RTOS tick (period_ms = 1000 / frequency), so effective frequencies are 1000/N Hz. Defaults to 20 Hz (50 ms) at start-up.\
+Properties:
+- frequency (uint16_t): The odometry update frequency in Hz.
+  - Range: 1 to 1000
+
+### GET_ODOMETRY_FREQUENCY (0x18)
+Description: This command retrieves the current global update frequency (in Hz) of the odometry task.\
+Properties:
+- None
+Response: 
+ - frequency (uint16_t): The current odometry update frequency in Hz.
 
 ### INITIALIZE_GPIO_PIN (0x20)
 Description: This command initializes a digital pin and prepares it for use.\
