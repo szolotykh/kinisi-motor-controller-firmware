@@ -32,6 +32,11 @@ typedef platform_odometry_t (*update_platform_odometry_t)(uint8_t* motor_indexes
 typedef struct {
     uint8_t is_initialized;
     uint8_t is_controller_initialized;
+
+    // Bit mask (BMOTOR0..BMOTOR3) of the motors this platform actually drives.
+    // Used by platform_brake()/platform_coast() so they only affect this
+    // platform's wheels and never touch a motor used for something else.
+    uint8_t motor_mask;
     
     set_platform_velocity_t set_platform_velocity;
     set_platform_target_velocity_t set_platform_target_velocity;

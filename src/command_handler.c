@@ -23,32 +23,74 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
     switch(cmd->commandType)
     {
         case INITIALIZE_MOTOR:
-            motor->initialize(cmd->properties.initialize_motor.motor_index, 
-                            cmd->properties.initialize_motor.is_reversed);
+            // Ignored if the motor is owned by an active platform (see the
+            // STOP_MOTOR TODO on reporting the ignore back to the host).
+            if (!platform_owns_motor(cmd->properties.initialize_motor.motor_index))
+            {
+                motor->initialize(cmd->properties.initialize_motor.motor_index,
+                                cmd->properties.initialize_motor.is_reversed);
+            }
         break;
 
         case SET_MOTOR_SPEED:
             {
-            motor->set_speed(
-                cmd->properties.set_motor_speed.motor_index,
-                cmd->properties.set_motor_speed.pwm);
+            // Ignored if the motor is owned by an active platform (see the
+            // STOP_MOTOR TODO on reporting the ignore back to the host).
+            if (!platform_owns_motor(cmd->properties.set_motor_speed.motor_index))
+            {
+                motor->set_speed(
+                    cmd->properties.set_motor_speed.motor_index,
+                    cmd->properties.set_motor_speed.pwm);
+            }
             }
         break;
 
         case STOP_MOTOR:
             {
-                motor->stop(cmd->properties.stop_motor.motor_index);
+                uint8_t motor_index = cmd->properties.stop_motor.motor_index;
+                // Do not let a direct single-motor command disturb a wheel that
+                // belongs to an active platform (it would leave the platform in
+                // an inconsistent state). Ignore the command in that case.
+                // TODO: report back to the host that the command was ignored
+                // because the motor is owned by the platform. This needs a
+                // response/error channel for commands that currently have no
+                // reply; for now the command is silently dropped.
+                if (!platform_owns_motor(motor_index))
+                {
+                    // Take the motor out of closed-loop control (no-op if none
+                    // is running) so the PID task stops overriding it, then coast.
+                    controllers_manager_stop_controller(motor_index);
+                    motor->stop(motor_index);
+                }
             }
         break;
 
         case BRAKE_MOTOR:
             {
-                motor->brake(cmd->properties.brake_motor.motor_index);
+                uint8_t motor_index = cmd->properties.brake_motor.motor_index;
+                // Do not let a direct single-motor command disturb a wheel that
+                // belongs to an active platform (it would leave the platform in
+                // an inconsistent state). Ignore the command in that case.
+                // TODO: report back to the host that the command was ignored
+                // because the motor is owned by the platform. This needs a
+                // response/error channel for commands that currently have no
+                // reply; for now the command is silently dropped.
+                if (!platform_owns_motor(motor_index))
+                {
+                    // Take the motor out of closed-loop control (no-op if none
+                    // is running) so the PID task stops overriding it, then brake.
+                    controllers_manager_stop_controller(motor_index);
+                    motor->brake(motor_index);
+                }
             }
         break;
 
         case INITIALIZE_MOTOR_CONTROLLER:
             {
+                // Ignored if the motor is owned by an active platform (see the
+                // STOP_MOTOR TODO on reporting the ignore back to the host).
+                if (!platform_owns_motor(cmd->properties.initialize_motor_controller.motor_index))
+                {
                 controllers_manager_initialize_controller(
                     cmd->properties.initialize_motor_controller.motor_index,
                     cmd->properties.initialize_motor_controller.encoder_index,
@@ -59,27 +101,58 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
                     cmd->properties.initialize_motor_controller.is_encoder_reversed,
                     cmd->properties.initialize_motor_controller.encoder_resolution,
                     cmd->properties.initialize_motor_controller.integral_limit);
+                }
             }
         break; 
 
         case DELETE_MOTOR_CONTROLLER:
             {
+                // Ignored if the motor is owned by an active platform (see the
+                // STOP_MOTOR TODO on reporting the ignore back to the host).
+                if (!platform_owns_motor(cmd->properties.delete_motor_controller.motor_index))
+                {
                 controllers_manager_delete_controller(
                     cmd->properties.delete_motor_controller.motor_index);
+                }
+            }
+        break;
+
+        case SET_CONTROLLER_FREQUENCY:
+            {
+                controllers_manager_set_frequency(
+                    cmd->properties.set_controller_frequency.frequency);
+            }
+        break;
+
+        case GET_CONTROLLER_FREQUENCY:
+            {
+                uint16_t frequency = controllers_manager_get_frequency();
+                command_callback((uint8_t*)&frequency, sizeof(uint16_t));
             }
         break;
 
         case SET_MOTOR_TARGET_SPEED:
             {
+                // Ignored if the motor is owned by an active platform (see the
+                // STOP_MOTOR TODO on reporting the ignore back to the host).
+                if (!platform_owns_motor(cmd->properties.set_motor_target_speed.motor_index))
+                {
                 controllers_manager_set_target_speed(
                     cmd->properties.set_motor_target_speed.motor_index,
                     cmd->properties.set_motor_target_speed.speed);
+                }
             }
         break;
 
         case RESET_MOTOR_CONTROLLER:
             {
-            // TODO: Implement
+            // Ignored if the motor is owned by an active platform (see the
+            // STOP_MOTOR TODO on reporting the ignore back to the host).
+            if (!platform_owns_motor(cmd->properties.reset_motor_controller.motor_index))
+            {
+                controllers_manager_reset_controller(
+                    cmd->properties.reset_motor_controller.motor_index);
+            }
             }
         break;
 
@@ -125,6 +198,20 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
             {
             double odometry = encoder_get_odometry(cmd->properties.get_encoder_odometry.encoder_index);
             command_callback((uint8_t*)&odometry, sizeof(double));
+            }
+        break;
+
+        case SET_ODOMETRY_FREQUENCY:
+            {
+                odometry_manager_set_frequency(
+                    cmd->properties.set_odometry_frequency.frequency);
+            }
+        break;
+
+        case GET_ODOMETRY_FREQUENCY:
+            {
+                uint16_t frequency = odometry_manager_get_frequency();
+                command_callback((uint8_t*)&frequency, sizeof(uint16_t));
             }
         break;
 
@@ -238,6 +325,18 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
         case STOP_PLATFORM_CONTROLLER:
             {
             platform_stop_velocity_controller();
+            }
+        break;
+
+        case BRAKE_PLATFORM:
+            {
+            platform_brake();
+            }
+        break;
+
+        case COAST_PLATFORM:
+            {
+            platform_coast();
             }
         break;
 

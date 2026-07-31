@@ -36,3 +36,10 @@ typedef struct pid_controller
 void pid_controller_init(pid_controller_t* controller, double T, double kp, double ki, double kd, double integral_limit);
 double pid_controller_update(pid_controller_t* controller, double currentSpeed, double targetSpeed);
 
+// Reset the runtime state of a PID controller without changing its tuning.
+// Clears the integrator (windup), differentiator, previous error/speed history,
+// accumulated motorPWM output and target speed to zero. The gains (kp/ki/kd),
+// sampling time T, tau and integral limits are preserved, so the controller
+// stays configured and running - only its accumulated history is discarded.
+void pid_controller_reset(pid_controller_t* controller);
+

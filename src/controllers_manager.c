@@ -3,6 +3,7 @@
 //------------------------------------------------------------
 #include "controllers_manager.h"
 #include "commands.h"
+#include "loop_frequency.h"
 #include <cmsis_os.h>
 #include <semphr.h>
 #include <hw_config.h>
@@ -47,7 +48,7 @@ static controllers_manager_t controllers_manager = {
     .state = {
         .target_motor_speed = {0},
         .Controller_info = {{.state = STOP}, {.state = STOP},{.state = STOP},{.state = STOP}},
-        .update_interval_ms = 100,
+        .update_interval_ms = PID_CONTROLLER_UPDATE_INTERVAL,
         .previousEncoderValue = {0},
         .controller_state_mutex = NULL
     }
@@ -67,13 +68,15 @@ void StartControllerTask(void *argument)
     */
     controllers_manager_state_t* controllers_manager_state = (controllers_manager_state_t*)argument;
 
-    const TickType_t xFrequency = pdMS_TO_TICKS(controllers_manager_state->update_interval_ms);
     TickType_t xLastWakeTime = xTaskGetTickCount();
     unsigned int seq = 0;
 
     for(;;)
     {
-        vTaskDelayUntil(&xLastWakeTime, xFrequency);
+        // Recompute the period each iteration so SET_CONTROLLER_FREQUENCY takes
+        // effect at runtime (the interval is a shared state variable).
+        const TickType_t xPeriod = pdMS_TO_TICKS(controllers_manager_state->update_interval_ms);
+        vTaskDelayUntil(&xLastWakeTime, xPeriod);
         unsigned int seq_update = 0;
 
         // Aquire controller state mutex before updating controller state
@@ -173,7 +176,7 @@ void controllers_manager_initialize_controller(uint8_t motor_index, uint8_t enco
     pid_controller_t controller; 
     pid_controller_init(
         &controller,
-        ((double)PID_CONTROLLER_UPDATE_INTERVAL)/1000.0, // PID controller update interval in seconds
+        ((double)controllers_manager.state.update_interval_ms)/1000.0, // PID sampling time in seconds (matches the controller task rate)
         kp,
         ki,
         kd,
@@ -223,7 +226,7 @@ void controllers_manager_initialize_controller_multiple(uint8_t motor_selection,
                 pid_controller_t controller; 
                 pid_controller_init(
                     &controller,
-                    ((double)PID_CONTROLLER_UPDATE_INTERVAL)/1000.0, // PID controller update interval in seconds
+                    ((double)controllers_manager.state.update_interval_ms)/1000.0, // PID sampling time in seconds (matches the controller task rate)
                     kp,
                     ki,
                     kd,
@@ -264,6 +267,72 @@ void controllers_manager_stop_controller_multiple(uint8_t motor_selection)
                 controllers_manager.state.target_motor_speed[motor_index] = 0;
             }
         }
+        xSemaphoreGive(controllers_manager.state.controller_state_mutex);
+    }
+}
+
+void controllers_manager_stop_controller(uint8_t motor_index)
+{
+    // If no controller is running for this motor there is nothing to stop, and
+    // the state mutex may not exist yet (manager never initialized), so return
+    // before touching it. This mirrors the early-out in
+    // controllers_manager_delete_controller and keeps open-loop motor commands
+    // safe when no controller was ever created.
+    if (controllers_manager.state.Controller_info[motor_index].state == STOP)
+    {
+        return;
+    }
+
+    if (xSemaphoreTake(controllers_manager.state.controller_state_mutex, portMAX_DELAY))
+    {
+        controllers_manager.state.Controller_info[motor_index].state = STOP;
+        controllers_manager.state.Controller_info[motor_index].controller = (pid_controller_t){0};
+        controllers_manager.state.target_motor_speed[motor_index] = 0;
+        xSemaphoreGive(controllers_manager.state.controller_state_mutex);
+    }
+}
+
+void controllers_manager_brake_multiple(uint8_t motor_selection)
+{
+    if (xSemaphoreTake(controllers_manager.state.controller_state_mutex, portMAX_DELAY))
+    {
+        for (uint8_t motor_index = 0; motor_index < NUMBER_MOTORS; motor_index++)
+        {
+            if (motor_selection & (1 << motor_index))
+            {
+                controllers_manager.state.Controller_info[motor_index].state = STOP;
+                controllers_manager.state.Controller_info[motor_index].controller = (pid_controller_t){0};
+
+                // Actively brake motor (short brake) so it resists motion
+                motor->brake(controllers_manager.state.Controller_info[motor_index].mIndex);
+
+                // Set target speed to zero
+                controllers_manager.state.target_motor_speed[motor_index] = 0;
+            }
+        }
+        xSemaphoreGive(controllers_manager.state.controller_state_mutex);
+    }
+}
+
+// Reset the closed-loop controller for a single motor: clears the PID history
+// (windup/derivative/output) and re-zeros the target while keeping the
+// controller running with its tuning. No-op if no controller is running.
+void controllers_manager_reset_controller(uint8_t motor_index)
+{
+    // Nothing to reset if no controller is running for this motor. The state
+    // mutex may not exist yet (manager never initialized), so return before
+    // touching it, mirroring the early-out in the stop/delete helpers.
+    if (controllers_manager.state.Controller_info[motor_index].state == STOP)
+    {
+        return;
+    }
+
+    if (xSemaphoreTake(controllers_manager.state.controller_state_mutex, portMAX_DELAY))
+    {
+        // Clear accumulated PID history (windup, differentiator, output) and
+        // re-zero the target, but keep the controller RUNNING with its tuning.
+        pid_controller_reset(&controllers_manager.state.Controller_info[motor_index].controller);
+        controllers_manager.state.target_motor_speed[motor_index] = 0;
         xSemaphoreGive(controllers_manager.state.controller_state_mutex);
     }
 }
@@ -346,4 +415,49 @@ motor_controller_state controllers_manager_get_motor_controller_state(uint8_t mo
         }
     }
     return state;
+}
+
+// Set the global controller-loop frequency (Hz): updates the task period and
+// every running PID's sampling time, quantized to the 1 ms tick. No-op if 0.
+void controllers_manager_set_frequency(uint16_t frequency_hz)
+{
+    // Clamp to the supported range; 0 stays 0 (invalid) and is ignored below.
+    frequency_hz = loop_frequency_clamp_hz(frequency_hz);
+    if (frequency_hz == 0)
+    {
+        return; // Ignore invalid frequency
+    }
+
+    // Convert to the RTOS tick period. The task period and the PID sampling
+    // time both derive from this quantized value so they stay consistent.
+    uint32_t period_ms = loop_frequency_hz_to_period_ms(frequency_hz);
+
+    // If the manager (and its mutex/task) has not been created yet, just record
+    // the interval; the task reads it when it starts and new controllers pick
+    // up the matching sampling time on init.
+    if (controllers_manager_is_not_init())
+    {
+        controllers_manager.state.update_interval_ms = period_ms;
+        return;
+    }
+
+    if (xSemaphoreTake(controllers_manager.state.controller_state_mutex, portMAX_DELAY))
+    {
+        controllers_manager.state.update_interval_ms = period_ms;
+
+        // Keep every running controller's PID sampling time in sync with the
+        // new loop rate so its integral/derivative terms stay correct.
+        const double T = ((double)period_ms) / 1000.0;
+        for (int index = 0; index < NUMBER_MOTORS; index++)
+        {
+            controllers_manager.state.Controller_info[index].controller.T = T;
+        }
+        xSemaphoreGive(controllers_manager.state.controller_state_mutex);
+    }
+}
+
+// Get the current global controller-loop frequency in Hz.
+uint16_t controllers_manager_get_frequency()
+{
+    return loop_period_ms_to_frequency_hz(controllers_manager.state.update_interval_ms);
 }

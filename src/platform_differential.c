@@ -135,6 +135,7 @@ void initialize_differential_platform(
     platform.stop_platform_velocity_controller = differential_platform_stop_velocity_controller;
     platform.initialize_platform_odometry = initialize_differential_platform_odometry;
     platform.update_platform_odometry = differential_platform_update_odometry;
+    platform.motor_mask = BMOTOR0 | BMOTOR1;
     platform.properties.differential.wheel_diameter = wheel_diameter;
     platform.properties.differential.wheel_base = wheel_base;
     platform.is_initialized = 1;

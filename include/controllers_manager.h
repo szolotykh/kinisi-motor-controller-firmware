@@ -46,6 +46,37 @@ Parameters:
 void controllers_manager_stop_controller_multiple(uint8_t motor_selection);
 
 /*
+Stop the closed-loop controller for a single motor WITHOUT touching the motor
+hardware. Safe to call when no controller is running (no-op). The caller is
+responsible for the hardware action (coast/brake) afterwards. Use this to make
+open-loop motor commands persist by first taking the motor out of closed-loop
+control.
+Parameters:
+    motor_index: Motor index
+*/
+void controllers_manager_stop_controller(uint8_t motor_index);
+
+/*
+Brake selected motors: stops their controllers and actively brakes the motors
+(short brake) so they resist motion. Use this instead of
+controllers_manager_stop_controller_multiple when you want an active hold
+rather than a free coast.
+Parameters:
+    motor_selection: Bit mask of selected motors
+*/
+void controllers_manager_brake_multiple(uint8_t motor_selection);
+
+/*
+Reset the closed-loop controller for a single motor: clears the PID runtime
+state (integrator windup, differentiator, error/speed history, accumulated
+output) and re-zeros the target speed, while keeping the controller running
+with its existing tuning. No-op if no controller is running for the motor.
+Parameters:
+    motor_index: Motor index
+*/
+void controllers_manager_reset_controller(uint8_t motor_index);
+
+/*
 Delete controller for single motor
 Parameters:
     motor_index: Motor index
@@ -78,5 +109,24 @@ Returns:
     Motor controller state
 */
 motor_controller_state controllers_manager_get_motor_controller_state(uint8_t motor_index);
+
+
+/*
+Set the global update frequency (Hz) of the closed-loop controller task. All
+controllers share one loop, so this applies to every running controller and to
+controllers created afterwards; each PID's sampling time is updated to match.
+The value is quantized to the 1 ms RTOS tick (period_ms = 1000 / frequency_hz).
+Ignored if frequency_hz is 0.
+Parameters:
+    frequency_hz: Controller update frequency in Hz
+*/
+void controllers_manager_set_frequency(uint16_t frequency_hz);
+
+/*
+Get the current global update frequency (Hz) of the closed-loop controller task.
+Returns:
+    Controller update frequency in Hz
+*/
+uint16_t controllers_manager_get_frequency();
 
 

@@ -10,8 +10,12 @@
 #include <hw_config.h>
 #include <platform.h>
 #include <odometry_integrator.h>
+#include <loop_frequency.h>
 
-#define ODOMETRY_UPDATE_INTERVAL 50
+// Default odometry-task period in ms. 20 ms = 50 Hz: fast enough for good pose
+// integration while driving+turning and to match a typical ROS EKF/Nav2 odom
+// rate. Runtime-configurable via SET_ODOMETRY_FREQUENCY.
+#define ODOMETRY_UPDATE_INTERVAL 20
 
 // Add near the top of the file
 static const hw_encoder_interface_t* encoder = NULL;
@@ -45,11 +49,13 @@ void odometry_manager_task(void *argument)
 {
     odometry_manager_state_t *state = (odometry_manager_state_t *)argument;
 
-    const TickType_t xFrequency = pdMS_TO_TICKS(state->update_interval);
     TickType_t xLastWakeTime = xTaskGetTickCount();
 
     while (1)
     {
+        // Recompute the period each iteration so SET_ODOMETRY_FREQUENCY takes
+        // effect at runtime (the interval is a shared state variable).
+        const TickType_t xFrequency = pdMS_TO_TICKS(state->update_interval);
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
         // Obtain odometry mutex
         if (xSemaphoreTake(state->odometry_mutex, portMAX_DELAY))
@@ -89,7 +95,6 @@ void odometry_manager_task(void *argument)
                 state->platform_odometry = odometry_integrator_accumulate(
                     state->platform_odometry, odometry_change);
             }
-            osDelay(1);
             xSemaphoreGive(state->odometry_mutex);
         }
     }
@@ -230,4 +235,41 @@ void odometry_manager_reset_platform_odometry(){
         odometry_manager_state.platform_odometry.t = 0;
         xSemaphoreGive(odometry_manager_state.odometry_mutex);
     }
+}
+
+//------------------------------------------------------------
+// Set the global odometry-task frequency (Hz), quantized to the 1 ms tick.
+// No-op if frequency_hz is 0.
+void odometry_manager_set_frequency(uint16_t frequency_hz)
+{
+    // Clamp to the supported range; 0 stays 0 (invalid) and is ignored below.
+    frequency_hz = loop_frequency_clamp_hz(frequency_hz);
+    if (frequency_hz == 0)
+    {
+        return; // Ignore invalid frequency
+    }
+
+    // Convert to the RTOS tick period (quantized to the 1 ms tick).
+    uint32_t period_ms = loop_frequency_hz_to_period_ms(frequency_hz);
+
+    // If the task/mutex has not been created yet, just record the interval; the
+    // task reads it when it starts.
+    if (odometry_manager_is_not_initialized())
+    {
+        odometry_manager_state.update_interval = period_ms;
+        return;
+    }
+
+    if (xSemaphoreTake(odometry_manager_state.odometry_mutex, portMAX_DELAY))
+    {
+        odometry_manager_state.update_interval = period_ms;
+        xSemaphoreGive(odometry_manager_state.odometry_mutex);
+    }
+}
+
+//------------------------------------------------------------
+// Get the current global odometry-task frequency in Hz.
+uint16_t odometry_manager_get_frequency()
+{
+    return loop_period_ms_to_frequency_hz(odometry_manager_state.update_interval);
 }
