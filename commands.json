@@ -227,7 +227,7 @@
         {
             "command": "SET_CONTROLLER_FREQUENCY",
             "code": "0x0A",
-            "description": "This command sets the global update frequency (in Hz) of the closed-loop motor controller task. All motor controllers share a single control loop, so this frequency is global and affects every currently running controller as well as any created afterwards; the PID sampling time is updated to match. The value is quantized to the 1 ms RTOS tick (period_ms = 1000 / frequency), so effective frequencies are 1000/N Hz. Defaults to 10 Hz (100 ms) at start-up.",
+            "description": "This command sets the global update frequency (in Hz) of the closed-loop motor controller task. All motor controllers share a single control loop, so this frequency is global and affects every currently running controller as well as any created afterwards; the PID sampling time is updated to match. The requested value is clamped to the supported range of 1 to 1000 Hz (the 1000 Hz maximum is bounded by the 1 ms RTOS tick). The value is then quantized to the 1 ms RTOS tick (period_ms = 1000 / frequency), so effective frequencies are 1000/N Hz. A value of 0 is invalid and ignored. Defaults to 10 Hz (100 ms) at start-up.",
             "properties": [
                 {
                     "name": "frequency",
@@ -236,7 +236,7 @@
                         1,
                         1000
                     ],
-                    "description": "The controller update frequency in Hz."
+                    "description": "The controller update frequency in Hz. Valid range 1 to 1000 Hz; values outside are clamped, and 0 is ignored."
                 }
             ],
             "category": "Motor Controller"
@@ -249,7 +249,7 @@
             "response": {
                 "name": "frequency",
                 "type": "uint16_t",
-                "description": "The current controller update frequency in Hz."
+                "description": "The current controller update frequency in Hz (1 to 1000 Hz)."
             },
             "category": "Motor Controller"
         },
@@ -379,7 +379,7 @@
         {
             "command": "SET_ODOMETRY_FREQUENCY",
             "code": "0x17",
-            "description": "This command sets the global update frequency (in Hz) of the odometry task. A single odometry task integrates all encoder and platform odometry, so this frequency is global. The value is quantized to the 1 ms RTOS tick (period_ms = 1000 / frequency), so effective frequencies are 1000/N Hz. Defaults to 20 Hz (50 ms) at start-up.",
+            "description": "This command sets the global update frequency (in Hz) of the odometry task. A single odometry task integrates all encoder and platform odometry, so this frequency is global. The requested value is clamped to the supported range of 1 to 1000 Hz (the 1000 Hz maximum is bounded by the 1 ms RTOS tick). The value is then quantized to the 1 ms RTOS tick (period_ms = 1000 / frequency), so effective frequencies are 1000/N Hz. A value of 0 is invalid and ignored. Defaults to 20 Hz (50 ms) at start-up.",
             "properties": [
                 {
                     "name": "frequency",
@@ -388,7 +388,7 @@
                         1,
                         1000
                     ],
-                    "description": "The odometry update frequency in Hz."
+                    "description": "The odometry update frequency in Hz. Valid range 1 to 1000 Hz; values outside are clamped, and 0 is ignored."
                 }
             ],
             "category": "Encoder"
@@ -401,7 +401,7 @@
             "response": {
                 "name": "frequency",
                 "type": "uint16_t",
-                "description": "The current odometry update frequency in Hz."
+                "description": "The current odometry update frequency in Hz (1 to 1000 Hz)."
             },
             "category": "Encoder"
         },

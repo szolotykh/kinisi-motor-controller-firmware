@@ -190,7 +190,7 @@ void test_Pid_Reset_Preserves_Tuning(void)
 void test_Loop_Frequency_To_Period(void)
 {
     TEST_ASSERT_EQUAL_UINT32(100, loop_frequency_hz_to_period_ms(10));  // controller default
-    TEST_ASSERT_EQUAL_UINT32(50,  loop_frequency_hz_to_period_ms(20));  // odometry default
+    TEST_ASSERT_EQUAL_UINT32(50,  loop_frequency_hz_to_period_ms(20));  // 20 Hz -> 50 ms
     TEST_ASSERT_EQUAL_UINT32(1,   loop_frequency_hz_to_period_ms(1000));
     TEST_ASSERT_EQUAL_UINT32(1,   loop_frequency_hz_to_period_ms(2000)); // clamped to 1 ms
     TEST_ASSERT_EQUAL_UINT32(333, loop_frequency_hz_to_period_ms(3));    // quantized (1000/3)
@@ -207,6 +207,18 @@ void test_Loop_Period_To_Frequency(void)
     TEST_ASSERT_EQUAL_UINT16(0,    loop_period_ms_to_frequency_hz(0));
 }
 
+// loop_frequency_clamp_hz bounds a user-supplied frequency to [1, 1000] Hz,
+// leaving 0 as the reserved "invalid" sentinel.
+void test_Loop_Frequency_Clamp(void)
+{
+    TEST_ASSERT_EQUAL_UINT16(0,    loop_frequency_clamp_hz(0));      // invalid sentinel preserved
+    TEST_ASSERT_EQUAL_UINT16(1,    loop_frequency_clamp_hz(1));      // min in range
+    TEST_ASSERT_EQUAL_UINT16(10,   loop_frequency_clamp_hz(10));     // in range
+    TEST_ASSERT_EQUAL_UINT16(1000, loop_frequency_clamp_hz(1000));   // max in range
+    TEST_ASSERT_EQUAL_UINT16(1000, loop_frequency_clamp_hz(1001));   // above max -> clamped
+    TEST_ASSERT_EQUAL_UINT16(1000, loop_frequency_clamp_hz(65535));  // far above max -> clamped
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_Velocity_X_100);
@@ -221,5 +233,6 @@ int main(void) {
     RUN_TEST(test_Pid_Reset_Preserves_Tuning);
     RUN_TEST(test_Loop_Frequency_To_Period);
     RUN_TEST(test_Loop_Period_To_Frequency);
+    RUN_TEST(test_Loop_Frequency_Clamp);
     return UNITY_END();
 }

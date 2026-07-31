@@ -12,7 +12,10 @@
 #include <odometry_integrator.h>
 #include <loop_frequency.h>
 
-#define ODOMETRY_UPDATE_INTERVAL 50
+// Default odometry-task period in ms. 20 ms = 50 Hz: fast enough for good pose
+// integration while driving+turning and to match a typical ROS EKF/Nav2 odom
+// rate. Runtime-configurable via SET_ODOMETRY_FREQUENCY.
+#define ODOMETRY_UPDATE_INTERVAL 20
 
 // Add near the top of the file
 static const hw_encoder_interface_t* encoder = NULL;
@@ -92,7 +95,6 @@ void odometry_manager_task(void *argument)
                 state->platform_odometry = odometry_integrator_accumulate(
                     state->platform_odometry, odometry_change);
             }
-            osDelay(1);
             xSemaphoreGive(state->odometry_mutex);
         }
     }
@@ -240,6 +242,8 @@ void odometry_manager_reset_platform_odometry(){
 // No-op if frequency_hz is 0.
 void odometry_manager_set_frequency(uint16_t frequency_hz)
 {
+    // Clamp to the supported range; 0 stays 0 (invalid) and is ignored below.
+    frequency_hz = loop_frequency_clamp_hz(frequency_hz);
     if (frequency_hz == 0)
     {
         return; // Ignore invalid frequency

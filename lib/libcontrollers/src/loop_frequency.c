@@ -3,6 +3,23 @@
 //------------------------------------------------------------
 #include "loop_frequency.h"
 
+uint16_t loop_frequency_clamp_hz(uint16_t frequency_hz)
+{
+    if (frequency_hz == 0)
+    {
+        return 0; // Reserved "invalid" sentinel; leave for the caller to ignore.
+    }
+    if (frequency_hz < LOOP_FREQUENCY_MIN_HZ)
+    {
+        return LOOP_FREQUENCY_MIN_HZ;
+    }
+    if (frequency_hz > LOOP_FREQUENCY_MAX_HZ)
+    {
+        return LOOP_FREQUENCY_MAX_HZ;
+    }
+    return frequency_hz;
+}
+
 uint32_t loop_frequency_hz_to_period_ms(uint16_t frequency_hz)
 {
     if (frequency_hz == 0)

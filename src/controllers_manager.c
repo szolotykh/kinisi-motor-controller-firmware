@@ -421,6 +421,8 @@ motor_controller_state controllers_manager_get_motor_controller_state(uint8_t mo
 // every running PID's sampling time, quantized to the 1 ms tick. No-op if 0.
 void controllers_manager_set_frequency(uint16_t frequency_hz)
 {
+    // Clamp to the supported range; 0 stays 0 (invalid) and is ignored below.
+    frequency_hz = loop_frequency_clamp_hz(frequency_hz);
     if (frequency_hz == 0)
     {
         return; // Ignore invalid frequency
