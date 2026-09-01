@@ -6,6 +6,8 @@
 #include "message_queue.h"
 #include "hardware_i2c.h"
 #include "os_interface.h"
+#include "usb_device.h"
+#include "usbd_cdc_if.h"
 #include <assert.h>
 #include <stdlib.h>
 
@@ -70,10 +72,24 @@ void commands_manager_start(void)
     commands_manager.threadHandler = os->create_thread(CommandHandlerTask, "CommandsTask", NULL);
 }
 
+// The USB endpoint stays busy while the host is not draining it (or after an
+// unplug), so the retry loop is bounded. Without the timeout the single
+// CommandHandlerTask would block forever and starve the I2C command path too.
+#define USB_TRANSMIT_TIMEOUT_MS 1000U
+
 void command_callback_usb(uint8_t* resonse, uint8_t data_len)
 {
-    // Send response to USB interface
-    CDC_Transmit_FS(resonse, data_len);
+    const os_interface_t* os = get_os_interface();
+    unsigned int timeout = USB_TRANSMIT_TIMEOUT_MS;
+    while (CDC_Transmit_FS(resonse, data_len) == USBD_BUSY)
+    {
+        if (timeout-- == 0)
+        {
+            // Host is not reading; drop the response instead of hanging.
+            return;
+        }
+        os->delay_ms(1);
+    }
 }
 
 void command_callback_i2c(uint8_t* resonse, uint8_t data_len)
