@@ -91,7 +91,7 @@ def generate_md_file(commands_data):
         # Generate response definition
         if "response" in command:
             response = command.get("response", [])
-            md_content += f"Response: \n - {response['name']} ({response['type']}): {response['description']}\n"
+            md_content += f"Response:\n - {response['name']} ({response['type']}): {response['description']}\n"
 
         md_content += "\n"
     return md_content
