@@ -41,7 +41,7 @@ void hw_motor_init(void) {
 }
 
 // Internal helper functions and state
-static void set_motor_channel(TIM_HandleTypeDef *htim, uint32_t channel, uint16_t speed);
+static void set_motor_channel(TIM_HandleTypeDef *htim, uint32_t channel, uint32_t speed);
 static void init_channel(TIM_HandleTypeDef *htim, const pwm_channel_info_t *channel_info, TIM_TypeDef * timTypeDef);
 static void init_motor_timer(const motor_info_t *motorInfo);
 
@@ -73,17 +73,18 @@ static void set_motor_speed(motorIndex motorIndex, double pwm) {
     bool direction = pwm > 0;
     if (pwm > 100.0) pwm = 100.0;
     if (pwm < -100.0) pwm = -100.0;
-    uint16_t speed = fabs(pwm)*MOTOR_MAX_SPEED/100.0;
 
     if(motor_status[motorIndex].isInitialized) {
         TIM_HandleTypeDef *htim = get_timer_handeler(motor_info[motorIndex].timer);
+        const uint32_t full_scale = MOTOR_MAX_SPEED;
+        uint32_t speed = (uint32_t)(fabs(pwm) * full_scale / 100.0);
         direction = direction ^ motor_status[motorIndex].isReversed;
-        speed = MOTOR_MAX_SPEED - speed;
+        speed = full_scale - speed;
         if(direction) {
             set_motor_channel(htim, motor_info[motorIndex].pwmChannel1.timerChannel, speed);
-            set_motor_channel(htim, motor_info[motorIndex].pwmChannel2.timerChannel, MOTOR_MAX_SPEED);
+            set_motor_channel(htim, motor_info[motorIndex].pwmChannel2.timerChannel, full_scale);
         } else {
-            set_motor_channel(htim, motor_info[motorIndex].pwmChannel1.timerChannel, MOTOR_MAX_SPEED);
+            set_motor_channel(htim, motor_info[motorIndex].pwmChannel1.timerChannel, full_scale);
             set_motor_channel(htim, motor_info[motorIndex].pwmChannel2.timerChannel, speed);
         }
     }
@@ -102,13 +103,14 @@ static void brake_motor(motorIndex motorIndex) {
     if(motor_status[motorIndex].isInitialized) {
         TIM_HandleTypeDef *htim = get_timer_handeler(motor_info[motorIndex].timer);
         // Both channels are set to high
-        set_motor_channel(htim, motor_info[motorIndex].pwmChannel1.timerChannel, MOTOR_MAX_SPEED);
-        set_motor_channel(htim, motor_info[motorIndex].pwmChannel2.timerChannel, MOTOR_MAX_SPEED);
+        const uint32_t full_scale = MOTOR_MAX_SPEED;
+        set_motor_channel(htim, motor_info[motorIndex].pwmChannel1.timerChannel, full_scale);
+        set_motor_channel(htim, motor_info[motorIndex].pwmChannel2.timerChannel, full_scale);
     }
 }
 
 // Internal helper function implementations
-static void set_motor_channel(TIM_HandleTypeDef *htim, uint32_t channel, uint16_t speed) {
+static void set_motor_channel(TIM_HandleTypeDef *htim, uint32_t channel, uint32_t speed) {
     switch(channel) {
         case TIM_CHANNEL_1:
             htim->Instance->CCR1 = (uint32_t)speed;
@@ -128,6 +130,16 @@ static void set_motor_channel(TIM_HandleTypeDef *htim, uint32_t channel, uint16_
 static void init_motor_timer(const motor_info_t *motorInfo) {
     TIM_HandleTypeDef *htim = get_timer_handeler(motorInfo->timer);
 
+    const uint32_t timer_clock = hw_timer_input_clock_hz(motorInfo->timer);
+    // Reject unsupported clocks instead of silently changing PWM frequency
+    // or resolution. PSC is a 16-bit divider-minus-one register.
+    if (htim == NULL || timer_clock < MOTOR_PWM_COUNTER_HZ ||
+        timer_clock % MOTOR_PWM_COUNTER_HZ != 0U ||
+        timer_clock / MOTOR_PWM_COUNTER_HZ > 65536U) {
+        Error_Handler();
+        return;
+    }
+
     if(HAL_TIM_Base_GetState(htim) != HAL_TIM_STATE_READY) {
         rcc_tim_clk_enable(motorInfo->timer);
 
@@ -135,9 +147,9 @@ static void init_motor_timer(const motor_info_t *motorInfo) {
         TIM_MasterConfigTypeDef sMasterConfig = {0};
 
         htim->Instance = motorInfo->timer;
-        htim->Init.Prescaler = 1-1;
+        htim->Init.Prescaler = timer_clock / MOTOR_PWM_COUNTER_HZ - 1U;
         htim->Init.CounterMode = TIM_COUNTERMODE_UP;
-        htim->Init.Period = 840-1;
+        htim->Init.Period = MOTOR_MAX_SPEED - 1U;
         htim->Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
         htim->Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
         if (HAL_TIM_Base_Init(htim) != HAL_OK) {

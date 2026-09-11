@@ -4,6 +4,23 @@
 
 #include "hw_timers.h"
 
+uint32_t hw_timer_input_clock_hz(const TIM_TypeDef *timer)
+{
+    // STM32F405 APB timers run at twice PCLK when the bus divider is not 1.
+    if (timer == TIM1 || timer == TIM8 || timer == TIM9 ||
+        timer == TIM10 || timer == TIM11) {
+        const uint32_t pclk = HAL_RCC_GetPCLK2Freq();
+        return (RCC->CFGR & RCC_CFGR_PPRE2) == 0U ? pclk : pclk * 2U;
+    }
+    if (timer == TIM2 || timer == TIM3 || timer == TIM4 ||
+        timer == TIM5 || timer == TIM6 || timer == TIM7 ||
+        timer == TIM12 || timer == TIM13 || timer == TIM14) {
+        const uint32_t pclk = HAL_RCC_GetPCLK1Freq();
+        return (RCC->CFGR & RCC_CFGR_PPRE1) == 0U ? pclk : pclk * 2U;
+    }
+    return 0U;
+}
+
 TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim3;
