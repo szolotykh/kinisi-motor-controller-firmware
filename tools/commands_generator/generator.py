@@ -104,57 +104,147 @@ def validate_json(commands_data):
                     errors.append(f"Command {command['command']} references undefined error {name}.")
     return errors
 
-# Generates a Markdown file from the commands JSON file
+def response_parameters(response, objects):
+    """Resolve scalar responses and both forms of named object references."""
+    object_name = response['name'] if response['type'] == 'object' else response['type']
+    if object_name in objects:
+        return objects[object_name]['properties']
+    if response['type'] in type_to_size_map:
+        return [response]
+    raise ValueError(f"Undefined response object: {object_name}")
+
+
+def markdown_cell(value):
+    """Escape schema prose so pipes and line breaks cannot split table cells."""
+    return str(value).replace('|', r'\|').replace('\n', '<br>')
+
+
+def markdown_parameters(parameters):
+    """Render ordered wire fields with aligned sizes and an optional range column."""
+    has_ranges = any('range' in parameter for parameter in parameters)
+    result = ("| Parameter | Type | Bytes |" + (" Range |" if has_ranges else "") + " Description |\n"
+              "| --- | --- | ---: |" + (" --- |" if has_ranges else "") + " --- |\n")
+    for parameter in parameters:
+        result += (f"| `{parameter['name']}` | `{parameter['type']}` | "
+                   f"{type_to_size_map[parameter['type']]} |")
+        if has_ranges:
+            bounds = parameter.get('range')
+            result += f" {bounds[0]} to {bounds[1]} |" if bounds else " — |"
+        result += f" {markdown_cell(parameter.get('description', ''))} |\n"
+    return result
+
+
+def command_anchor(command):
+    """Match GitHub's heading anchor while preserving existing command deep links."""
+    return f"{command['command'].lower()}-{command['code'].lower()}"
+
+
 def generate_md_file(commands_data):
-    """Render the command reference and per-command errors from the JSON schema."""
-    md_content = "# Kinisi motor controller commands\n\n"
+    """Generate a navigable reference with consistent payload tables and linked errors."""
+    commands = commands_data.get('commands', [])
+    commands_by_name = {command['command']: command for command in commands}
+    objects = {obj['name']: obj for obj in commands_data.get('objects', [])}
+    errors = {error['name']: error for error in commands_data.get('error_codes', [])}
+    protocol_v2 = int(commands_data['version'].split('.')[0]) >= 2
+    directions = {'client_to_controller': 'Client → controller',
+                  'controller_to_client': 'Controller → client'}
 
-    # version
-    md_content += f"Version: {commands_data['version']}\n"
-    md_content += "---\n"
-    if int(commands_data['version'].split('.')[0]) >= 2:
-        md_content += "\nAll replies use `[length][command ID][message ID][payload]`. Failures use ERROR with the failed command ID and error code. Ordinary commands without a data response return an empty acknowledgment. Successful TIME_SYNC_RESPONSE messages receive no ACK; INIT additionally receives READY after clock setup (see [time sync](docs/time-sync.md)). See [shared response format and errors](docs/responses.md). Protocol 1.x clients require updates.\n"
+    def message_link(name):
+        """Link a related message when its definition exists in the same schema."""
+        if name in commands_by_name:
+            return f"[`{name}`](#{command_anchor(commands_by_name[name])})"
+        return f"`{name}`"
 
-    errors_by_name = {error['name']: error for error in commands_data.get('error_codes', [])}
-    md_content += "\n## Error codes\n\nErrors use the shared ERROR message, echoing the request message ID and identifying the failed command. Each command below lists its possible errors. UNKNOWN_COMMAND applies to unrecognized or incorrectly directed messages.\n\n| Code | Name | Meaning |\n| --- | --- | --- |\n"
-    for error in errors_by_name.values():
-        md_content += f"| {error['code']} | `{error['name']}` | {error['description']} |\n"
+    def response_summary(command):
+        """Describe the normal reply without implying ACKs for controller messages."""
+        if 'response' in command:
+            response = command['response']
+            name = response['name'] if response['type'] == 'object' else response['type']
+            summary = f"`{name}`"
+            if command['command'] == 'INIT':
+                summary += f" + {message_link('READY')}"
+            return summary
+        if command['command'] == 'TIME_SYNC_REQUEST':
+            return message_link('TIME_SYNC_RESPONSE')
+        if command['command'] == 'TIME_SYNC_RESPONSE':
+            return 'No ACK'
+        if protocol_v2 and command['direction'] == 'client_to_controller':
+            return 'ACK'
+        return '—'
 
-    # Generate command definitions
-    md_content += "\n## Commands\n"
-    for command in commands_data.get("commands", []):
-        md_content += f"### {command['command']} ({command['code']})\n"
-        md_content += f"Direction: `{command['direction']}`\\\n"
-        md_content += f"Description: {command['description']}\\\n"
+    md = ("# Kinisi motor controller commands\n\n"
+          f"**Protocol {commands_data['version']}** · Generated from [commands.json](commands.json)\n\n"
+          "[Command index](#command-index) · [Wire format](#wire-format) · [Error codes](#error-codes)\n\n")
+    if protocol_v2:
+        md += "> **Compatibility:** Protocol 2.x and protocol 1.x clients are incompatible.\n\n"
 
-        # Generate property definitions
-        md_content += f"Properties:\n"
-        cmd_props = command.get("properties", [])
-        if len(cmd_props) != 0:
-            for prop in cmd_props:
-                md_content += f"- {prop['name']} ({prop.get('type', 'unknown')})"
-                if "description" in prop:
-                    md_content += f": {prop['description']}"
-                md_content += "\n"
-                if "range" in prop:
-                    md_content += f"  - Range: {prop['range'][0]} to {prop['range'][1]}\n"
+    md += "## Command index\n\n| Command | Code | Direction | Response |\n| --- | --- | --- | --- |\n"
+    for command in commands:
+        md += (f"| {message_link(command['command'])} | `{command['code']}` | "
+               f"{directions[command['direction']]} | {response_summary(command)} |\n")
+
+    md += "\n## Wire format\n\n"
+    if protocol_v2:
+        md += ("```text\n[length: uint8][command: uint8][message_id: uint16][payload]\n```\n\n"
+               "Multi-byte fields are little-endian. Length counts all bytes after itself. "
+               "Parameter tables list payload fields in wire order and exclude the shared header.\n\n"
+               "- **ACK:** an empty response that echoes the command and message ID.\n"
+               f"- **Errors:** {message_link('ERROR')} echoes the message ID and identifies the failed command.\n"
+               f"- **Initialization:** {message_link('INIT')} returns identity, then {message_link('READY')} after clock setup.\n"
+               f"- **Time sync:** {message_link('TIME_SYNC_RESPONSE')} has no success acknowledgment.\n\n"
+               "See [response framing](docs/responses.md) and [time synchronization](docs/time-sync.md) for details.\n")
+    else:
+        md += "Parameter tables list payload fields in wire order, excluding the message header.\n"
+
+    md += "\n## Commands\n\n"
+    for command in commands:
+        fields = command.get('properties', [])
+        size = sum(type_to_size_map[field['type']] for field in fields)
+        md += (f"### {command['command']} ({command['code']})\n\n"
+               f"**{directions[command['direction']]}** · **Payload:** {size} bytes\n\n"
+               f"{command['description']}\n\n"
+               "#### Parameters\n\n")
+        md += markdown_parameters(fields) if fields else "No payload parameters.\n"
+
+        if 'response' in command:
+            response = command['response']
+            parameters = response_parameters(response, objects)
+            response_type = response['name'] if response['type'] == 'object' else response['type']
+            size = sum(type_to_size_map[field['type']] for field in parameters)
+            md += ("\n#### Response\n\n"
+                   f"**{directions[response['direction']]}** · `{response_type}` · **Payload:** {size} bytes\n\n"
+                   f"{response['description']}\n\n")
+            md += markdown_parameters(parameters) if parameters else "No payload parameters.\n"
+            if command['command'] == 'INIT':
+                md += f"\nClock setup finishes with {message_link('READY')}, using the same INIT message ID.\n"
+        elif command['command'] == 'TIME_SYNC_REQUEST':
+            md += f"\n#### Response\n\nThe client replies with {message_link('TIME_SYNC_RESPONSE')} and the same message ID.\n"
+        elif command['direction'] == 'client_to_controller':
+            md += "\n#### Response\n\n"
+            if command['command'] == 'TIME_SYNC_RESPONSE':
+                md += "No acknowledgment on success; the controller consumes this timing reply.\n"
+            elif protocol_v2:
+                md += "**ACK** — empty payload; echoes the command and message ID.\n"
+            else:
+                md += "No response payload is defined.\n"
+
+        md += "\n#### Errors\n\n"
+        if command['errors']:
+            md += ' · '.join(f"[`{name}`](#error-{name.lower().replace('_', '-')}) ({errors[name]['code']})"
+                             for name in command['errors']) + '\n'
         else:
-            md_content += "- None\n"
+            md += "None in this message's declared direction.\n"
+        md += "\n[Back to command index](#command-index)\n\n---\n\n"
 
-        # Generate response definition
-        if "response" in command:
-            response = command.get("response", [])
-            md_content += f"Response (`{response['direction']}`):\n - {response['name']} ({response['type']}): {response['description']}\n"
-
-        md_content += "\nErrors:\n\n"
-        for name in command['errors']:
-            error = errors_by_name[name]
-            md_content += f"- `{name}` ({error['code']}): {error['description']}\n"
-        if not command['errors']:
-            md_content += "- None; this message does not receive an error reply in its declared direction.\n"
-
-        md_content += "\n"
-    return md_content
+    md += ("## Error codes\n\n"
+           "Errors use the shared ERROR message. Each command above links to its possible errors below. "
+           "`UNKNOWN_COMMAND` also covers unrecognized or incorrectly directed messages.\n\n"
+           "| Code | Error | Meaning |\n| ---: | --- | --- |\n")
+    for name, error in errors.items():
+        anchor = 'error-' + name.lower().replace('_', '-')
+        md += (f"| {error['code']} | <a id=\"{anchor}\"></a>`{name}` | "
+               f"{markdown_cell(error['description'])} |\n")
+    return md
 
 
 # Generates a C header file from the commands JSON file
@@ -318,7 +408,7 @@ def main():
         return
 
     try:
-        with open(args.input_json_path, 'r') as file:
+        with open(args.input_json_path, 'r', encoding='utf-8-sig') as file:
             commands_data = json.load(file)
     except json.JSONDecodeError:
         print("Error: Could not decode the input JSON file.")
@@ -346,7 +436,7 @@ def main():
         return
 
     try:
-        with open(args.output_path, 'w') as file:
+        with open(args.output_path, 'w', encoding='utf-8') as file:
             file.write(generated_code)
     except Exception as e:
         print(f"An error occurred while writing to the output file: {e}")
