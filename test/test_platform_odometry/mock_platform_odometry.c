@@ -79,12 +79,10 @@ const hw_motor_interface_t* get_motor_interface(void) { return &mock_motor_inter
 const hw_encoder_interface_t* get_encoder_interface(void) { return &mock_encoder_interface; }
 const encoder_odometry_interface_t* get_encoder_odometry_interface(void) { return &mock_odometry_interface; }
 
-// Not used by the pipeline test but installed for completeness.
+/** @brief The getters above provide fixed stubs; no runtime registration is required. */
 void mock_odometry_install_interfaces(void)
 {
-    hw_motor_set_interface(&mock_motor_interface);
-    hw_encoder_set_interface(&mock_encoder_interface);
-    encoder_odometry_set_interface(&mock_odometry_interface);
+    // Hardware implementation files are intentionally excluded from this native test.
 }
 
 //------------------------------------------------------------
