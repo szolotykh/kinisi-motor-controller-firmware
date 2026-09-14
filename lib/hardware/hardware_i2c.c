@@ -1,5 +1,6 @@
 //------------------------------------------------------------
 // File name: hardware_i2c.c
+// Description: Receive framed I2C requests and transmit replies without blocking the command task.
 //------------------------------------------------------------
 
 #include "hardware_i2c.h"
@@ -8,10 +9,14 @@
 
 I2C_HandleTypeDef hi2c2;
 message_queue_t I2CCommandQueue;
-i2c_receive_state_t receive_state;
+volatile i2c_receive_state_t receive_state;
+static volatile uint8_t tx_busy;
 
 uint8_t i2c_send_buffer[256];
 
+/**
+ * @brief Configure I2C2 as a listening slave and reset receive/transmit state.
+ */
 void initialize_external_i2c(void)
 {
     GPIO_InitTypeDef  GPIO_InitStruct = {0};
@@ -47,37 +52,38 @@ void initialize_external_i2c(void)
     HAL_NVIC_EnableIRQ(I2C2_EV_IRQn);          // Enable the I2C2 event interrupt
 
     // Awaint for the first byte of the message
+    tx_busy = 0;
     receive_state = AWAITING_SIZE;
     HAL_I2C_EnableListen_IT(&hi2c2);
 }
 
-void send_external_i2c(uint8_t* data, uint16_t data_len)
+/**
+ * @brief Copy a frame and start an interrupt-driven transfer when a master is reading.
+ * @param data Complete length-prefixed frame to copy.
+ * @param data_len Frame size in bytes.
+ * @return Nonzero if accepted; zero when busy, unavailable, oversized, or HAL rejects it.
+ * @note Does not wait for a master transaction; preserves the caller interrupt mask.
+ */
+uint8_t try_send_external_i2c(uint8_t* data, uint16_t data_len)
 {
-    // We need to wait here since master may not yet request data from slave
-    // and we will not be able to send data until then (receive_state == LISTENING)
-    // TODO: Replace better wait mechanism
-    unsigned int timeout = 1000;
-    i2c_receive_state_t state = receive_state;
-    while(state != LISTENING)
-    {
-        osDelay(1);
-        if(timeout-- == 0) {
-            return;
-        }
-        state = receive_state;
-    }
-
-    if (state == LISTENING) 
-    {
-        // Copy bytes to send buffer
+    uint32_t mask = __get_PRIMASK();
+    __disable_irq();
+    uint8_t sent = 0;
+    if (receive_state == LISTENING && !tx_busy && data_len <= sizeof(i2c_send_buffer)) {
         memcpy(i2c_send_buffer, data, data_len);
-        // Send data from send buffer
-        if(HAL_I2C_Slave_Seq_Transmit_IT(&hi2c2, i2c_send_buffer, data_len, I2C_LAST_FRAME) != HAL_OK){
-            // TODO: Handle error here
-        }
+        tx_busy = 1;
+        if (HAL_I2C_Slave_Seq_Transmit_IT(&hi2c2, i2c_send_buffer, data_len, I2C_LAST_FRAME) == HAL_OK)
+            sent = 1;
+        else tx_busy = 0;
     }
+    __set_PRIMASK(mask);
+    return sent;
 }
 
+/**
+ * @brief Select transmit readiness or begin receiving the next length-prefixed request.
+ * @note Runs from the I2C interrupt handler.
+ */
 void HAL_I2C_AddrCallback(I2C_HandleTypeDef *hi2c, uint8_t TransferDirection, uint16_t AddrMatchCode) {
   // Master requests data from slave
     if (TransferDirection == I2C_DIRECTION_RECEIVE) {
@@ -90,6 +96,9 @@ void HAL_I2C_AddrCallback(I2C_HandleTypeDef *hi2c, uint8_t TransferDirection, ui
     }
 }
 
+/**
+ * @brief Advance length/payload reception and enqueue a completed I2C frame.
+ */
 void HAL_I2C_SlaveRxCpltCallback(I2C_HandleTypeDef *hi2c)
 {
     if(hi2c->Instance == I2C2)
@@ -106,22 +115,34 @@ void HAL_I2C_SlaveRxCpltCallback(I2C_HandleTypeDef *hi2c)
     }
 }
 
+/**
+ * @brief Release the transmit buffer and re-arm slave listening after a transaction.
+ */
 void HAL_I2C_ListenCpltCallback(I2C_HandleTypeDef *hi2c)
 {
   if(hi2c->Instance == I2C2)
   {
+    tx_busy = 0;
     receive_state = AWAITING_SIZE;
     HAL_I2C_EnableListen_IT(&hi2c2);
   }
 }
 
+/**
+ * @brief Reset transfer state and re-arm slave listening after a HAL transport error.
+ */
 void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c)
 {
+    tx_busy = 0;
+    receive_state = AWAITING_SIZE;
     // TODO: Handle error here
     // For now, just re-enable the I2C listen mode
     HAL_I2C_EnableListen_IT(hi2c);
 }
 
+/**
+ * @brief Forward I2C2 event interrupts to the HAL state machine.
+ */
 void I2C2_EV_IRQHandler(void)
 {
     HAL_I2C_EV_IRQHandler(&hi2c2);

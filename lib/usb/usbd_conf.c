@@ -1,3 +1,4 @@
+#include "commands_manager.h"
 /* USER CODE BEGIN Header */
 /**
   ******************************************************************************
@@ -304,6 +305,7 @@ void HAL_PCD_ConnectCallback(PCD_HandleTypeDef *hpcd)
 
 /**
   * @brief  Disconnect callback.
+  * @note   Notifies the command task to reset the USB session before updating the stack.
   * @param  hpcd: PCD handle
   * @retval None
   */
@@ -313,6 +315,7 @@ static void PCD_DisconnectCallback(PCD_HandleTypeDef *hpcd)
 void HAL_PCD_DisconnectCallback(PCD_HandleTypeDef *hpcd)
 #endif /* USE_HAL_PCD_REGISTER_CALLBACKS */
 {
+  commands_manager_usb_disconnected();
   USBD_LL_DevDisconnected((USBD_HandleTypeDef*)hpcd->pData);
 }
 

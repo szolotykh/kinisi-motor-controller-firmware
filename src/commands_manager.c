@@ -1,5 +1,6 @@
 //------------------------------------------------------------
 // File name: commands_manager.c
+// Description: Run independent USB/I2C sessions and their periodic clock synchronization.
 //------------------------------------------------------------
 #include "commands_manager.h"
 #include "commands_handler.h"
@@ -10,10 +11,58 @@
 #include "usbd_cdc_if.h"
 #include <assert.h>
 #include <stdlib.h>
+#include "initialization.h"
+#include "connection.h"
+#include "hw_clock.h"
 
-// Change length of messages that command queue can store.
-// Max command + message lenght byte.
-#define MESSAGE_QUEUE_MAX_STR_LENGTH sizeof(controller_command_t) + 1
+extern USBD_HandleTypeDef hUsbDeviceFS;
+
+
+
+static connection_t usb_connection, i2c_connection;
+static volatile uint8_t usb_disconnected;
+/**
+ * @brief Flag a USB disconnect for deferred session cleanup.
+ * @note IRQ-safe notification; the command task performs queue and clock reset.
+ */
+void commands_manager_usb_disconnected(void) { usb_disconnected = 1; }
+/**
+ * @brief Try to copy a frame to USB while protecting against concurrent deinitialization.
+ * @return True only when the USB stack accepts the transmission.
+ */
+static bool try_usb(uint8_t *data, uint8_t length)
+{
+    // DeInit runs in the USB IRQ and frees pClassData; protect the check and send.
+    uint32_t mask = __get_PRIMASK();
+    __disable_irq();
+    bool sent = !usb_disconnected && hUsbDeviceFS.dev_state == USBD_STATE_CONFIGURED &&
+        hUsbDeviceFS.pClassData && CDC_Transmit_FS(data, length) == USBD_OK;
+    __set_PRIMASK(mask);
+    return sent;
+}
+/**
+ * @brief Attempt one nonblocking I2C frame transmission.
+ * @return True only after a master read allows the transport to accept the frame.
+ */
+static bool try_i2c(uint8_t *data, uint8_t length)
+{
+    return try_send_external_i2c(data, length) != 0;
+}
+
+/**
+ * @brief Copy and remove one queued frame while excluding IRQ producers.
+ * @return True when a frame was dequeued; length excludes its prefix.
+ */
+static bool take_command(message_queue_t *queue, char *buffer, int *length)
+{
+    // IRQ producers also update queue->count; dequeue must not race their increment.
+    uint32_t mask = __get_PRIMASK();
+    __disable_irq();
+    bool available = !is_queue_empty(queue);
+    if (available) dequeue(queue, buffer, length);
+    __set_PRIMASK(mask);
+    return available;
+}
 
 typedef struct commands_manager
 {
@@ -24,12 +73,22 @@ static commands_manager_t commands_manager = {
     .threadHandler = NULL
 };
 
+/**
+ * @brief Poll USB/I2C requests and service their independent clock sessions.
+ * @param argument Unused RTOS task argument.
+ * @note Runs indefinitely and maintains the monotonic clock rollover extension.
+ */
 void CommandHandlerTask(void *argument);
 
+/**
+ * @brief Poll USB/I2C requests and service their independent clock sessions.
+ * @param argument Unused RTOS task argument.
+ * @note Runs indefinitely and maintains the monotonic clock rollover extension.
+ */
 void CommandHandlerTask(void *argument)
 {
     static_assert(
-        sizeof(controller_command_t) + 1 == MESSAGE_QUEUE_MAX_STR_LENGTH,
+        sizeof(controller_command_t) + 1 <= MESSAGE_QUEUE_MAX_STR_LENGTH,
         "Size of command queue less them motor command size.");
     // Initialize queues
     init_queue(&CommandQueue);
@@ -40,60 +99,51 @@ void CommandHandlerTask(void *argument)
     initialize_external_i2c();
 
     const os_interface_t* os = get_os_interface();
+    connection_init(&usb_connection, command_handler, try_usb, hw_clock_microseconds);
+    connection_init(&i2c_connection, command_handler, try_i2c, hw_clock_microseconds);
 
     while(1)
     {
+        // Maintain the HAL millisecond wrap extension even if both peers stop reading.
+        (void)hw_clock_microseconds();
+        if (usb_disconnected) {
+            uint32_t mask = __get_PRIMASK();
+            __disable_irq();
+            init_queue(&CommandQueue);
+            usb_disconnected = 0;
+            __set_PRIMASK(mask);
+            connection_reset(&usb_connection);
+        }
         // Handle commands from USB interface
-        if(!is_queue_empty(&CommandQueue)) 
+        if (connection_can_receive(&usb_connection))
         {
             char commandBuffer[MESSAGE_QUEUE_MAX_STR_LENGTH];
             int data_len;
-            dequeue(&CommandQueue, commandBuffer, &data_len);
-            command_handler((controller_command_t*)(&commandBuffer[0]), command_callback_usb);
+            if (take_command(&CommandQueue, commandBuffer, &data_len))
+                connection_receive(&usb_connection, (const uint8_t *)commandBuffer, data_len);
         }
 
         // Handle commands from I2C interface
-        if(!is_queue_empty(&I2CCommandQueue)) 
+        if (connection_can_receive(&i2c_connection))
         {
             char commandBuffer[MESSAGE_QUEUE_MAX_STR_LENGTH];
             int data_len;
-            dequeue(&I2CCommandQueue, commandBuffer, &data_len);
-            command_handler((controller_command_t*)(&commandBuffer[0]), command_callback_i2c);
+            if (take_command(&I2CCommandQueue, commandBuffer, &data_len))
+                connection_receive(&i2c_connection, (const uint8_t *)commandBuffer, data_len);
         }
         
+        connection_poll(&usb_connection);
+        connection_poll(&i2c_connection);
         // Small delay
         os->delay_ms(1);
     }
 }
 
+/**
+ * @brief Create the command task using the configured operating-system interface.
+ */
 void commands_manager_start(void)
 {
     const os_interface_t* os = get_os_interface();
     commands_manager.threadHandler = os->create_thread(CommandHandlerTask, "CommandsTask", NULL);
-}
-
-// The USB endpoint stays busy while the host is not draining it (or after an
-// unplug), so the retry loop is bounded. Without the timeout the single
-// CommandHandlerTask would block forever and starve the I2C command path too.
-#define USB_TRANSMIT_TIMEOUT_MS 1000U
-
-void command_callback_usb(uint8_t* resonse, uint8_t data_len)
-{
-    const os_interface_t* os = get_os_interface();
-    unsigned int timeout = USB_TRANSMIT_TIMEOUT_MS;
-    while (CDC_Transmit_FS(resonse, data_len) == USBD_BUSY)
-    {
-        if (timeout-- == 0)
-        {
-            // Host is not reading; drop the response instead of hanging.
-            return;
-        }
-        os->delay_ms(1);
-    }
-}
-
-void command_callback_i2c(uint8_t* resonse, uint8_t data_len)
-{
-    // Send response to I2C interface
-    send_external_i2c(resonse, data_len);
 }

@@ -1,27 +1,44 @@
+//------------------------------------------------------------
+// File name: test_commands.c
+// Description: Verify generated command wire layouts.
+//------------------------------------------------------------
 #include "unity.h"
 #include "commands.h"
 
+/**
+ * @brief Prepare the Unity fixture before each test.
+ */
 void setUp(void) {
   // set stuff up here
 }
 
+/**
+ * @brief Finish the Unity fixture after each test.
+ */
 void tearDown(void) {
   // clean stuff up here
 }
 
+/**
+ * @brief Verify motor-speed fields retain their expected packed wire layout.
+ */
 void test_set_motor_speed_command(void)
 {
-    char buffer[10] = {0X02, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xF0, 0x3F};
+    char buffer[12] = {0X02, 0x2a, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xF0, 0x3F};
     controller_command_t* command = (controller_command_t*)(&buffer[0]);
     TEST_ASSERT_EQUAL_INT(command->commandType, SET_MOTOR_SPEED);
     TEST_ASSERT_EQUAL_INT(command->properties.set_motor_speed.motor_index, 2);
     TEST_ASSERT_DOUBLE_WITHIN(0.0001, 1.0, command->properties.set_motor_speed.pwm);
 }
 
+/**
+ * @brief Verify controller initialization fields retain their expected packed wire layout.
+ */
 void test_set_motor_controller_command(void)
 {
     char buffer[] = {
         0x05,               // commandType (INITIALIZE_MOTOR_CONTROLLER)
+        0x2a, 0x00,       // Shared message ID
         0x00,               // motor_index
         0x00,               // is_reversed
         0x00,               // encoder_index
@@ -45,24 +62,33 @@ void test_set_motor_controller_command(void)
     TEST_ASSERT_DOUBLE_WITHIN(0.01, 0.1, command->properties.initialize_motor_controller.kd);
 }
 
+/**
+ * @brief Verify the controller-frequency command header and payload layout.
+ */
 void test_set_controller_frequency_command(void)
 {
     // [commandType][frequency LE uint16] -> 500 Hz = 0x01F4
-    char buffer[] = {0x0A, 0xF4, 0x01};
+    char buffer[] = {0x0A, 0x2a, 0x00, 0xF4, 0x01};
     controller_command_t* command = (controller_command_t*)(&buffer[0]);
     TEST_ASSERT_EQUAL_INT(command->commandType, SET_CONTROLLER_FREQUENCY);
     TEST_ASSERT_EQUAL_UINT16(500, command->properties.set_controller_frequency.frequency);
 }
 
+/**
+ * @brief Verify the odometry-frequency command header and payload layout.
+ */
 void test_set_odometry_frequency_command(void)
 {
     // [commandType][frequency LE uint16] -> 20 Hz = 0x0014
-    char buffer[] = {0x17, 0x14, 0x00};
+    char buffer[] = {0x17, 0x2a, 0x00, 0x14, 0x00};
     controller_command_t* command = (controller_command_t*)(&buffer[0]);
     TEST_ASSERT_EQUAL_INT(command->commandType, SET_ODOMETRY_FREQUENCY);
     TEST_ASSERT_EQUAL_UINT16(20, command->properties.set_odometry_frequency.frequency);
 }
 
+/**
+ * @brief Run this file's assertions and return zero when all checks pass.
+ */
 int main(void) {
     UNITY_BEGIN(); 
     RUN_TEST(test_set_motor_speed_command);

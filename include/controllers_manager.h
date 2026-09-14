@@ -1,5 +1,6 @@
 //------------------------------------------------------------
 // File name: controllers_manager.h
+// Description: Manage per-motor closed-loop controllers and query their running state.
 //------------------------------------------------------------
 #pragma once
 
@@ -13,6 +14,13 @@
 #define BMOTOR1 0x02 // 0000 0010
 #define BMOTOR2 0x04 // 0000 0100
 #define BMOTOR3 0x08 // 0000 1000
+
+/**
+ * @brief Query whether the selected motor has an active closed-loop controller.
+ * @return Nonzero for RUN; zero for an invalid index, absent manager, or stopped controller.
+ * @note Reads controller state under its mutex when available.
+ */
+uint8_t controllers_manager_is_running(uint8_t motor_index);
 
 /*
 Initialize controller for single motor

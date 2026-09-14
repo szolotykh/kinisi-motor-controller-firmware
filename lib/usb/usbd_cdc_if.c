@@ -1,3 +1,4 @@
+#include "commands_manager.h"
 /* USER CODE BEGIN Header */
 /**
   ******************************************************************************
@@ -167,10 +168,12 @@ static int8_t CDC_Init_FS(void)
 
 /**
   * @brief  DeInitializes the CDC media low layer
+  * @note   Flags session cleanup for the command task; does not stop motors.
   * @retval USBD_OK if all operations are OK else USBD_FAIL
   */
 static int8_t CDC_DeInit_FS(void)
 {
+  commands_manager_usb_disconnected();
   /* USER CODE BEGIN 4 */
   return (USBD_OK);
   /* USER CODE END 4 */
@@ -287,6 +290,8 @@ static int8_t CDC_Receive_FS(uint8_t* Buf, uint32_t *Len)
   *
   * @param  Buf: Buffer of data to be sent
   * @param  Len: Number of data to be sent (in bytes)
+  * @note   Copies accepted data into UserTxBufferFS before returning. Caller must
+  *         verify configured USB state and exclude concurrent deinitialization.
   * @retval USBD_OK if all operations are OK else USBD_FAIL or USBD_BUSY
   */
 uint8_t CDC_Transmit_FS(uint8_t* Buf, uint16_t Len)

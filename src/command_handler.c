@@ -1,5 +1,6 @@
 //------------------------------------------------------------
-// File name: commands_handler.c
+// File name: command_handler.c
+// Description: Check resource prerequisites and execute validated controller commands.
 //------------------------------------------------------------
 #include "commands.h"
 #include "controllers_manager.h"
@@ -13,19 +14,48 @@
 #include "commands_handler.h"
 #include "hardware_i2c.h"
 #include "stdbool.h"
+#include "initialization.h"
+#include "connection.h"
+#include "hw_clock.h"
+#include "command_requirements.h"
 
-void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t*, uint8_t))
+/**
+ * @brief Execute a validated command after checking its resource prerequisites.
+ * @param cmd Request with a valid command ID, payload length, and argument ranges.
+ * @param command_callback Receives response payload bytes and must copy them immediately.
+ * @return RESPONSE_OK for accepted operations, or a generated protocol error code.
+ * @note Called serially inside a connection dispatch; ACK/error framing is handled above.
+ */
+uint8_t command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t*, uint8_t))
 {
     const gpio_interface_t* gpio = get_gpio_interface();
     const hw_motor_interface_t* motor = get_motor_interface();
     const hw_encoder_interface_t* encoder = get_encoder_interface();
 
+    const command_resources_t resources = {
+        .motor_owned = platform_owns_motor,
+        .motor_initialized = motor->is_initialized,
+        .encoder_initialized = encoder->is_initialized,
+        .controller_running = controllers_manager_is_running,
+        .platform_initialized = platform_is_initialized,
+        .platform_controller_running = platform_is_controller_running
+    };
+    uint8_t prerequisite = command_requirements_check(cmd, &resources);
+    if (prerequisite != RESPONSE_OK) return prerequisite;
+
     switch(cmd->commandType)
     {
+        case INIT:
+        {
+            // Transport callbacks copy the response into their transmit buffer.
+            uint8_t error = initialization_validate(cmd);
+            if (error != RESPONSE_OK) return error;
+            init_response response = initialization_response();
+            command_callback((uint8_t *)&response, sizeof(response));
+            return RESPONSE_OK;
+        }
+        break;
         case INITIALIZE_MOTOR:
-            // Ignored if the motor is owned by an active platform (see the
-            // STOP_MOTOR TODO on reporting the ignore back to the host).
-            if (!platform_owns_motor(cmd->properties.initialize_motor.motor_index))
             {
                 motor->initialize(cmd->properties.initialize_motor.motor_index,
                                 cmd->properties.initialize_motor.is_reversed);
@@ -34,9 +64,6 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
 
         case SET_MOTOR_SPEED:
             {
-            // Ignored if the motor is owned by an active platform (see the
-            // STOP_MOTOR TODO on reporting the ignore back to the host).
-            if (!platform_owns_motor(cmd->properties.set_motor_speed.motor_index))
             {
                 motor->set_speed(
                     cmd->properties.set_motor_speed.motor_index,
@@ -48,14 +75,6 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
         case STOP_MOTOR:
             {
                 uint8_t motor_index = cmd->properties.stop_motor.motor_index;
-                // Do not let a direct single-motor command disturb a wheel that
-                // belongs to an active platform (it would leave the platform in
-                // an inconsistent state). Ignore the command in that case.
-                // TODO: report back to the host that the command was ignored
-                // because the motor is owned by the platform. This needs a
-                // response/error channel for commands that currently have no
-                // reply; for now the command is silently dropped.
-                if (!platform_owns_motor(motor_index))
                 {
                     // Take the motor out of closed-loop control (no-op if none
                     // is running) so the PID task stops overriding it, then coast.
@@ -68,14 +87,6 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
         case BRAKE_MOTOR:
             {
                 uint8_t motor_index = cmd->properties.brake_motor.motor_index;
-                // Do not let a direct single-motor command disturb a wheel that
-                // belongs to an active platform (it would leave the platform in
-                // an inconsistent state). Ignore the command in that case.
-                // TODO: report back to the host that the command was ignored
-                // because the motor is owned by the platform. This needs a
-                // response/error channel for commands that currently have no
-                // reply; for now the command is silently dropped.
-                if (!platform_owns_motor(motor_index))
                 {
                     // Take the motor out of closed-loop control (no-op if none
                     // is running) so the PID task stops overriding it, then brake.
@@ -87,9 +98,6 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
 
         case INITIALIZE_MOTOR_CONTROLLER:
             {
-                // Ignored if the motor is owned by an active platform (see the
-                // STOP_MOTOR TODO on reporting the ignore back to the host).
-                if (!platform_owns_motor(cmd->properties.initialize_motor_controller.motor_index))
                 {
                 controllers_manager_initialize_controller(
                     cmd->properties.initialize_motor_controller.motor_index,
@@ -107,9 +115,6 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
 
         case DELETE_MOTOR_CONTROLLER:
             {
-                // Ignored if the motor is owned by an active platform (see the
-                // STOP_MOTOR TODO on reporting the ignore back to the host).
-                if (!platform_owns_motor(cmd->properties.delete_motor_controller.motor_index))
                 {
                 controllers_manager_delete_controller(
                     cmd->properties.delete_motor_controller.motor_index);
@@ -133,9 +138,6 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
 
         case SET_MOTOR_TARGET_SPEED:
             {
-                // Ignored if the motor is owned by an active platform (see the
-                // STOP_MOTOR TODO on reporting the ignore back to the host).
-                if (!platform_owns_motor(cmd->properties.set_motor_target_speed.motor_index))
                 {
                 controllers_manager_set_target_speed(
                     cmd->properties.set_motor_target_speed.motor_index,
@@ -146,9 +148,6 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
 
         case RESET_MOTOR_CONTROLLER:
             {
-            // Ignored if the motor is owned by an active platform (see the
-            // STOP_MOTOR TODO on reporting the ignore back to the host).
-            if (!platform_owns_motor(cmd->properties.reset_motor_controller.motor_index))
             {
                 controllers_manager_reset_controller(
                     cmd->properties.reset_motor_controller.motor_index);
@@ -196,8 +195,18 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
 
         case GET_ENCODER_ODOMETRY:
             {
-            double odometry = encoder_get_odometry(cmd->properties.get_encoder_odometry.encoder_index);
-            command_callback((uint8_t*)&odometry, sizeof(double));
+            const time_sync_t *clock = connection_current_clock();
+            uint64_t sampled_us, timestamp;
+            double angle;
+            if (!clock || !clock->ready) return RESPONSE_CLOCK_NOT_READY;
+            uint8_t error = encoder_get_odometry_sample(cmd->properties.get_encoder_odometry.encoder_index, &angle, &sampled_us);
+            if (error != RESPONSE_OK) return error;
+            if (!time_sync_convert(clock, sampled_us, &timestamp)) return RESPONSE_CLOCK_NOT_READY;
+            encoder_odometry_sample sample = {
+                .timestamp_us = timestamp, .clock_mode = clock->mode,
+                .clock_quality = time_sync_quality(clock, hw_clock_microseconds()), .angle = angle
+            };
+            command_callback((uint8_t*)&sample, sizeof(sample));
             }
         break;
 
@@ -365,8 +374,19 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
 
         case GET_PLATFORM_ODOMETRY:
         {
-            platform_odometry_t platform_odometry = platform_get_odometry();
-            command_callback((uint8_t*)&platform_odometry, sizeof(platform_odometry_t));
+            const time_sync_t *clock = connection_current_clock();
+            uint64_t sampled_us, timestamp;
+            platform_odometry_t pose;
+            if (!clock || !clock->ready) return RESPONSE_CLOCK_NOT_READY;
+            uint8_t error = odometry_manager_get_platform_sample(&pose, &sampled_us);
+            if (error != RESPONSE_OK) return error;
+            if (!time_sync_convert(clock, sampled_us, &timestamp)) return RESPONSE_CLOCK_NOT_READY;
+            platform_odometry_sample sample = {
+                .timestamp_us = timestamp, .clock_mode = clock->mode,
+                .clock_quality = time_sync_quality(clock, hw_clock_microseconds()),
+                .x = pose.x, .y = pose.y, .t = pose.t
+            };
+            command_callback((uint8_t*)&sample, sizeof(sample));
         }
         break;
 
@@ -375,5 +395,7 @@ void command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t
             platform_stop_odometry();
         }
         break;
+        default: return RESPONSE_UNKNOWN_COMMAND;
     }
+    return RESPONSE_OK;
 }

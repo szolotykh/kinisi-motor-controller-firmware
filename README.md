@@ -11,6 +11,8 @@ Discription of commands can be find [here](commands.md). \
 JavaScript code and client with UI interface to control motor controller can be find [here](https://github.com/szolotykh/jskinisi).\
 Python code to control motor controller can be find [here](https://github.com/szolotykh/pykinisi).
 
+API v2 is not compatible with API v1. Clients must support API v2 to use this firmware.
+
 ## Generating Commands from commands.json
 
 To generate commands from `commands.json`, follow these steps:

@@ -1,5 +1,6 @@
 //------------------------------------------------------------
 // File name: hw_config.h
+// Description: Select board hardware mappings and shared motor/encoder configuration.
 //------------------------------------------------------------
 
 #pragma once
@@ -8,7 +9,7 @@
 #include "hw_config_structs.h"
 
 // Board current version
-#define MP_V3
+#include "board_revision.h"
 
 // Boards configurations
 //------------------------------------------------------------

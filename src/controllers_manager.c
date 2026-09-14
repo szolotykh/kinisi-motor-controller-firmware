@@ -1,5 +1,6 @@
 //------------------------------------------------------------
 // File name: controllers_manager.c
+// Description: Run motor PID tasks and expose controller lifecycle and state queries.
 //------------------------------------------------------------
 #include "controllers_manager.h"
 #include "commands.h"
@@ -57,6 +58,9 @@ static controllers_manager_t controllers_manager = {
 static const hw_motor_interface_t* motor = NULL;
 static const hw_encoder_interface_t* encoder = NULL;
 
+/**
+ * @brief Sample encoder feedback and update active motor PID controllers each task period.
+ */
 void StartControllerTask(void *argument)
 {
     /*
@@ -136,6 +140,9 @@ void StartControllerTask(void *argument)
     }
 }
 
+/**
+ * @brief Bind hardware interfaces and create the controller state mutex and task.
+ */
 void controllers_manager_init()
 {
     motor = get_motor_interface();
@@ -158,12 +165,18 @@ void controllers_manager_init()
     controllers_manager.thread_handler = osThreadNew(StartControllerTask, &controllers_manager.state, &ControllerTask_attributes);
 }
 
+/**
+ * @brief Check whether the controller task has not been created.
+ */
 uint8_t controllers_manager_is_not_init()
 {
     osThreadState_t status = osThreadGetState(controllers_manager.thread_handler);
     return status == osThreadError;
 }
 
+/**
+ * @brief Initialize motor/encoder resources and install a running PID controller.
+ */
 void controllers_manager_initialize_controller(uint8_t motor_index, uint8_t encoder_index, double kp, double ki, double kd, bool is_reversed, bool is_encoder_reversed, double encoder_resolution, double integral_limit)
 {
     // Initialize controller manager which starts task for all controllers
@@ -208,6 +221,9 @@ void controllers_manager_initialize_controller(uint8_t motor_index, uint8_t enco
     }
 }
 
+/**
+ * @brief Install running PID controllers for motors selected by the bit mask.
+ */
 void controllers_manager_initialize_controller_multiple(uint8_t motor_selection, double kp, double ki, double kd, double integral_limit)
 {
     // Initialize controller manager which starts task for all controllers
@@ -249,6 +265,9 @@ void controllers_manager_initialize_controller_multiple(uint8_t motor_selection,
     }
 }
 
+/**
+ * @brief Stop selected controllers, clear targets, and coast their motors.
+ */
 void controllers_manager_stop_controller_multiple(uint8_t motor_selection)
 {
     if (xSemaphoreTake(controllers_manager.state.controller_state_mutex, portMAX_DELAY))
@@ -271,6 +290,9 @@ void controllers_manager_stop_controller_multiple(uint8_t motor_selection)
     }
 }
 
+/**
+ * @brief Stop one PID controller without changing its motor hardware output.
+ */
 void controllers_manager_stop_controller(uint8_t motor_index)
 {
     // If no controller is running for this motor there is nothing to stop, and
@@ -292,6 +314,9 @@ void controllers_manager_stop_controller(uint8_t motor_index)
     }
 }
 
+/**
+ * @brief Stop selected controllers, clear targets, and actively brake their motors.
+ */
 void controllers_manager_brake_multiple(uint8_t motor_selection)
 {
     if (xSemaphoreTake(controllers_manager.state.controller_state_mutex, portMAX_DELAY))
@@ -317,6 +342,9 @@ void controllers_manager_brake_multiple(uint8_t motor_selection)
 // Reset the closed-loop controller for a single motor: clears the PID history
 // (windup/derivative/output) and re-zeros the target while keeping the
 // controller running with its tuning. No-op if no controller is running.
+/**
+ * @brief Clear PID history and target while retaining a running controller and its tuning.
+ */
 void controllers_manager_reset_controller(uint8_t motor_index)
 {
     // Nothing to reset if no controller is running for this motor. The state
@@ -337,6 +365,9 @@ void controllers_manager_reset_controller(uint8_t motor_index)
     }
 }
 
+/**
+ * @brief Remove the running controller and stop its motor; harmless when already stopped.
+ */
 void controllers_manager_delete_controller(uint8_t motor_index)
 {
     // Check if controller for this motor is running
@@ -361,6 +392,9 @@ void controllers_manager_delete_controller(uint8_t motor_index)
     }
 }
 
+/**
+ * @brief Set the selected running controller target in radians per second.
+ */
 void controllers_manager_set_target_speed(uint8_t motor_index, double target_speed)
 {
     // Check if controller for this motor is running
@@ -375,6 +409,9 @@ void controllers_manager_set_target_speed(uint8_t motor_index, double target_spe
     }
 }
 
+/**
+ * @brief Update selected motor targets under the controller state mutex.
+ */
 void controllers_manager_set_target_speed_multiple(uint8_t* motor_indexes, double* target_speeds, uint8_t motor_count)
 {
     if (xSemaphoreTake(controllers_manager.state.controller_state_mutex, portMAX_DELAY)) {
@@ -387,6 +424,9 @@ void controllers_manager_set_target_speed_multiple(uint8_t* motor_indexes, doubl
 
 }
 
+/**
+ * @brief Return a snapshot of PID state, or a zeroed response when stopped.
+ */
 motor_controller_state controllers_manager_get_motor_controller_state(uint8_t motor_index)
 {
     // Check if controller for this motor is running. A bare `return;` here is
@@ -419,6 +459,9 @@ motor_controller_state controllers_manager_get_motor_controller_state(uint8_t mo
 
 // Set the global controller-loop frequency (Hz): updates the task period and
 // every running PID's sampling time, quantized to the 1 ms tick. No-op if 0.
+/**
+ * @brief Set the shared controller update rate and adjust every PID sampling period.
+ */
 void controllers_manager_set_frequency(uint16_t frequency_hz)
 {
     // Clamp to the supported range; 0 stays 0 (invalid) and is ignored below.
@@ -457,7 +500,24 @@ void controllers_manager_set_frequency(uint16_t frequency_hz)
 }
 
 // Get the current global controller-loop frequency in Hz.
+/**
+ * @brief Return the effective controller task frequency in hertz.
+ */
 uint16_t controllers_manager_get_frequency()
 {
     return loop_period_ms_to_frequency_hz(controllers_manager.state.update_interval_ms);
+}
+
+/**
+ * @brief Query whether the selected motor has an active closed-loop controller.
+ * @return Nonzero for RUN; zero for an invalid index, absent manager, or stopped controller.
+ * @note Reads controller state under its mutex when available.
+ */
+uint8_t controllers_manager_is_running(uint8_t motor_index)
+{
+    if (motor_index >= NUMBER_MOTORS || !controllers_manager.state.controller_state_mutex) return 0;
+    if (!xSemaphoreTake(controllers_manager.state.controller_state_mutex, portMAX_DELAY)) return 0;
+    uint8_t running = controllers_manager.state.Controller_info[motor_index].state == RUN;
+    xSemaphoreGive(controllers_manager.state.controller_state_mutex);
+    return running;
 }
