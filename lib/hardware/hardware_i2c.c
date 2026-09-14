@@ -50,8 +50,11 @@ void initialize_external_i2c(void)
 
     HAL_NVIC_SetPriority(I2C2_EV_IRQn, 0, 0);  // Set priority
     HAL_NVIC_EnableIRQ(I2C2_EV_IRQn);          // Enable the I2C2 event interrupt
+    // A master's final read NACK completes a slave transmit through the error IRQ.
+    HAL_NVIC_SetPriority(I2C2_ER_IRQn, 0, 0);
+    HAL_NVIC_EnableIRQ(I2C2_ER_IRQn);
 
-    // Awaint for the first byte of the message
+    // Await the first byte of the message.
     tx_busy = 0;
     receive_state = AWAITING_SIZE;
     HAL_I2C_EnableListen_IT(&hi2c2);
@@ -133,10 +136,10 @@ void HAL_I2C_ListenCpltCallback(I2C_HandleTypeDef *hi2c)
  */
 void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c)
 {
+    if (hi2c->Instance != I2C2) return;
     tx_busy = 0;
     receive_state = AWAITING_SIZE;
-    // TODO: Handle error here
-    // For now, just re-enable the I2C listen mode
+    // Release an interrupted reply before accepting the next master transaction.
     HAL_I2C_EnableListen_IT(hi2c);
 }
 
@@ -146,4 +149,13 @@ void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c)
 void I2C2_EV_IRQHandler(void)
 {
     HAL_I2C_EV_IRQHandler(&hi2c2);
+}
+
+/**
+ * @brief Forward read-completion NACKs and bus errors to the HAL state machine.
+ * @note The HAL listen/error callbacks release tx_busy and re-arm the slave.
+ */
+void I2C2_ER_IRQHandler(void)
+{
+    HAL_I2C_ER_IRQHandler(&hi2c2);
 }

@@ -15,6 +15,7 @@ static void capture(uint8_t *data, uint8_t length)
 {
     memcpy(active->output, data, length);
     active->output_length = length;
+    active->output_queued_us = active->now();
 }
 
 /**
@@ -75,6 +76,7 @@ static void error_reply(connection_t *c, uint16_t id, uint8_t command, uint8_t e
     uint8_t data[] = {5, KINISI_MESSAGE_ERROR, (uint8_t)id, (uint8_t)(id >> 8), command, error};
     memcpy(c->output, data, sizeof(data));
     c->output_length = sizeof(data);
+    c->output_queued_us = c->now();
 }
 
 /**
@@ -98,16 +100,21 @@ void connection_reset(connection_t *c)
     memset(&c->clock, 0, sizeof(c->clock));
     c->clock.sequence = sequence;
     c->output_length = 0;
+    c->output_queued_us = 0;
     c->ready_announced = false;
+    c->yield_receive = false;
 }
 
 /**
  * @brief Check whether the scheduler may dequeue another request.
- * @return False while a reply, READY, or due sync must be serviced first.
+ * @return False while a bounded reply wait or a control transmit turn takes priority.
  */
 bool connection_can_receive(const connection_t *c)
 {
-    if (c->output_length || (c->clock.ready && !c->ready_announced)) return false;
+    // Poll must discard expired replies before dequeue, so receive never drops a request.
+    if (c->output_length) return false;
+    if (c->yield_receive) return true;
+    if (c->clock.ready && !c->ready_announced) return false;
     // Give scheduled sync a turn even when ordinary requests arrive continuously.
     // Once a request is sent, incoming traffic (including its reply) can resume.
     if (c->clock.initialized && c->clock.mode == CLOCK_MODE_WALL && !c->clock.pending &&
@@ -124,11 +131,13 @@ const time_sync_t *connection_current_clock(void) { return active ? &active->clo
  * @param c Transport session being serviced.
  * @param data Frame bytes after the length prefix.
  * @param length Frame length excluding its prefix.
- * @note A pending output prevents dispatch. Successful timing replies have no ACK.
+ * @note Call only when connection_can_receive is true; poll expires stalled replies.
+ * Successful timing replies have no ACK.
  */
 void connection_receive(connection_t *c, const uint8_t *data, size_t length)
 {
     if (c->output_length) return;
+    c->yield_receive = false;
     uint64_t received_us = c->now();
     active = c;
     if (data && length && data[0] == TIME_SYNC_RESPONSE) {
@@ -153,10 +162,24 @@ void connection_receive(connection_t *c, const uint8_t *data, size_t length)
 
 /**
  * @brief Service pending output, announce READY, or advance periodic synchronization.
- * @note Call frequently on the command task; busy sends are retried without blocking.
+ * @note Call frequently on the command task. Stalled replies expire; busy control
+ * sends yield to incoming requests without announcing readiness or starting the RTT.
  */
 void connection_poll(connection_t *c)
 {
+    uint64_t now = c->now();
+    if (c->output_length && now - c->output_queued_us >= CONNECTION_REPLY_TIMEOUT_US) {
+        if (c->output[1] == INIT) {
+            // A lost identity must not be followed by READY or timing requests.
+            // Keep commands available, but require the client to retry INIT.
+            connection_reset(c);
+        } else {
+            c->output_length = 0;
+        }
+    }
+    // Advance pending sync timeouts even while ordinary replies occupy the TX slot.
+    // Otherwise continuous command traffic can keep an unanswered sync pending forever.
+    bool due = time_sync_due(&c->clock, now);
     if (c->output_length) {
         if (c->send(c->output, c->output_length)) c->output_length = 0;
         return; // Preserve INIT response before TIME_SYNC/READY ordering.
@@ -164,11 +187,11 @@ void connection_poll(connection_t *c)
     if (c->clock.ready && !c->ready_announced) {
         uint8_t ready[] = {4, KINISI_MESSAGE_READY, (uint8_t)c->init_id,
                           (uint8_t)(c->init_id >> 8), c->clock.mode};
-        if (c->send(ready, sizeof(ready))) c->ready_announced = true;
+        bool sent = c->send(ready, sizeof(ready));
+        if (sent) c->ready_announced = true;
+        c->yield_receive = !sent;
         return;
     }
-    uint64_t now = c->now();
-    bool due = time_sync_due(&c->clock, now);
     int finished = time_sync_finish(&c->clock, now);
     if (finished < 0 && !c->clock.ready) {
         error_reply(c, c->init_id, INIT, RESPONSE_TIME_SYNC_FAILED);
@@ -179,6 +202,8 @@ void connection_poll(connection_t *c)
         uint8_t request[] = {3, KINISI_MESSAGE_TIME_SYNC_REQUEST, (uint8_t)id, (uint8_t)(id >> 8)};
         // send is nonblocking: failed/busy attempts do not start the RTT timer.
         uint64_t sent_us = c->now();
-        if (c->send(request, sizeof(request))) time_sync_sent(&c->clock, id, sent_us);
+        bool sent = c->send(request, sizeof(request));
+        if (sent) time_sync_sent(&c->clock, id, sent_us);
+        c->yield_receive = !sent;
     }
 }

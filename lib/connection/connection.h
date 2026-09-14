@@ -7,6 +7,9 @@
 #include "time_sync.h"
 #include <stdbool.h>
 
+// Bound how long an unsent command reply can hold the next request in the RX queue.
+#define CONNECTION_REPLY_TIMEOUT_US 1000000ULL
+
 // Successful sends copy the complete frame before returning; false means retry later.
 typedef bool (*connection_try_send_fn)(uint8_t *, uint8_t);
 // One state per transport; access only from the serialized command task.
@@ -15,11 +18,14 @@ typedef struct {
     protocol_handler_fn handler;
     connection_try_send_fn send;
     uint64_t (*now)(void);
-    // One complete framed reply waits here until the transport accepts a copy.
+    // One complete framed reply waits here until accepted or its transmit deadline expires.
     uint8_t output[255], output_length;
+    uint64_t output_queued_us;
     // READY and initial sync failure refer back to the INIT that opened this session.
     uint16_t init_id;
     bool ready_announced;
+    // A busy READY/sync send yields one receive turn before it takes priority again.
+    bool yield_receive;
 } connection_t;
 
 /**
@@ -35,7 +41,7 @@ void connection_init(connection_t *, protocol_handler_fn, connection_try_send_fn
 void connection_reset(connection_t *);
 /**
  * @brief Check whether the scheduler may dequeue another request.
- * @return False while a reply, READY, or due sync must be serviced first.
+ * @return False while a bounded reply wait or a control transmit turn takes priority.
  */
 bool connection_can_receive(const connection_t *);
 /**
@@ -43,12 +49,14 @@ bool connection_can_receive(const connection_t *);
  * @param c Transport session being serviced.
  * @param data Frame bytes after the length prefix.
  * @param length Frame length excluding its prefix.
- * @note A pending output prevents dispatch. Successful timing replies have no ACK.
+ * @note Call only when connection_can_receive is true; poll expires stalled replies.
+ * Successful timing replies have no ACK.
  */
 void connection_receive(connection_t *, const uint8_t *, size_t);
 /**
  * @brief Service pending output, announce READY, or advance periodic synchronization.
- * @note Call frequently on the command task; busy sends are retried without blocking.
+ * @note Call frequently on the command task. Stalled replies expire; busy control
+ * sends yield to incoming requests without announcing readiness or starting the RTT.
  */
 void connection_poll(connection_t *);
 /**

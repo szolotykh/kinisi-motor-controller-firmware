@@ -61,8 +61,10 @@ microsecond synchronization. Replies must arrive within 1 second; negative
 processing times, processing longer than the controller round trip, and
 corrected round trips above 100 ms are rejected. A burst uses the best of up
 to three attempts, including timed-out attempts. One valid sample is sufficient.
-Scheduled sync takes priority over dispatching more ordinary requests, so a
-continuous request stream cannot starve it.
+Scheduled sync gets a transmit turn between ordinary requests, so a continuous
+request stream cannot starve it. If that send is busy, it yields to an incoming
+request before trying again. Pending sync timeouts advance even during ordinary
+reply traffic.
 
 If all initial attempts fail, the controller sends ERROR for INIT with code 8
 (TIME_SYNC_FAILED), leaves odometry unavailable, and retries at the configured
@@ -122,7 +124,13 @@ stretch until a frame is available; the master needs a bounded transaction
 timeout. Read a complete frame in one transaction (the existing I2C send buffer
 does not support a separate length-only read followed by a second transaction).
 USB/I2C sends are nonblocking so one idle transport does not hold the command
-task in a transmit loop.
+task in a transmit loop. A command reply waiting for the transport expires after
+one second, allowing the next queued request to run. The command may already
+have executed even if its ACK is lost; clients must not assume a missing reply
+means the operation was rejected. If INIT's identity reply expires, the session
+is reset and the client must retry INIT. Unsent READY and timing requests are
+retained, but yield receive turns while the transport is busy; odometry still
+requires READY to be sent successfully.
 
 The STM32 implementation reads the existing 1 MHz TIM14 counter plus the HAL
 millisecond tick, extending its 32-bit rollover in software. TIM14 must retain
@@ -137,10 +145,12 @@ remain separate features; a time-sync failure is not a motor-stop mechanism.
 ## Validation
 
 Run `python test/test_time_sync/run_tests.py` with a host C compiler in `CC`,
-then `python test/test_initialization/run_tests.py` and
+then `python test/test_initialization/run_tests.py`,
+`python test/test_i2c_transport/run_tests.py`, and
 `pio run -e genericSTM32F405RG`. The new tests use virtual clocks and simulated
 transport availability, the production odometry task with mocked encoders/RTOS,
-and hardware tick/counter rollover.
+and hardware tick/counter rollover. Transport regressions cover stalled replies,
+command progress, and I2C IRQ routing/completion with a focused HAL callback model.
 Physical USB/I2C timing accuracy and reconnect behavior still need board tests.
 
 Client examples are maintained in the [Python project](https://github.com/szolotykh/pykinisi).

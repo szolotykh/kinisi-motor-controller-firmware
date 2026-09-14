@@ -12,6 +12,7 @@
 static uint64_t now_us;
 static uint8_t wire[255], wire_length;
 static unsigned sends, handled;
+static unsigned executions[256];
 static bool busy;
 /**
  * @brief Return the fixture's controllable monotonic timestamp.
@@ -32,6 +33,7 @@ static bool send_frame(uint8_t *bytes, uint8_t size)
 static uint8_t handler(controller_command_t *cmd, protocol_send_fn reply)
 {
     ++handled;
+    ++executions[cmd->commandType];
     assert(connection_current_clock());
     if (cmd->commandType == INIT) {
         uint8_t error = initialization_validate(cmd);
@@ -261,6 +263,156 @@ static void connection_tests(void)
     assert(!connection_current_clock());
 }
 /**
+ * @brief Verify a stalled ACK expires, preserving command progress and session isolation.
+ */
+static void reply_backpressure_tests(void)
+{
+    connection_t c, other;
+    connection_init(&c, handler, send_frame, now);
+    connection_init(&other, handler, send_frame, now);
+    const uint8_t speed[] = {SET_MOTOR_SPEED, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0x59, 0x40}; // 100.0
+    const uint8_t stop[] = {STOP_MOTOR, 2, 0, 0};
+    const uint8_t frequency[] = {SET_ODOMETRY_FREQUENCY, 3, 0, 100, 0};
+    busy = true;
+    connection_receive(&c, speed, sizeof(speed));
+    unsigned stopped = executions[STOP_MOTOR];
+    unsigned configured = executions[SET_ODOMETRY_FREQUENCY];
+    connection_poll(&c);
+    assert(!connection_can_receive(&c));
+    now_us += 999999;
+    connection_poll(&c);
+    assert(!connection_can_receive(&c));
+    // A stalled connection must not prevent another transport from operating.
+    busy = false;
+    assert(connection_can_receive(&other));
+    command(&other, GET_TIME_STATUS);
+    assert(wire[1] == GET_TIME_STATUS);
+    busy = true;
+    ++now_us;
+    connection_poll(&c);
+    assert(connection_can_receive(&c));
+    connection_receive(&c, stop, sizeof(stop));
+    assert(executions[STOP_MOTOR] == stopped + 1);
+    connection_poll(&c);
+    now_us += 1000000;
+    connection_poll(&c);
+    assert(connection_can_receive(&c));
+    connection_receive(&c, frequency, sizeof(frequency));
+    assert(executions[SET_ODOMETRY_FREQUENCY] == configured + 1);
+    busy = false;
+    connection_poll(&c);
+    assert(wire_length == 4 && wire[1] == SET_ODOMETRY_FREQUENCY && wire[2] == 3);
+    assert(connection_can_receive(&c));
+}
+
+/**
+ * @brief Prevent READY/sync after a lost INIT identity, and allow a fresh INIT to recover.
+ */
+static void identity_backpressure_tests(void)
+{
+    for (uint8_t capability = 0; capability <= CLIENT_CAP_WALL_CLOCK; ++capability) {
+        connection_t c;
+        connection_init(&c, handler, send_frame, now);
+        c.clock.sequence = 12;
+        uint8_t request[] = {INIT, 42, 0, 1, 1, 0, 0, 2, 0, 0, capability};
+        busy = true;
+        connection_receive(&c, request, sizeof(request));
+        connection_poll(&c);
+        now_us += 1000000;
+        connection_poll(&c);
+        assert(connection_can_receive(&c));
+        assert(!c.clock.initialized && !c.ready_announced && c.clock.sequence == 12);
+        busy = false;
+        unsigned before = sends;
+        connection_poll(&c);
+        assert(sends == before); // No READY or sync may overtake a lost identity.
+        command(&c, GET_PLATFORM_ODOMETRY);
+        expect_error(GET_PLATFORM_ODOMETRY, RESPONSE_INIT_REQUIRED);
+        init(&c, capability);
+        if (capability) complete_burst(&c, 1700000000000000ULL);
+        connection_poll(&c);
+        assert(c.ready_announced && wire[1] == KINISI_MESSAGE_READY);
+    }
+}
+
+/**
+ * @brief Yield busy READY/initial/periodic sync sends to incoming commands, then recover.
+ */
+static void control_backpressure_tests(void)
+{
+    const uint8_t brake[] = {BRAKE_MOTOR, 25, 0, 0};
+    for (unsigned phase = 0; phase < 3; ++phase) {
+        connection_t c;
+        connection_init(&c, handler, send_frame, now);
+        busy = false;
+        init(&c, phase == 0 ? 0 : CLIENT_CAP_WALL_CLOCK);
+        if (phase == 2) {
+            complete_burst(&c, 1700000000000000ULL);
+            connection_poll(&c);
+            now_us = c.clock.next_us;
+        }
+        assert(!connection_can_receive(&c));
+        busy = true;
+        unsigned before = sends, braked = executions[BRAKE_MOTOR];
+        uint16_t sequence = c.clock.sequence;
+        for (unsigned i = 0; i < 60; ++i) {
+            connection_poll(&c);
+            assert(connection_can_receive(&c));
+            now_us += 1000000;
+        }
+        assert(sends == before && c.clock.sequence == sequence && !c.clock.pending);
+        connection_receive(&c, brake, sizeof(brake));
+        assert(executions[BRAKE_MOTOR] == braked + 1);
+        connection_poll(&c);
+        now_us += 1000000;
+        connection_poll(&c); // Expire the ACK, then give the control send another turn.
+        assert(connection_can_receive(&c));
+        if (phase != 2) {
+            command(&c, GET_PLATFORM_ODOMETRY);
+            assert(c.output_length == 6 && c.output[5] == RESPONSE_CLOCK_NOT_READY);
+            now_us += 1000000;
+            connection_poll(&c);
+            assert(!c.ready_announced);
+        }
+        busy = false;
+        if (phase == 0) {
+            connection_poll(&c);
+            assert(c.ready_announced && wire[1] == KINISI_MESSAGE_READY);
+        } else {
+            complete_burst(&c, 1700000000000000ULL);
+            connection_poll(&c);
+            assert(c.ready_announced);
+        }
+        assert(connection_can_receive(&c));
+    }
+}
+
+/**
+ * @brief Ensure ordinary reply traffic cannot starve an unanswered sync's timeout.
+ */
+static void sync_timeout_under_traffic_test(void)
+{
+    connection_t c;
+    connection_init(&c, handler, send_frame, now);
+    busy = false;
+    init(&c, CLIENT_CAP_WALL_CLOCK);
+    complete_burst(&c, 1700000000000000ULL);
+    connection_poll(&c);
+    now_us = c.clock.next_us;
+    connection_poll(&c);
+    uint16_t first_id = c.clock.pending_id;
+    const uint8_t request[] = {GET_TIME_STATUS, 65, 0};
+    for (unsigned i = 0; i < 3100; ++i) {
+        if (connection_can_receive(&c)) connection_receive(&c, request, sizeof(request));
+        connection_poll(&c);
+        now_us += 1000;
+    }
+    assert(c.clock.sequence == first_id + 2);
+    assert(!c.clock.burst && !c.clock.pending && c.clock.ready && c.ready_announced);
+    assert(time_sync_quality(&c.clock, now_us) == CLOCK_QUALITY_STALE);
+}
+
+/**
  * @brief Run this file's assertions and return zero when all checks pass.
  */
 int main(void)
@@ -269,6 +421,8 @@ int main(void)
     _Static_assert(sizeof(platform_odometry_sample) == 34, "platform wire layout");
     _Static_assert(sizeof(time_status) == 14, "time status wire layout");
     engine_tests(); connection_tests();
-    puts("Time sync arithmetic, retries, readiness, framing, isolation, intervals and reset passed");
+    reply_backpressure_tests(); identity_backpressure_tests(); control_backpressure_tests();
+    sync_timeout_under_traffic_test();
+    puts("Time sync arithmetic, retries, readiness, framing, isolation, intervals, reset and transmit backpressure passed");
     return 0;
 }
