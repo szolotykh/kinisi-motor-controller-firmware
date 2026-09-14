@@ -1,4 +1,5 @@
-#include "unity.h"
+// File: test_platform_omni.c
+// Verify omni platform behavior through recorded hardware-interface calls.
 #include "unity.h"
 #include "platform_omni.h"
 #include "mock_platform_omni.h"
@@ -27,11 +28,14 @@ void tearDown(void) {
     encoder_odometry_init();
 }
 
+/** @brief Count only the initialization performed by this test, excluding setUp. */
 void test_initialize_omni_platform(void) {
     double wheel_diameter = 0.1;
     double robot_radius = 0.2;
     double encoder_resolution = 1000.0;
 
+    mock_hw_motor_reset();
+    mock_hw_encoder_reset();
     initialize_omni_platform(1, 0, 1, 0, 0, 0, wheel_diameter, robot_radius, encoder_resolution);
 
     TEST_ASSERT_EQUAL(3, mock_get_initialize_motor_calls());

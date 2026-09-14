@@ -118,7 +118,8 @@ static void start_read(uint8_t *frame, uint16_t length)
 {
     HAL_I2C_AddrCallback(&hi2c2, I2C_DIRECTION_RECEIVE, 16);
     assert(try_send_external_i2c(frame, length));
-    assert(active_length == length && memcmp(active_buffer, frame, length) == 0);
+    assert(active_length == sizeof(i2c_send_buffer) && memcmp(active_buffer, frame, length) == 0);
+    for (uint16_t i = length; i < active_length; ++i) assert(active_buffer[i] == 0);
 }
 
 /** @brief Verify consecutive INIT, sync, READY, and ordinary replies release the buffer. */
@@ -130,7 +131,7 @@ static void test_consecutive_reads(void)
         start_read(replies[i], replies[i][0] + 1);
         uint8_t replacement[] = {3, 0x10, 99, 0};
         assert(!try_send_external_i2c(replacement, sizeof(replacement)));
-        assert(memcmp(active_buffer, replies[i], active_length) == 0);
+        assert(memcmp(active_buffer, replies[i], replies[i][0] + 1) == 0);
         unsigned previous_listens = listen_count;
         master_finish_read();
         assert(listen_count == previous_listens + 1);
@@ -173,6 +174,28 @@ static void test_transfer_recovery(void)
     master_finish_read();
 }
 
+/** @brief Fixed-size Wire reads must clock padding after ACK/ERROR, then release on NACK. */
+static void test_padded_short_replies(void)
+{
+    uint8_t longer[] = {7, 0x75, 8, 0, 0xaa, 0xbb, 0xcc, 0xdd};
+    start_read(longer, sizeof(longer));
+    I2C2_ER_IRQHandler();
+    uint8_t ack[] = {3, 0x26, 9, 0};
+    start_read(ack, sizeof(ack));
+    // The six-byte read needed to distinguish ACK from ERROR includes two zeros.
+    assert(active_buffer[4] == 0 && active_buffer[5] == 0);
+    unsigned before = listen_count;
+    I2C2_ER_IRQHandler(); // Master NACK before the padded HAL transfer is exhausted.
+    assert(listen_count == before + 1);
+    uint8_t error[] = {5, 0x7f, 10, 0, 0x48, 9};
+    start_read(error, sizeof(error));
+    // A platform-odometry master asks for 38 bytes even when the reply is ERROR.
+    for (unsigned i = 6; i < 38; ++i) assert(active_buffer[i] == 0);
+    I2C2_ER_IRQHandler();
+    start_read(ack, sizeof(ack));
+    I2C2_ER_IRQHandler();
+}
+
 /** @brief Run regressions against the real transport callbacks and interrupt entry points. */
 int main(void)
 {
@@ -181,6 +204,7 @@ int main(void)
     assert(listen_count == 1);
     test_consecutive_reads();
     test_transfer_recovery();
+    test_padded_short_replies();
     assert(irq_mask == 0);
     puts("I2C IRQ wiring, consecutive replies, buffer ownership and error recovery passed");
     return 0;

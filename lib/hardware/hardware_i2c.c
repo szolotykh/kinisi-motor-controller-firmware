@@ -74,8 +74,13 @@ uint8_t try_send_external_i2c(uint8_t* data, uint16_t data_len)
     uint8_t sent = 0;
     if (receive_state == LISTENING && !tx_busy && data_len <= sizeof(i2c_send_buffer)) {
         memcpy(i2c_send_buffer, data, data_len);
+        // Wire masters choose a fixed read size before seeing the length prefix.
+        // Supply zero padding after a shorter ACK/ERROR instead of stretching SCL
+        // indefinitely when HAL exhausts the frame. The master's NACK releases
+        // the unused tail through the existing error/listen completion callbacks.
+        memset(i2c_send_buffer + data_len, 0, sizeof(i2c_send_buffer) - data_len);
         tx_busy = 1;
-        if (HAL_I2C_Slave_Seq_Transmit_IT(&hi2c2, i2c_send_buffer, data_len, I2C_LAST_FRAME) == HAL_OK)
+        if (HAL_I2C_Slave_Seq_Transmit_IT(&hi2c2, i2c_send_buffer, sizeof(i2c_send_buffer), I2C_LAST_FRAME) == HAL_OK)
             sent = 1;
         else tx_busy = 0;
     }

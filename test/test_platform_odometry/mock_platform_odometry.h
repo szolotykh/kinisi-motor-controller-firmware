@@ -8,5 +8,5 @@
 
 #pragma once
 
-// Install the mock hw interfaces (motor/encoder). Call from setUp.
+// Fixed mock interfaces are exposed by getters; this setup hook requires no registration.
 void mock_odometry_install_interfaces(void);
