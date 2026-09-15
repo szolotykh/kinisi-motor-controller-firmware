@@ -30,8 +30,8 @@ int main(void)
 
     init_response response = initialization_response();
     const unsigned char expected[] = {
-        1, 0, KINISI_BOARD_VERSION_MINOR, 0,
-        2, 0, 0, 0x78, 0x56, 0x34, 0x12, 0xef, 0xcd, 0xab, 0x90,
+        1, 0, KINISI_BOARD_VERSION_MINOR, KINISI_BOARD_VERSION_PATCH,
+        2, 1, 0, 0x78, 0x56, 0x34, 0x12, 0xef, 0xcd, 0xab, 0x90,
     };
     assert(sizeof(response) == sizeof(expected));
     assert(memcmp(&response, expected, sizeof(expected)) == 0);
@@ -50,6 +50,8 @@ int main(void)
     command.properties.init.protocol_minor = 6;
     assert(initialization_validate(&command) == INIT_STATUS_INCOMPATIBLE);
     command.properties.init.protocol_minor = 0;
+    assert(initialization_validate(&command) == INIT_STATUS_OK);
+    command.properties.init.protocol_minor = 1;
     assert(initialization_validate(&command) == INIT_STATUS_OK);
     command.properties.init.sdk_type = 255;
     assert(initialization_validate(&command) == INIT_STATUS_INVALID);

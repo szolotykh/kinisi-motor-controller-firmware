@@ -320,6 +320,12 @@ uint16_t odometry_manager_get_frequency()
     return loop_period_ms_to_frequency_hz(odometry_manager_state.update_interval);
 }
 
+/** @brief Expose the actual calculation period for subscription rate validation. */
+uint32_t odometry_manager_get_period_ms(void)
+{
+    return odometry_manager_state.update_interval;
+}
+
 // Copy the value and its acquisition time under the same lock.
 /**
  * @brief Copy an encoder angle and its acquisition time under the odometry mutex.

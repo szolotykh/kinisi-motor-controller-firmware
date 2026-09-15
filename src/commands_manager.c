@@ -14,6 +14,8 @@
 #include "initialization.h"
 #include "connection.h"
 #include "hw_clock.h"
+#include "controllers_manager.h"
+#include "odometry_manager.h"
 
 extern USBD_HandleTypeDef hUsbDeviceFS;
 
@@ -21,9 +23,35 @@ extern USBD_HandleTypeDef hUsbDeviceFS;
 
 static connection_t usb_connection, i2c_connection;
 static volatile uint8_t usb_disconnected;
+
+/** @brief Coast all motors, stop PID updates and discard queued work on both transports. */
+static void stop_on_connection_loss(void)
+{
+    // Motor resources are shared. Neither transport may replay queued motion after loss.
+    platform_stop_velocity_controller();
+    const hw_motor_interface_t *motor = get_motor_interface();
+    for (uint8_t index = 0; index < 4; ++index) {
+        controllers_manager_stop_controller(index);
+        if (motor->is_initialized(index)) motor->stop(index);
+    }
+    uint32_t mask = __get_PRIMASK();
+    __disable_irq();
+    init_queue(&CommandQueue);
+    init_queue(&I2CCommandQueue);
+    __set_PRIMASK(mask);
+    connection_invalidate(&usb_connection);
+    connection_invalidate(&i2c_connection);
+}
+
+/** @brief Validate a global calculation period against both transport subscriptions. */
+static bool period_allowed(uint32_t period_ms)
+{
+    return connection_period_allowed(&usb_connection, period_ms) &&
+        connection_period_allowed(&i2c_connection, period_ms);
+}
 /**
  * @brief Flag a USB disconnect for deferred session cleanup.
- * @note IRQ-safe notification; the command task performs queue and clock reset.
+ * @note IRQ-safe notification; the command task stops motors and invalidates sessions.
  */
 void commands_manager_usb_disconnected(void) { usb_disconnected = 1; }
 /**
@@ -101,6 +129,12 @@ void CommandHandlerTask(void *argument)
     const os_interface_t* os = get_os_interface();
     connection_init(&usb_connection, command_handler, try_usb, hw_clock_microseconds);
     connection_init(&i2c_connection, command_handler, try_i2c, hw_clock_microseconds);
+    const connection_services_t services = {
+        .stop = stop_on_connection_loss,
+        .calculation_period_ms = odometry_manager_get_period_ms,
+        .period_allowed = period_allowed
+    };
+    usb_connection.services = i2c_connection.services = services;
 
     while(1)
     {
@@ -112,8 +146,13 @@ void CommandHandlerTask(void *argument)
             init_queue(&CommandQueue);
             usb_disconnected = 0;
             __set_PRIMASK(mask);
-            connection_reset(&usb_connection);
+            // Every physical loss stops shared outputs, even if USB had not completed
+            // another INIT since the previous loss while I2C resumed operation.
+            stop_on_connection_loss();
         }
+        // Expire watchdogs before accepting queued commands, including stale motion.
+        connection_poll(&usb_connection);
+        connection_poll(&i2c_connection);
         // Handle commands from USB interface
         if (connection_can_receive(&usb_connection))
         {

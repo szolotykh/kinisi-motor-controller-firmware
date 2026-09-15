@@ -2,22 +2,22 @@
 
 INIT (`0x70`) exchanges identity and starts [clock setup](time-sync.md) for the
 connection. Clients must wait for READY before starting or reading odometry. Other commands
-remain available without INIT. Repeating INIT resets the connection clock and
-sync interval, but does not enable motors, reset odometry, or subscribe to telemetry.
+remain available without INIT until connection loss is latched. Repeating INIT resets
+the clock, sync interval, watchdog settings and subscriptions. Reinitializing a monitored
+session stops motion; it does not enable motors or reset odometry.
 USB and I2C keep separate clock state.
 
 Hardware identity comes from the selected board build (V3 by default), not
 physical board detection. `board_model=1` identifies a Kinisi motor controller;
 V3 is encoded as `0.3.0`. A build must select the correct board revision.
-Only the existing V1/V2/V3 configurations on main are supported here; the
-separate V3.1 board configuration must add its own identity when integrated.
+V1/V2/V3 configurations are supported.
 
 There is no existing semantic firmware release version. The response instead
 reports the first 16 hexadecimal characters of the Git commit used to build
 the firmware. Format the high and low words as eight hexadecimal digits each,
 then concatenate. Source archives without Git report zero. Uncommitted changes
 are not represented by this ID.
-Protocol version `2.0.0` describes the command schema, not a firmware release.
+Protocol version `2.1.0` describes the command schema, not a firmware release.
 
 ## Wire format
 

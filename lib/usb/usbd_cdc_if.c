@@ -168,7 +168,7 @@ static int8_t CDC_Init_FS(void)
 
 /**
   * @brief  DeInitializes the CDC media low layer
-  * @note   Flags session cleanup for the command task; does not stop motors.
+  * @note   Requests session cleanup and motor stopping on the command task.
   * @retval USBD_OK if all operations are OK else USBD_FAIL
   */
 static int8_t CDC_DeInit_FS(void)

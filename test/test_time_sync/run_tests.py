@@ -40,6 +40,15 @@ with tempfile.TemporaryDirectory() as folder:
         "lib/initialization/initialization.c", "-o", str(binary)
     ], cwd=root, check=True)
     subprocess.run([str(binary)], check=True)
+    binary = Path(folder) / "session_features.exe"
+    subprocess.run([
+        compiler, "-std=c11", "-Wall", "-Wextra", "-Werror",
+        "-Iinclude", "-Ilib/initialization", "-Ilib/protocol", "-Ilib/time_sync", "-Ilib/connection",
+        "test/test_time_sync/test_session_features.c", "lib/time_sync/time_sync.c",
+        "lib/connection/connection.c", "lib/protocol/protocol.c", "lib/initialization/initialization.c",
+        "-o", str(binary)
+    ], cwd=root, check=True)
+    subprocess.run([str(binary)], check=True)
     binary = Path(folder) / "odometry_timestamp.exe"
     subprocess.run([
         compiler, "-std=c11", "-Wall", "-Wextra", "-Werror",
