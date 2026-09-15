@@ -92,7 +92,8 @@ actions: automatically retrying a non-idempotent command is not guaranteed safe.
 The controller initiates [time sync](time-sync.md) using an independent counter.
 Its timing requests and READY can arrive between ordinary replies. Client SDKs
 must dispatch by command as well as ID and keep answering timing requests after
-startup. There are no subscriptions. Ordinary command dispatch remains serial.
+startup. [Odometry events](connection-monitoring.md) use message ID zero and can
+also arrive between replies. Ordinary command dispatch remains serial.
 
 Host tests cover framing, empty and invalid commands, invalid arguments,
 reply payloads and acknowledgments, response size bounds, INIT errors, every

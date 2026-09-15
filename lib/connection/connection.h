@@ -9,6 +9,20 @@
 
 // Bound how long an unsent command reply can hold the next request in the RX queue.
 #define CONNECTION_REPLY_TIMEOUT_US 1000000ULL
+#define CONNECTION_HEARTBEAT_DEFAULT_MS 500U
+#define CONNECTION_ODOMETRY_SOURCES 5U
+
+// Runtime services are optional for host tests, installed by the command task.
+typedef struct {
+    void (*stop)(void);
+    uint32_t (*calculation_period_ms)(void);
+    bool (*period_allowed)(uint32_t);
+} connection_services_t;
+
+typedef struct {
+    uint64_t next_us;
+    uint32_t interval_ms;
+} connection_subscription_t;
 
 // Successful sends copy the complete frame before returning; false means retry later.
 typedef bool (*connection_try_send_fn)(uint8_t *, uint8_t);
@@ -26,7 +40,22 @@ typedef struct {
     bool ready_announced;
     // A busy READY/sync send yields one receive turn before it takes priority again.
     bool yield_receive;
+    connection_services_t services;
+    heartbeat_config heartbeat;
+    uint64_t last_activity_us;
+    // Loss is latched so buffered motion cannot resume without a fresh INIT.
+    bool lost;
+    connection_subscription_t subscriptions[CONNECTION_ODOMETRY_SOURCES];
+    uint8_t next_subscription;
+    bool telemetry_before_reply;
 } connection_t;
+
+/** @brief Invalidate this session after loss without invoking the motor-stop hook. */
+void connection_invalidate(connection_t *);
+/** @brief Invalidate the session and invoke the configured motor-stop hook once. */
+void connection_disconnect(connection_t *);
+/** @brief Check a proposed calculation period against every active subscription. */
+bool connection_period_allowed(const connection_t *, uint32_t period_ms);
 
 /**
  * @brief Initialize an isolated transport session with no completed INIT.

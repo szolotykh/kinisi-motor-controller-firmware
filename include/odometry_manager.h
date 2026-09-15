@@ -102,3 +102,6 @@ Returns:
     Odometry update frequency in Hz
 */
 uint16_t odometry_manager_get_frequency();
+
+/** @brief Return the actual calculation period in milliseconds, including tick quantization. */
+uint32_t odometry_manager_get_period_ms(void);

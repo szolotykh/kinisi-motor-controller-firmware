@@ -1,6 +1,6 @@
 # Kinisi motor controller commands
 
-**Protocol 2.0.0** · Generated from [commands.json](commands.json)
+**Protocol 2.1.0** · Generated from [commands.json](commands.json)
 
 [Command index](#command-index) · [Wire format](#wire-format) · [Error codes](#error-codes)
 
@@ -56,6 +56,14 @@
 | [`READY`](#ready-0x73) | `0x73` | Controller → client | — |
 | [`SET_TIME_SYNC_INTERVAL`](#set_time_sync_interval-0x74) | `0x74` | Client → controller | ACK |
 | [`GET_TIME_STATUS`](#get_time_status-0x75) | `0x75` | Client → controller | `time_status` |
+| [`PING`](#ping-0x76) | `0x76` | Client → controller | ACK |
+| [`SET_HEARTBEAT_CONFIG`](#set_heartbeat_config-0x77) | `0x77` | Client → controller | ACK |
+| [`GET_HEARTBEAT_CONFIG`](#get_heartbeat_config-0x78) | `0x78` | Client → controller | `heartbeat_config` |
+| [`SUBSCRIBE_ODOMETRY`](#subscribe_odometry-0x79) | `0x79` | Client → controller | ACK |
+| [`UNSUBSCRIBE_ODOMETRY`](#unsubscribe_odometry-0x7a) | `0x7a` | Client → controller | ACK |
+| [`ENCODER_ODOMETRY_EVENT`](#encoder_odometry_event-0x7b) | `0x7b` | Controller → client | — |
+| [`PLATFORM_ODOMETRY_EVENT`](#platform_odometry_event-0x7c) | `0x7c` | Controller → client | — |
+| [`POLL_TELEMETRY`](#poll_telemetry-0x7d) | `0x7d` | Client → controller | ACK |
 
 ## Wire format
 
@@ -93,7 +101,7 @@ This command initializes a motor and prepares it for use. Rejected with MOTOR_OW
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`MOTOR_OWNED`](#error-motor-owned) (5)
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`MOTOR_OWNED`](#error-motor-owned) (5) · [`INIT_REQUIRED`](#error-init-required) (15)
 
 [Back to command index](#command-index)
 
@@ -118,7 +126,7 @@ This command sets the speed of the specified motor in PWM. Rejected with MOTOR_O
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`MOTOR_OWNED`](#error-motor-owned) (5) · [`MOTOR_NOT_INITIALIZED`](#error-motor-not-initialized) (13)
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`MOTOR_OWNED`](#error-motor-owned) (5) · [`MOTOR_NOT_INITIALIZED`](#error-motor-not-initialized) (13) · [`INIT_REQUIRED`](#error-init-required) (15)
 
 [Back to command index](#command-index)
 
@@ -198,7 +206,7 @@ This command sets the controller for the specified motor. Rejected with MOTOR_OW
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`MOTOR_OWNED`](#error-motor-owned) (5)
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`MOTOR_OWNED`](#error-motor-owned) (5) · [`INIT_REQUIRED`](#error-init-required) (15)
 
 [Back to command index](#command-index)
 
@@ -223,7 +231,7 @@ This command sets the target speed for the specified motor in radians. Rejected 
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`MOTOR_OWNED`](#error-motor-owned) (5) · [`CONTROLLER_NOT_INITIALIZED`](#error-controller-not-initialized) (14)
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`MOTOR_OWNED`](#error-motor-owned) (5) · [`CONTROLLER_NOT_INITIALIZED`](#error-controller-not-initialized) (14) · [`INIT_REQUIRED`](#error-init-required) (15)
 
 [Back to command index](#command-index)
 
@@ -247,7 +255,7 @@ This command resets the closed-loop controller for the specified motor: it clear
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`MOTOR_OWNED`](#error-motor-owned) (5)
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`MOTOR_OWNED`](#error-motor-owned) (5) · [`INIT_REQUIRED`](#error-init-required) (15)
 
 [Back to command index](#command-index)
 
@@ -284,7 +292,7 @@ The state of the controller for the specified motor.
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6)
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15)
 
 [Back to command index](#command-index)
 
@@ -308,7 +316,7 @@ This command deletes the controller for the specified motor. Rejected with MOTOR
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`MOTOR_OWNED`](#error-motor-owned) (5)
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`MOTOR_OWNED`](#error-motor-owned) (5) · [`INIT_REQUIRED`](#error-init-required) (15)
 
 [Back to command index](#command-index)
 
@@ -332,7 +340,7 @@ This command sets the global update frequency (in Hz) of the closed-loop motor c
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6)
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15)
 
 [Back to command index](#command-index)
 
@@ -360,7 +368,7 @@ The current controller update frequency in Hz (1 to 1000 Hz).
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6)
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15)
 
 [Back to command index](#command-index)
 
@@ -386,7 +394,7 @@ This command initializes an encoder and prepares it for use.
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6)
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15)
 
 [Back to command index](#command-index)
 
@@ -416,7 +424,7 @@ The current value of the encoder.
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`ENCODER_NOT_INITIALIZED`](#error-encoder-not-initialized) (11)
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`ENCODER_NOT_INITIALIZED`](#error-encoder-not-initialized) (11) · [`INIT_REQUIRED`](#error-init-required) (15)
 
 [Back to command index](#command-index)
 
@@ -464,7 +472,7 @@ This command resets the odometry calculation for the specified encoder.
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6)
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15)
 
 [Back to command index](#command-index)
 
@@ -488,7 +496,7 @@ This command stops the odometry calculation for the specified encoder.
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6)
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15)
 
 [Back to command index](#command-index)
 
@@ -531,7 +539,7 @@ Timestamped odometry measurement. See errors for missing INIT, clock readiness, 
 
 **Client → controller** · **Payload:** 2 bytes
 
-This command sets the global update frequency (in Hz) of the odometry task. A single odometry task integrates all encoder and platform odometry, so this frequency is global. The requested value is clamped to the supported range of 1 to 1000 Hz (the 1000 Hz maximum is bounded by the 1 ms RTOS tick). The value is then quantized to the 1 ms RTOS tick (period_ms = 1000 / frequency), so effective frequencies are 1000/N Hz. A value of 0 is invalid and ignored. Defaults to 20 Hz (50 ms) at start-up.
+This command sets the global update frequency (in Hz) of the odometry task. A single odometry task integrates all encoder and platform odometry, so this frequency is global. The requested value is clamped to the supported range of 1 to 1000 Hz (the 1000 Hz maximum is bounded by the 1 ms RTOS tick). The value is then quantized to the 1 ms RTOS tick (period_ms = 1000 / frequency), so effective frequencies are 1000/N Hz. A value of 0 is invalid and ignored. Defaults to 20 Hz (50 ms) at start-up. Rejected if the resulting calculation period exceeds half of any active subscription interval on either transport.
 
 #### Parameters
 
@@ -545,7 +553,7 @@ This command sets the global update frequency (in Hz) of the odometry task. A si
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6)
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15)
 
 [Back to command index](#command-index)
 
@@ -573,7 +581,7 @@ The current odometry update frequency in Hz (1 to 1000 Hz).
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6)
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15)
 
 [Back to command index](#command-index)
 
@@ -598,7 +606,7 @@ This command initializes a digital pin and prepares it for use.
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6)
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15)
 
 [Back to command index](#command-index)
 
@@ -623,7 +631,7 @@ This command sets the specified pin to a state.
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6)
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15)
 
 [Back to command index](#command-index)
 
@@ -653,7 +661,7 @@ The state of the pin. 0 = LOW, 1 = HIGH.
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6)
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15)
 
 [Back to command index](#command-index)
 
@@ -677,7 +685,7 @@ This command toggles the specified pin.
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6)
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15)
 
 [Back to command index](#command-index)
 
@@ -701,7 +709,7 @@ This command sets the status LED to a state.
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6)
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15)
 
 [Back to command index](#command-index)
 
@@ -723,7 +731,7 @@ No payload parameters.
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6)
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15)
 
 [Back to command index](#command-index)
 
@@ -758,7 +766,7 @@ This command initializes a mecanum (4-wheel) platform and prepares it for use. I
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6)
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15)
 
 [Back to command index](#command-index)
 
@@ -790,7 +798,7 @@ This command initializes an omni (3-wheel) platform and prepares it for use. It 
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6)
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15)
 
 [Back to command index](#command-index)
 
@@ -820,7 +828,7 @@ This command initializes a differential (2-wheel) platform and prepares it for u
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6)
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15)
 
 [Back to command index](#command-index)
 
@@ -846,7 +854,7 @@ This command sets the velocity for the platform in PWM.
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`PLATFORM_NOT_INITIALIZED`](#error-platform-not-initialized) (12)
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`PLATFORM_NOT_INITIALIZED`](#error-platform-not-initialized) (12) · [`INIT_REQUIRED`](#error-init-required) (15)
 
 [Back to command index](#command-index)
 
@@ -873,7 +881,7 @@ This command sets the controller for the platform.
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`PLATFORM_NOT_INITIALIZED`](#error-platform-not-initialized) (12)
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`PLATFORM_NOT_INITIALIZED`](#error-platform-not-initialized) (12) · [`INIT_REQUIRED`](#error-init-required) (15)
 
 [Back to command index](#command-index)
 
@@ -899,7 +907,7 @@ This command set the target velocity for the platform in meters per second.
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`PLATFORM_NOT_INITIALIZED`](#error-platform-not-initialized) (12) · [`CONTROLLER_NOT_INITIALIZED`](#error-controller-not-initialized) (14)
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`PLATFORM_NOT_INITIALIZED`](#error-platform-not-initialized) (12) · [`CONTROLLER_NOT_INITIALIZED`](#error-controller-not-initialized) (14) · [`INIT_REQUIRED`](#error-init-required) (15)
 
 [Back to command index](#command-index)
 
@@ -929,7 +937,7 @@ The current velocity of the platform in meters per second.
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6)
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15)
 
 [Back to command index](#command-index)
 
@@ -995,7 +1003,7 @@ No payload parameters.
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6)
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15)
 
 [Back to command index](#command-index)
 
@@ -1017,7 +1025,7 @@ No payload parameters.
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6)
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15)
 
 [Back to command index](#command-index)
 
@@ -1284,7 +1292,203 @@ Clock status. Quality 0 unready, 1 valid, 2 stale.
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6)
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15)
+
+[Back to command index](#command-index)
+
+---
+
+### PING (0x76)
+
+**Client → controller** · **Payload:** 0 bytes
+
+Refresh connection activity and receive an empty ACK. Any structurally valid client command also refreshes activity; malformed frames do not.
+
+#### Parameters
+
+No payload parameters.
+
+#### Response
+
+**ACK** — empty payload; echoes the command and message ID.
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15)
+
+[Back to command index](#command-index)
+
+---
+
+### SET_HEARTBEAT_CONFIG (0x77)
+
+**Client → controller** · **Payload:** 5 bytes
+
+Configure this session watchdog after READY. Timeout coasts all motors, clears subscriptions and requires a new INIT before further operations. Disabling also removes this session subscriptions. INIT resets to disabled, 500 ms.
+
+#### Parameters
+
+| Parameter | Type | Bytes | Range | Description |
+| --- | --- | ---: | --- | --- |
+| `enabled` | `bool` | 1 | — | Enable monitoring; disabled initially for compatibility. |
+| `timeout_ms` | `uint32_t` | 4 | 100 to 60000 | Monotonic receive timeout. Default 500 ms; send PING after at most timeout/5 of idle time (100 ms with the default). |
+
+#### Response
+
+**ACK** — empty payload; echoes the command and message ID.
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7)
+
+[Back to command index](#command-index)
+
+---
+
+### GET_HEARTBEAT_CONFIG (0x78)
+
+**Client → controller** · **Payload:** 0 bytes
+
+Read this session watchdog configuration.
+
+#### Parameters
+
+No payload parameters.
+
+#### Response
+
+**Controller → client** · `heartbeat_config` · **Payload:** 5 bytes
+
+Read this session watchdog configuration.
+
+| Parameter | Type | Bytes | Range | Description |
+| --- | --- | ---: | --- | --- |
+| `enabled` | `bool` | 1 | — | Enable monitoring; disabled initially for compatibility. |
+| `timeout_ms` | `uint32_t` | 4 | 100 to 60000 | Monotonic receive timeout. Default 500 ms; send PING after at most timeout/5 of idle time (100 ms with the default). |
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15)
+
+[Back to command index](#command-index)
+
+---
+
+### SUBSCRIBE_ODOMETRY (0x79)
+
+**Client → controller** · **Payload:** 5 bytes
+
+Publish the latest completed sample using the requested scheduling interval without rounding it to calculation ticks. Delivery is subject to transport capacity and task scheduling. Requires READY, an enabled heartbeat and running odometry. Replaces an existing subscription for this source. Interval must be at least twice the calculation period. No renewal is needed. Stop/reset of calculation pauses samples until fresh measurements exist; unsubscribe, INIT, disconnect or watchdog timeout removes subscriptions.
+
+#### Parameters
+
+| Parameter | Type | Bytes | Range | Description |
+| --- | --- | ---: | --- | --- |
+| `source` | `uint8_t` | 1 | 0 to 4 | 0 through 3 select encoder odometry; 4 selects platform odometry. |
+| `interval_ms` | `uint32_t` | 4 | 2 to 3600000 | Delivery interval, independent of calculation scheduling. |
+
+#### Response
+
+**ACK** — empty payload; echoes the command and message ID.
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`ODOMETRY_NOT_INITIALIZED`](#error-odometry-not-initialized) (9)
+
+[Back to command index](#command-index)
+
+---
+
+### UNSUBSCRIBE_ODOMETRY (0x7a)
+
+**Client → controller** · **Payload:** 1 bytes
+
+Remove this source subscription; succeeds if already absent. Does not stop odometry calculation.
+
+#### Parameters
+
+| Parameter | Type | Bytes | Range | Description |
+| --- | --- | ---: | --- | --- |
+| `source` | `uint8_t` | 1 | 0 to 4 | 0 through 3 select encoder odometry; 4 selects platform odometry. |
+
+#### Response
+
+**ACK** — empty payload; echoes the command and message ID.
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15)
+
+[Back to command index](#command-index)
+
+---
+
+### ENCODER_ODOMETRY_EVENT (0x7b)
+
+**Controller → client** · **Payload:** 19 bytes
+
+Unsolicited latest encoder sample, message_id zero. No response is expected. Slow transports skip intermediate samples rather than queueing stale history.
+
+#### Parameters
+
+| Parameter | Type | Bytes | Description |
+| --- | --- | ---: | --- |
+| `encoder_index` | `uint8_t` | 1 | Encoder index. |
+| `timestamp_us` | `uint64_t` | 8 | Measurement timestamp in selected clock domain. |
+| `clock_mode` | `uint8_t` | 1 | 0 uptime, 1 Unix wall time. |
+| `clock_quality` | `uint8_t` | 1 | 1 valid, 2 stale. |
+| `angle` | `double` | 8 | Encoder odometry radians. |
+
+#### Errors
+
+None in this message's declared direction.
+
+[Back to command index](#command-index)
+
+---
+
+### PLATFORM_ODOMETRY_EVENT (0x7c)
+
+**Controller → client** · **Payload:** 34 bytes
+
+Unsolicited latest platform sample, message_id zero. No response is expected. Timestamp is the measurement time, not the transmission time.
+
+#### Parameters
+
+| Parameter | Type | Bytes | Description |
+| --- | --- | ---: | --- |
+| `timestamp_us` | `uint64_t` | 8 | Measurement timestamp in selected clock domain. |
+| `clock_mode` | `uint8_t` | 1 | 0 uptime, 1 Unix wall time. |
+| `clock_quality` | `uint8_t` | 1 | 1 valid, 2 stale. |
+| `x` | `double` | 8 | X meters. |
+| `y` | `double` | 8 | Y meters. |
+| `t` | `double` | 8 | Heading radians. |
+
+#### Errors
+
+None in this message's declared direction.
+
+[Back to command index](#command-index)
+
+---
+
+### POLL_TELEMETRY (0x7d)
+
+**Client → controller** · **Payload:** 0 bytes
+
+I2C master service request. Allows at most one due odometry event before its empty ACK, so the master can clock out telemetry without waiting indefinitely when no sample is available. USB clients receive events automatically and do not need this command.
+
+#### Parameters
+
+No payload parameters.
+
+#### Response
+
+**ACK** — empty payload; echoes the command and message ID.
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7)
 
 [Back to command index](#command-index)
 

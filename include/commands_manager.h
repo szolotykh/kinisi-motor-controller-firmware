@@ -19,6 +19,6 @@ void commands_manager_start(void);
 // IRQ-safe notification; connection cleanup runs on the command task.
 /**
  * @brief Flag a USB disconnect for deferred session cleanup.
- * @note IRQ-safe notification; the command task performs queue and clock reset.
+ * @note IRQ-safe notification; the command task stops motors and invalidates sessions.
  */
 void commands_manager_usb_disconnected(void);
