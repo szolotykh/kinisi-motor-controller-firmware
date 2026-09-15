@@ -266,28 +266,39 @@ void controllers_manager_initialize_controller_multiple(uint8_t motor_selection,
 }
 
 /**
+ * @brief Stop selected PID controllers and apply a hardware stop, including open-loop motors.
+ * @note Hold the PID mutex through the hardware action when the manager exists,
+ * so its task cannot overwrite the stop. Open-loop operation needs no PID task.
+ */
+static void stop_selected_motors(uint8_t motor_selection, bool active_brake)
+{
+    SemaphoreHandle_t mutex = controllers_manager.state.controller_state_mutex;
+    if (mutex && !xSemaphoreTake(mutex, portMAX_DELAY)) return;
+
+    // The manager's cached hardware pointer is only populated by PID setup.
+    const hw_motor_interface_t *hardware = get_motor_interface();
+    for (uint8_t motor_index = 0; motor_index < NUMBER_MOTORS; motor_index++)
+    {
+        if (motor_selection & (1 << motor_index))
+        {
+            controllers_manager.state.Controller_info[motor_index].state = STOP;
+            controllers_manager.state.Controller_info[motor_index].controller = (pid_controller_t){0};
+            controllers_manager.state.target_motor_speed[motor_index] = 0;
+
+            // An open-loop motor has no initialized Controller_info.mIndex.
+            if (active_brake) hardware->brake(motor_index);
+            else hardware->stop(motor_index);
+        }
+    }
+    if (mutex) xSemaphoreGive(mutex);
+}
+
+/**
  * @brief Stop selected controllers, clear targets, and coast their motors.
  */
 void controllers_manager_stop_controller_multiple(uint8_t motor_selection)
 {
-    if (xSemaphoreTake(controllers_manager.state.controller_state_mutex, portMAX_DELAY))
-    {
-        for (uint8_t motor_index = 0; motor_index < NUMBER_MOTORS; motor_index++)
-        {
-            if (motor_selection & (1 << motor_index))
-            {
-                controllers_manager.state.Controller_info[motor_index].state = STOP;
-                controllers_manager.state.Controller_info[motor_index].controller = (pid_controller_t){0};
-
-                // Stop motor
-                motor->stop(controllers_manager.state.Controller_info[motor_index].mIndex);
-
-                // Set target speed to zero
-                controllers_manager.state.target_motor_speed[motor_index] = 0;
-            }
-        }
-        xSemaphoreGive(controllers_manager.state.controller_state_mutex);
-    }
+    stop_selected_motors(motor_selection, false);
 }
 
 /**
@@ -319,24 +330,7 @@ void controllers_manager_stop_controller(uint8_t motor_index)
  */
 void controllers_manager_brake_multiple(uint8_t motor_selection)
 {
-    if (xSemaphoreTake(controllers_manager.state.controller_state_mutex, portMAX_DELAY))
-    {
-        for (uint8_t motor_index = 0; motor_index < NUMBER_MOTORS; motor_index++)
-        {
-            if (motor_selection & (1 << motor_index))
-            {
-                controllers_manager.state.Controller_info[motor_index].state = STOP;
-                controllers_manager.state.Controller_info[motor_index].controller = (pid_controller_t){0};
-
-                // Actively brake motor (short brake) so it resists motion
-                motor->brake(controllers_manager.state.Controller_info[motor_index].mIndex);
-
-                // Set target speed to zero
-                controllers_manager.state.target_motor_speed[motor_index] = 0;
-            }
-        }
-        xSemaphoreGive(controllers_manager.state.controller_state_mutex);
-    }
+    stop_selected_motors(motor_selection, true);
 }
 
 // Reset the closed-loop controller for a single motor: clears the PID history

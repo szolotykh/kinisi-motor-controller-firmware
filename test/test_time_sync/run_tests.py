@@ -15,6 +15,16 @@ compiler = os.environ.get("CC") or shutil.which("gcc") or shutil.which("clang")
 if not compiler:
     raise SystemExit("Set CC to a host gcc or clang executable.")
 with tempfile.TemporaryDirectory() as folder:
+    binary = Path(folder) / "controller_stop.exe"
+    subprocess.run([
+        compiler, "-std=gnu11", "-Wall", "-Wextra", "-Werror", "-Wno-unused-variable",
+        "-Itest/test_time_sync/stubs", "-Iinclude", "-Ilib/hardware",
+        "-Ilib/libcontrollers/src", "-Ilib/protocol",
+        "test/test_time_sync/test_controller_stop.c", "src/controllers_manager.c",
+        "lib/libcontrollers/src/pid_controller.c", "lib/libcontrollers/src/loop_frequency.c",
+        "-lm", "-o", str(binary)
+    ], cwd=root, check=True)
+    subprocess.run([str(binary)], check=True, timeout=10)
     binary = Path(folder) / "requirements.exe"
     subprocess.run([
         compiler, "-std=c11", "-Wall", "-Wextra", "-Werror",
