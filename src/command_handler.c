@@ -18,6 +18,7 @@
 #include "connection.h"
 #include "hw_clock.h"
 #include "command_requirements.h"
+#include "platform_position.h"
 
 /**
  * @brief Execute a validated command after checking its resource prerequisites.
@@ -57,6 +58,7 @@ uint8_t command_handler(controller_command_t* cmd, void (*command_callback)(uint
         break;
         case INITIALIZE_MOTOR:
             {
+                controllers_manager_stop_controller(cmd->properties.initialize_motor.motor_index);
                 motor->initialize(cmd->properties.initialize_motor.motor_index,
                                 cmd->properties.initialize_motor.is_reversed);
             }
@@ -65,6 +67,7 @@ uint8_t command_handler(controller_command_t* cmd, void (*command_callback)(uint
         case SET_MOTOR_SPEED:
             {
             {
+                controllers_manager_stop_controller(cmd->properties.set_motor_speed.motor_index);
                 motor->set_speed(
                     cmd->properties.set_motor_speed.motor_index,
                     cmd->properties.set_motor_speed.pwm);
@@ -97,8 +100,15 @@ uint8_t command_handler(controller_command_t* cmd, void (*command_callback)(uint
         break;
 
         case INITIALIZE_MOTOR_CONTROLLER:
+            if (!pid_controller_settings_valid(cmd->properties.initialize_motor_controller.kp, cmd->properties.initialize_motor_controller.ki, cmd->properties.initialize_motor_controller.kd, cmd->properties.initialize_motor_controller.integral_limit))
+                return RESPONSE_INVALID_ARGUMENT;
             {
                 {
+                if (platform_owns_motor(cmd->properties.initialize_motor_controller.encoder_index)) {
+                    platform_stop_velocity_controller();
+                    platform_stop_odometry();
+                }
+                controllers_manager_stop_encoder(cmd->properties.initialize_motor_controller.encoder_index);
                 controllers_manager_initialize_controller(
                     cmd->properties.initialize_motor_controller.motor_index,
                     cmd->properties.initialize_motor_controller.encoder_index,
@@ -167,6 +177,12 @@ uint8_t command_handler(controller_command_t* cmd, void (*command_callback)(uint
         // Encoder commands
         case INITIALIZE_ENCODER:
             {
+            // Counter scale/direction changes invalidate feedback using this encoder.
+            if (platform_owns_motor(cmd->properties.initialize_encoder.encoder_index)) {
+                platform_stop_velocity_controller();
+                platform_stop_odometry();
+            }
+            controllers_manager_stop_encoder(cmd->properties.initialize_encoder.encoder_index);
             encoder->initialize(
                 cmd->properties.initialize_encoder.encoder_index,
                 cmd->properties.initialize_encoder.encoder_resolution,
@@ -183,6 +199,8 @@ uint8_t command_handler(controller_command_t* cmd, void (*command_callback)(uint
 
         case START_ENCODER_ODOMETRY:
             {
+            if (platform_owns_motor(cmd->properties.start_encoder_odometry.encoder_index))
+                platform_position_cancel();
             encoder_start_odometry(cmd->properties.start_encoder_odometry.encoder_index);
             }
         break;
@@ -226,6 +244,10 @@ uint8_t command_handler(controller_command_t* cmd, void (*command_callback)(uint
 
         case STOP_ENCODER_ODOMETRY:
             {
+            if (platform_owns_motor(cmd->properties.stop_encoder_odometry.encoder_index)) {
+                platform_position_cancel();
+                platform_stop_odometry();
+            }
             encoder_stop_odometry(cmd->properties.stop_encoder_odometry.encoder_index);
             }
         break;
@@ -265,6 +287,8 @@ uint8_t command_handler(controller_command_t* cmd, void (*command_callback)(uint
 
         // Platform commands
         case INITIALIZE_MECANUM_PLATFORM:
+            platform_stop_velocity_controller();
+            platform_stop_odometry();
             initialize_mecanum_platform(
                 cmd->properties.initialize_mecanum_platform.is_reversed_0,
                 cmd->properties.initialize_mecanum_platform.is_reversed_1,
@@ -282,6 +306,8 @@ uint8_t command_handler(controller_command_t* cmd, void (*command_callback)(uint
         break;
 
         case INITIALIZE_OMNI_PLATFORM:
+            platform_stop_velocity_controller();
+            platform_stop_odometry();
             initialize_omni_platform(
                 cmd->properties.initialize_omni_platform.is_reversed_0,
                 cmd->properties.initialize_omni_platform.is_reversed_1,
@@ -296,6 +322,8 @@ uint8_t command_handler(controller_command_t* cmd, void (*command_callback)(uint
         break;
 
         case INITIALIZE_DIFFERENTIAL_PLATFORM:
+            platform_stop_velocity_controller();
+            platform_stop_odometry();
             initialize_differential_platform(
                 cmd->properties.initialize_differential_platform.is_reversed_0,
                 cmd->properties.initialize_differential_platform.is_reversed_1,
@@ -319,6 +347,8 @@ uint8_t command_handler(controller_command_t* cmd, void (*command_callback)(uint
         break;
 
         case START_PLATFORM_CONTROLLER:
+            if (!pid_controller_settings_valid(cmd->properties.start_platform_controller.kp, cmd->properties.start_platform_controller.ki, cmd->properties.start_platform_controller.kd, cmd->properties.start_platform_controller.integral_limit))
+                return RESPONSE_INVALID_ARGUMENT;
             {
             plaform_controller_settings_t plaform_controller_settings = {
                 .kp = cmd->properties.start_platform_controller.kp,
@@ -362,6 +392,7 @@ uint8_t command_handler(controller_command_t* cmd, void (*command_callback)(uint
         
         case START_PLATFORM_ODOMETRY:
         {
+            platform_position_cancel();
             platform_start_odometry();
         }
         break;
@@ -395,6 +426,68 @@ uint8_t command_handler(controller_command_t* cmd, void (*command_callback)(uint
             platform_stop_odometry();
         }
         break;
+        case INITIALIZE_MOTOR_POSITION_CONTROLLER:
+            return controllers_manager_initialize_position(
+                cmd->properties.initialize_motor_position_controller.motor_index,
+                (position_settings_t){
+                    .kp = cmd->properties.initialize_motor_position_controller.kp,
+                    .max_speed = cmd->properties.initialize_motor_position_controller.max_speed,
+                    .tolerance = cmd->properties.initialize_motor_position_controller.tolerance});
+        case INITIALIZE_MOTOR_POSITION_PID_CONTROLLER:
+            return controllers_manager_initialize_position(
+                cmd->properties.initialize_motor_position_pid_controller.motor_index,
+                (position_settings_t){
+                    .kp = cmd->properties.initialize_motor_position_pid_controller.kp,
+                    .max_speed = cmd->properties.initialize_motor_position_pid_controller.max_speed,
+                    .tolerance = cmd->properties.initialize_motor_position_pid_controller.tolerance,
+                    .ki = cmd->properties.initialize_motor_position_pid_controller.ki,
+                    .kd = cmd->properties.initialize_motor_position_pid_controller.kd,
+                    .integral_limit = cmd->properties.initialize_motor_position_pid_controller.integral_limit});
+        case RESET_MOTOR_POSITION:
+            return controllers_manager_reset_position(cmd->properties.reset_motor_position.motor_index);
+        case SET_MOTOR_POSITION:
+            return controllers_manager_set_position(cmd->properties.set_motor_position.motor_index,
+                cmd->properties.set_motor_position.position);
+        case GET_MOTOR_POSITION: {
+            double position;
+            uint8_t error = controllers_manager_get_position(cmd->properties.get_motor_position.motor_index, &position);
+            if (error != RESPONSE_OK) return error;
+            command_callback((uint8_t *)&position, sizeof(position));
+            break;
+        }
+        case INITIALIZE_PLATFORM_POSITION_CONTROLLER:
+            return platform_position_initialize(
+                (position_settings_t){
+                    .kp = cmd->properties.initialize_platform_position_controller.linear_kp,
+                    .max_speed = cmd->properties.initialize_platform_position_controller.max_linear_speed,
+                    .tolerance = cmd->properties.initialize_platform_position_controller.position_tolerance},
+                (position_settings_t){
+                    .kp = cmd->properties.initialize_platform_position_controller.angular_kp,
+                    .max_speed = cmd->properties.initialize_platform_position_controller.max_angular_speed,
+                    .tolerance = cmd->properties.initialize_platform_position_controller.heading_tolerance});
+        case INITIALIZE_PLATFORM_POSITION_PID_CONTROLLER:
+            return platform_position_initialize(
+                (position_settings_t){
+                    .kp = cmd->properties.initialize_platform_position_pid_controller.linear_kp,
+                    .max_speed = cmd->properties.initialize_platform_position_pid_controller.max_linear_speed,
+                    .tolerance = cmd->properties.initialize_platform_position_pid_controller.position_tolerance,
+                    .ki = cmd->properties.initialize_platform_position_pid_controller.linear_ki,
+                    .kd = cmd->properties.initialize_platform_position_pid_controller.linear_kd,
+                    .integral_limit = cmd->properties.initialize_platform_position_pid_controller.linear_integral_limit},
+                (position_settings_t){
+                    .kp = cmd->properties.initialize_platform_position_pid_controller.angular_kp,
+                    .max_speed = cmd->properties.initialize_platform_position_pid_controller.max_angular_speed,
+                    .tolerance = cmd->properties.initialize_platform_position_pid_controller.heading_tolerance,
+                    .ki = cmd->properties.initialize_platform_position_pid_controller.angular_ki,
+                    .kd = cmd->properties.initialize_platform_position_pid_controller.angular_kd,
+                    .integral_limit = cmd->properties.initialize_platform_position_pid_controller.angular_integral_limit});
+        case RESET_PLATFORM_POSITION:
+            return platform_position_reset();
+        case SET_PLATFORM_POSITION:
+            return platform_position_set((platform_odometry_t){
+                cmd->properties.set_platform_position.x,
+                cmd->properties.set_platform_position.y,
+                cmd->properties.set_platform_position.t});
         default: return RESPONSE_UNKNOWN_COMMAND;
     }
     return RESPONSE_OK;

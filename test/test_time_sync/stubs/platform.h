@@ -9,6 +9,7 @@
  * @brief Return the fixture platform integration flag.
  */
 uint8_t platform_is_odometry_enabled(void);
+uint8_t platform_owns_motor(uint8_t index);
 /**
  * @brief Produce a known body-frame increment under the odometry lock.
  */

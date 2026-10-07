@@ -114,5 +114,25 @@ int main(void)
     check(BRAKE_MOTOR, 3, RESPONSE_OK);
     check(DELETE_MOTOR_CONTROLLER, 3, RESPONSE_OK);
     check(RESET_MOTOR_CONTROLLER, 3, RESPONSE_OK);
+    uint8_t motor_commands[] = {INITIALIZE_MOTOR_POSITION_CONTROLLER, RESET_MOTOR_POSITION,
+        SET_MOTOR_POSITION, GET_MOTOR_POSITION, INITIALIZE_MOTOR_POSITION_PID_CONTROLLER};
+    for (unsigned i = 0; i < sizeof(motor_commands); ++i) {
+        owned = 8;
+        check(motor_commands[i], 3, RESPONSE_MOTOR_OWNED);
+        owned = 0; controllers = 1;
+        check(motor_commands[i], 3, RESPONSE_CONTROLLER_NOT_INITIALIZED);
+        controllers = 8;
+        check(motor_commands[i], 3, RESPONSE_OK);
+    }
+    uint8_t platform_commands[] = {INITIALIZE_PLATFORM_POSITION_CONTROLLER,
+        RESET_PLATFORM_POSITION, SET_PLATFORM_POSITION, INITIALIZE_PLATFORM_POSITION_PID_CONTROLLER};
+    for (unsigned i = 0; i < sizeof(platform_commands); ++i) {
+        platform_ready = platform_controller = 0;
+        check(platform_commands[i], 0, RESPONSE_PLATFORM_NOT_INITIALIZED);
+        platform_ready = 1;
+        check(platform_commands[i], 0, RESPONSE_CONTROLLER_NOT_INITIALIZED);
+        platform_controller = 1;
+        check(platform_commands[i], 0, RESPONSE_OK);
+    }
     return 0;
 }

@@ -4,6 +4,7 @@
 //------------------------------------------------------------
 #include <stdlib.h>
 #include "platform.h"
+#include "platform_position.h"
 #include "platform_common.h"
 #include "hw_motor.h"
 #include "hw_encoder.h"
@@ -36,10 +37,12 @@ uint8_t platform_is_controller_running(void) { return platform.is_controller_ini
  * @brief Apply bounded open-loop platform velocity when a platform is initialized.
  */
 void set_platform_velocity(platform_velocity_t platform_velocity) {
+    platform_position_cancel();
     // Set platform velocity only if platform is initialized
     if (!platform.is_initialized) {
         return;
     }
+    platform_stop_velocity_controller();
     // Verify that velocity is in range [-100, 100] and adjust if needed
     platform_velocity.x = verify_range(platform_velocity.x);
     platform_velocity.y = verify_range(platform_velocity.y);
@@ -53,6 +56,7 @@ void set_platform_velocity(platform_velocity_t platform_velocity) {
  * @brief Set platform velocity targets when platform closed-loop control is running.
  */
 void platform_set_target_velocity(platform_velocity_t platform_target_velocity) {
+    platform_position_cancel();
     if (!platform.is_initialized || !platform.is_controller_initialized) {
         return;
     }
@@ -64,6 +68,7 @@ void platform_set_target_velocity(platform_velocity_t platform_target_velocity) 
  * @brief Initialize the configured platform controller and mark it running.
  */
 void platform_start_velocity_controller(plaform_controller_settings_t plaform_controller_settings) {
+    platform_position_cancel();
     if (!platform.is_initialized) {
         return;
     }
@@ -76,6 +81,7 @@ void platform_start_velocity_controller(plaform_controller_settings_t plaform_co
  * @brief Stop the configured platform controller when it is active.
  */
 void platform_stop_velocity_controller() {
+    platform_position_cancel();
     if (!platform.is_initialized || !platform.is_controller_initialized) {
         return;
     }
@@ -88,6 +94,7 @@ void platform_stop_velocity_controller() {
  * @brief Disable platform closed-loop control and brake its owned wheel motors.
  */
 void platform_brake() {
+    platform_position_cancel();
     if (!platform.is_initialized) {
         return;
     }
@@ -103,6 +110,7 @@ void platform_brake() {
  * @brief Disable platform closed-loop control and coast its owned wheel motors.
  */
 void platform_coast() {
+    platform_position_cancel();
     if (!platform.is_initialized) {
         return;
     }
@@ -165,6 +173,7 @@ uint8_t platform_is_odometry_enabled() {
  * @brief Reset the accumulated platform pose and cached acquisition timestamp.
  */
 void platform_reset_odometry() {
+    platform_position_cancel();
     // Reset odometry in odometry manager
     odometry_manager_reset_platform_odometry();
 }
@@ -173,6 +182,7 @@ void platform_reset_odometry() {
  * @brief Disable platform integration without resetting its accumulated pose.
  */
 void platform_stop_odometry() {
+    platform_position_cancel();
     platform.is_odometry_enabled = 0;
 }
 

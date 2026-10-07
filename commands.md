@@ -1,6 +1,6 @@
 # Kinisi motor controller commands
 
-**Protocol 2.1.0** · Generated from [commands.json](commands.json)
+**Protocol 2.3.1** · Generated from [commands.json](commands.json)
 
 [Command index](#command-index) · [Wire format](#wire-format) · [Error codes](#error-codes)
 
@@ -64,6 +64,15 @@
 | [`ENCODER_ODOMETRY_EVENT`](#encoder_odometry_event-0x7b) | `0x7b` | Controller → client | — |
 | [`PLATFORM_ODOMETRY_EVENT`](#platform_odometry_event-0x7c) | `0x7c` | Controller → client | — |
 | [`POLL_TELEMETRY`](#poll_telemetry-0x7d) | `0x7d` | Client → controller | ACK |
+| [`INITIALIZE_MOTOR_POSITION_CONTROLLER`](#initialize_motor_position_controller-0x0c) | `0x0C` | Client → controller | ACK |
+| [`RESET_MOTOR_POSITION`](#reset_motor_position-0x0d) | `0x0D` | Client → controller | ACK |
+| [`SET_MOTOR_POSITION`](#set_motor_position-0x0e) | `0x0E` | Client → controller | ACK |
+| [`GET_MOTOR_POSITION`](#get_motor_position-0x0f) | `0x0F` | Client → controller | `double` |
+| [`INITIALIZE_PLATFORM_POSITION_CONTROLLER`](#initialize_platform_position_controller-0x4b) | `0x4B` | Client → controller | ACK |
+| [`RESET_PLATFORM_POSITION`](#reset_platform_position-0x4c) | `0x4C` | Client → controller | ACK |
+| [`SET_PLATFORM_POSITION`](#set_platform_position-0x4d) | `0x4D` | Client → controller | ACK |
+| [`INITIALIZE_MOTOR_POSITION_PID_CONTROLLER`](#initialize_motor_position_pid_controller-0x10) | `0x10` | Client → controller | ACK |
+| [`INITIALIZE_PLATFORM_POSITION_PID_CONTROLLER`](#initialize_platform_position_pid_controller-0x4e) | `0x4E` | Client → controller | ACK |
 
 ## Wire format
 
@@ -86,7 +95,7 @@ See [response framing](docs/responses.md) and [time synchronization](docs/time-s
 
 **Client → controller** · **Payload:** 2 bytes
 
-This command initializes a motor and prepares it for use. Rejected with MOTOR_OWNED if the motor is currently owned by an active platform (one of its wheels), so platform wheels are not reconfigured out from under the platform.
+This command initializes a motor and prepares it for use. Rejected with MOTOR_OWNED if the motor is currently owned by an active platform (one of its wheels), so platform wheels are not reconfigured out from under the platform. Stops the motor velocity and position controllers before applying the command.
 
 #### Parameters
 
@@ -111,7 +120,7 @@ This command initializes a motor and prepares it for use. Rejected with MOTOR_OW
 
 **Client → controller** · **Payload:** 9 bytes
 
-This command sets the speed of the specified motor in PWM. Rejected with MOTOR_OWNED if the motor is currently owned by an active platform (one of its wheels); use the platform velocity commands to drive platform wheels.
+This command sets the speed of the specified motor in PWM. Rejected with MOTOR_OWNED if the motor is currently owned by an active platform (one of its wheels); use the platform velocity commands to drive platform wheels. Stops the motor velocity and position controllers before applying the command.
 
 #### Parameters
 
@@ -184,7 +193,7 @@ Actively brakes the motor (short brake): both H-bridge outputs are driven high, 
 
 **Client → controller** · **Payload:** 44 bytes
 
-This command sets the controller for the specified motor. Rejected with MOTOR_OWNED if the motor is currently owned by an active platform (one of its wheels), so it cannot create a competing controller on a platform wheel.
+This command sets the controller for the specified motor. Rejected with MOTOR_OWNED if the motor is currently owned by an active platform (one of its wheels), so it cannot create a competing controller on a platform wheel. Firmware 2.3.1 uses direct P+I+D PWM output with saturation anti-windup; retune gains from earlier builds.
 
 #### Parameters
 
@@ -195,10 +204,10 @@ This command sets the controller for the specified motor. Rejected with MOTOR_OW
 | `encoder_index` | `uint8_t` | 1 | 0 to 3 | The index of the encoder to use for the controller. |
 | `is_encoder_reversed` | `bool` | 1 | — | Reverses the encoder counting direction, independently of the motor's is_reversed. For closed-loop control the encoder must report a positive measured speed when a positive speed is commanded (negative feedback); if the controller runs away, flip this flag. |
 | `encoder_resolution` | `double` | 8 | — | Encoder resolution in ticks per revolution. The value can not be negative or zero. |
-| `kp` | `double` | 8 | — | Proportional constant of PID |
-| `ki` | `double` | 8 | — | Integral constant of PID |
-| `kd` | `double` | 8 | — | Derivative constant of PID |
-| `integral_limit` | `double` | 8 | — | Integral limit of PID controller. The value can not be negative or zero. If the value is zero or negative, the integral limit is disabled. |
+| `kp` | `double` | 8 | — | kp gain (PWM percentage points per rad/s), finite and nonnegative. |
+| `ki` | `double` | 8 | — | ki gain (PWM percentage points per rad), finite and nonnegative. |
+| `kd` | `double` | 8 | — | kd gain (PWM percentage points per rad/s^2), finite and nonnegative. |
+| `integral_limit` | `double` | 8 | 0 to 100 | Maximum absolute integral contribution in PWM percentage points (0..100). Zero disables integral action. |
 
 #### Response
 
@@ -216,7 +225,7 @@ This command sets the controller for the specified motor. Rejected with MOTOR_OW
 
 **Client → controller** · **Payload:** 9 bytes
 
-This command sets the target speed for the specified motor in radians. Rejected with MOTOR_OWNED if the motor is currently owned by an active platform (one of its wheels); use SET_PLATFORM_TARGET_VELOCITY to drive platform wheels.
+This command sets the target speed for the specified motor in radians. Rejected with MOTOR_OWNED if the motor is currently owned by an active platform (one of its wheels); use SET_PLATFORM_TARGET_VELOCITY to drive platform wheels. Suspends position mode; a new SET_MOTOR_POSITION reactivates it.
 
 #### Parameters
 
@@ -378,7 +387,7 @@ The current controller update frequency in Hz (1 to 1000 Hz).
 
 **Client → controller** · **Payload:** 10 bytes
 
-This command initializes an encoder and prepares it for use.
+This command initializes an encoder and prepares it for use. Stops controllers using this encoder before changing its configuration.
 
 #### Parameters
 
@@ -838,7 +847,7 @@ This command initializes a differential (2-wheel) platform and prepares it for u
 
 **Client → controller** · **Payload:** 24 bytes
 
-This command sets the velocity for the platform in PWM.
+This command sets the velocity for the platform in PWM. Stops platform velocity and position control before applying PWM.
 
 #### Parameters
 
@@ -864,16 +873,16 @@ This command sets the velocity for the platform in PWM.
 
 **Client → controller** · **Payload:** 32 bytes
 
-This command sets the controller for the platform.
+This command sets the controller for the platform. Firmware 2.3.1 uses direct P+I+D PWM output with saturation anti-windup; retune gains from earlier builds.
 
 #### Parameters
 
-| Parameter | Type | Bytes | Description |
-| --- | --- | ---: | --- |
-| `kp` | `double` | 8 | Proportional constant of PID |
-| `ki` | `double` | 8 | Integral constant of PID |
-| `kd` | `double` | 8 | Derivative constant of PID |
-| `integral_limit` | `double` | 8 | Integral limit of PID controller. The value can not be negative or zero. If the value is zero or negative, the integral limit is disabled. |
+| Parameter | Type | Bytes | Range | Description |
+| --- | --- | ---: | --- | --- |
+| `kp` | `double` | 8 | — | kp gain (PWM percentage points per rad/s), finite and nonnegative. |
+| `ki` | `double` | 8 | — | ki gain (PWM percentage points per rad), finite and nonnegative. |
+| `kd` | `double` | 8 | — | kd gain (PWM percentage points per rad/s^2), finite and nonnegative. |
+| `integral_limit` | `double` | 8 | 0 to 100 | Maximum absolute integral contribution in PWM percentage points (0..100). Zero disables integral action. |
 
 #### Response
 
@@ -891,7 +900,7 @@ This command sets the controller for the platform.
 
 **Client → controller** · **Payload:** 24 bytes
 
-This command set the target velocity for the platform in meters per second.
+This command set the target velocity for the platform in meters per second. Cancels platform position control; initialize it again before another pose target.
 
 #### Parameters
 
@@ -1489,6 +1498,254 @@ No payload parameters.
 #### Errors
 
 [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7)
+
+[Back to command index](#command-index)
+
+---
+
+### INITIALIZE_MOTOR_POSITION_CONTROLLER (0x0C)
+
+**Client → controller** · **Payload:** 25 bytes
+
+Initialize a bounded proportional position loop over an already running motor velocity controller. Zero is the current encoder position; initially holds zero. Stop/delete/reinitialize of velocity control discards position tuning.
+
+#### Parameters
+
+| Parameter | Type | Bytes | Range | Description |
+| --- | --- | ---: | --- | --- |
+| `motor_index` | `uint8_t` | 1 | 0 to 3 | Motor index. |
+| `kp` | `double` | 8 | — | Position gain in inverse seconds; must be positive. |
+| `max_speed` | `double` | 8 | — | Maximum commanded speed in radians per second; must be positive. |
+| `tolerance` | `double` | 8 | — | Position tolerance in radians; must be nonnegative. |
+
+#### Response
+
+**ACK** — empty payload; echoes the command and message ID.
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CONTROLLER_NOT_INITIALIZED`](#error-controller-not-initialized) (14) · [`MOTOR_OWNED`](#error-motor-owned) (5)
+
+[Back to command index](#command-index)
+
+---
+
+### RESET_MOTOR_POSITION (0x0D)
+
+**Client → controller** · **Payload:** 1 bytes
+
+Zero the motor position and target at the current encoder count, clear velocity PID history and output, and hold zero. Requires initialized position control. Does not reset independent encoder odometry.
+
+#### Parameters
+
+| Parameter | Type | Bytes | Range | Description |
+| --- | --- | ---: | --- | --- |
+| `motor_index` | `uint8_t` | 1 | 0 to 3 | Motor index. |
+
+#### Response
+
+**ACK** — empty payload; echoes the command and message ID.
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CONTROLLER_NOT_INITIALIZED`](#error-controller-not-initialized) (14) · [`MOTOR_OWNED`](#error-motor-owned) (5)
+
+[Back to command index](#command-index)
+
+---
+
+### SET_MOTOR_POSITION (0x0E)
+
+**Client → controller** · **Payload:** 9 bytes
+
+Set an absolute multi-turn angle in radians relative to the last position initialization/reset. Requires initialized position and velocity controllers. Reactivates position mode after a velocity override.
+
+#### Parameters
+
+| Parameter | Type | Bytes | Range | Description |
+| --- | --- | ---: | --- | --- |
+| `motor_index` | `uint8_t` | 1 | 0 to 3 | Motor index. |
+| `position` | `double` | 8 | — | Absolute target in radians; not wrapped. |
+
+#### Response
+
+**ACK** — empty payload; echoes the command and message ID.
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CONTROLLER_NOT_INITIALIZED`](#error-controller-not-initialized) (14) · [`MOTOR_OWNED`](#error-motor-owned) (5)
+
+[Back to command index](#command-index)
+
+---
+
+### GET_MOTOR_POSITION (0x0F)
+
+**Client → controller** · **Payload:** 1 bytes
+
+Read the latest motor position in radians in the position-controller frame. Requires initialized position control.
+
+#### Parameters
+
+| Parameter | Type | Bytes | Range | Description |
+| --- | --- | ---: | --- | --- |
+| `motor_index` | `uint8_t` | 1 | 0 to 3 | Motor index. |
+
+#### Response
+
+**Controller → client** · `double` · **Payload:** 8 bytes
+
+Latest sampled continuous angle in radians.
+
+| Parameter | Type | Bytes | Description |
+| --- | --- | ---: | --- |
+| `position` | `double` | 8 | Latest sampled continuous angle in radians. |
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CONTROLLER_NOT_INITIALIZED`](#error-controller-not-initialized) (14) · [`MOTOR_OWNED`](#error-motor-owned) (5)
+
+[Back to command index](#command-index)
+
+---
+
+### INITIALIZE_PLATFORM_POSITION_CONTROLLER (0x4B)
+
+**Client → controller** · **Payload:** 48 bytes
+
+Initialize bounded pose control after START_PLATFORM_CONTROLLER. Starts odometry if needed, preserves its world frame and zeros velocity targets. No motion until SET_PLATFORM_POSITION. Supports omni, mecanum and differential bases.
+
+#### Parameters
+
+| Parameter | Type | Bytes | Description |
+| --- | --- | ---: | --- |
+| `linear_kp` | `double` | 8 | Translation gain in inverse seconds; positive. |
+| `angular_kp` | `double` | 8 | Heading gain in inverse seconds; positive. |
+| `max_linear_speed` | `double` | 8 | Maximum translation speed in meters per second; positive. |
+| `max_angular_speed` | `double` | 8 | Maximum angular speed in radians per second; positive. |
+| `position_tolerance` | `double` | 8 | Translation tolerance in meters; nonnegative. |
+| `heading_tolerance` | `double` | 8 | Heading tolerance in radians; nonnegative. |
+
+#### Response
+
+**ACK** — empty payload; echoes the command and message ID.
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CONTROLLER_NOT_INITIALIZED`](#error-controller-not-initialized) (14) · [`PLATFORM_NOT_INITIALIZED`](#error-platform-not-initialized) (12) · [`ENCODER_NOT_INITIALIZED`](#error-encoder-not-initialized) (11)
+
+[Back to command index](#command-index)
+
+---
+
+### RESET_PLATFORM_POSITION (0x4C)
+
+**Client → controller** · **Payload:** 0 bytes
+
+Cancel the pose target, zero velocity targets, and reset platform odometry to (0,0,0). Keeps position tuning. Wait for a fresh odometry sample before setting another target.
+
+#### Parameters
+
+No payload parameters.
+
+#### Response
+
+**ACK** — empty payload; echoes the command and message ID.
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CONTROLLER_NOT_INITIALIZED`](#error-controller-not-initialized) (14) · [`PLATFORM_NOT_INITIALIZED`](#error-platform-not-initialized) (12)
+
+[Back to command index](#command-index)
+
+---
+
+### SET_PLATFORM_POSITION (0x4D)
+
+**Client → controller** · **Payload:** 24 bytes
+
+Set absolute (x,y,t) in the current odometry world frame: meters, meters, radians. Heading uses the shortest angular path. Requires initialized position control and fresh odometry. Differential bases approach the point before aligning final heading.
+
+#### Parameters
+
+| Parameter | Type | Bytes | Description |
+| --- | --- | ---: | --- |
+| `x` | `double` | 8 | World x position in meters. |
+| `y` | `double` | 8 | World y position in meters. |
+| `t` | `double` | 8 | World heading in radians, positive counterclockwise. |
+
+#### Response
+
+**ACK** — empty payload; echoes the command and message ID.
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CONTROLLER_NOT_INITIALIZED`](#error-controller-not-initialized) (14) · [`PLATFORM_NOT_INITIALIZED`](#error-platform-not-initialized) (12) · [`ODOMETRY_NOT_INITIALIZED`](#error-odometry-not-initialized) (9) · [`SAMPLE_NOT_AVAILABLE`](#error-sample-not-available) (10)
+
+[Back to command index](#command-index)
+
+---
+
+### INITIALIZE_MOTOR_POSITION_PID_CONTROLLER (0x10)
+
+**Client → controller** · **Payload:** 49 bytes
+
+Protocol 2.3: initialize a position PID over the existing velocity controller. Initialize a bounded position PID loop over an already running motor velocity controller. Zero is the current encoder position; initially holds zero. Stop/delete/reinitialize of velocity control discards position tuning. Clears position PID history. Ki and Kd may be zero to disable I and D. Integral limits bound the integral velocity contribution.
+
+#### Parameters
+
+| Parameter | Type | Bytes | Range | Description |
+| --- | --- | ---: | --- | --- |
+| `motor_index` | `uint8_t` | 1 | 0 to 3 | Motor index. |
+| `kp` | `double` | 8 | — | Position gain in inverse seconds; must be positive. |
+| `max_speed` | `double` | 8 | — | Maximum commanded speed in radians per second; must be positive. |
+| `tolerance` | `double` | 8 | — | Position tolerance in radians; must be nonnegative. |
+| `ki` | `double` | 8 | — | Integral gain (1/s^2), nonnegative. |
+| `kd` | `double` | 8 | — | Derivative gain, dimensionless and nonnegative. |
+| `integral_limit` | `double` | 8 | — | Maximum absolute integral contribution (rad/s), nonnegative. |
+
+#### Response
+
+**ACK** — empty payload; echoes the command and message ID.
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CONTROLLER_NOT_INITIALIZED`](#error-controller-not-initialized) (14) · [`MOTOR_OWNED`](#error-motor-owned) (5)
+
+[Back to command index](#command-index)
+
+---
+
+### INITIALIZE_PLATFORM_POSITION_PID_CONTROLLER (0x4E)
+
+**Client → controller** · **Payload:** 96 bytes
+
+Protocol 2.3: initialize a position PID over the existing velocity controller. Initialize bounded pose control after START_PLATFORM_CONTROLLER. Starts odometry if needed, preserves its world frame and zeros velocity targets. No motion until SET_PLATFORM_POSITION. Supports omni, mecanum and differential bases. Clears position PID history. Ki and Kd may be zero to disable I and D. Integral limits bound the integral velocity contribution.
+
+#### Parameters
+
+| Parameter | Type | Bytes | Description |
+| --- | --- | ---: | --- |
+| `linear_kp` | `double` | 8 | Translation gain in inverse seconds; positive. |
+| `angular_kp` | `double` | 8 | Heading gain in inverse seconds; positive. |
+| `max_linear_speed` | `double` | 8 | Maximum translation speed in meters per second; positive. |
+| `max_angular_speed` | `double` | 8 | Maximum angular speed in radians per second; positive. |
+| `position_tolerance` | `double` | 8 | Translation tolerance in meters; nonnegative. |
+| `heading_tolerance` | `double` | 8 | Heading tolerance in radians; nonnegative. |
+| `linear_ki` | `double` | 8 | Translation integral gain (1/s^2), nonnegative. |
+| `linear_kd` | `double` | 8 | Translation derivative gain, dimensionless and nonnegative. |
+| `linear_integral_limit` | `double` | 8 | Translation integral contribution limit (m/s), nonnegative. |
+| `angular_ki` | `double` | 8 | Heading integral gain (1/s^2), nonnegative. |
+| `angular_kd` | `double` | 8 | Heading derivative gain, dimensionless and nonnegative. |
+| `angular_integral_limit` | `double` | 8 | Heading integral contribution limit (rad/s), nonnegative. |
+
+#### Response
+
+**ACK** — empty payload; echoes the command and message ID.
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CONTROLLER_NOT_INITIALIZED`](#error-controller-not-initialized) (14) · [`PLATFORM_NOT_INITIALIZED`](#error-platform-not-initialized) (12) · [`ENCODER_NOT_INITIALIZED`](#error-encoder-not-initialized) (11)
 
 [Back to command index](#command-index)
 

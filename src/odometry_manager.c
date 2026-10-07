@@ -269,6 +269,18 @@ void odometry_manager_reset_platform_odometry(){
     // Obtain odometry mutex
     if (xSemaphoreTake(odometry_manager_state.odometry_mutex, portMAX_DELAY))
     {
+        // Consume pending wheel counts before establishing the new platform
+        // origin. Preserve encoder totals; pre-reset travel must not reappear
+        // as platform motion on the following odometry tick.
+        for (uint8_t i = 0; i < NUMBER_ENCODERS; ++i) {
+            if (!platform_owns_motor(i) || !odometry_manager_state.is_initialized[i]) continue;
+            uint16_t value = encoder->get_value(i);
+            odometry_manager_state.odometry[i] += odometry_integrator_wheel_delta(
+                odometry_manager_state.encoder_previous_value[i], value, encoder->get_resolution(i));
+            odometry_manager_state.encoder_previous_value[i] = value;
+            odometry_manager_state.odometry_change[i] = 0;
+            odometry_manager_state.encoder_sample_us[i] = 0;
+        }
         odometry_manager_state.platform_odometry.x = 0;
         odometry_manager_state.platform_odometry.y = 0;
         odometry_manager_state.platform_odometry.t = 0;

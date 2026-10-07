@@ -23,6 +23,11 @@ uint8_t command_requirements_check(const controller_command_t *cmd, const comman
     case DELETE_MOTOR_CONTROLLER: index = cmd->properties.delete_motor_controller.motor_index; break;
     case SET_MOTOR_TARGET_SPEED: index = cmd->properties.set_motor_target_speed.motor_index; break;
     case RESET_MOTOR_CONTROLLER: index = cmd->properties.reset_motor_controller.motor_index; break;
+    case INITIALIZE_MOTOR_POSITION_PID_CONTROLLER: index = cmd->properties.initialize_motor_position_pid_controller.motor_index; break;
+    case INITIALIZE_MOTOR_POSITION_CONTROLLER: index = cmd->properties.initialize_motor_position_controller.motor_index; break;
+    case RESET_MOTOR_POSITION: index = cmd->properties.reset_motor_position.motor_index; break;
+    case SET_MOTOR_POSITION: index = cmd->properties.set_motor_position.motor_index; break;
+    case GET_MOTOR_POSITION: index = cmd->properties.get_motor_position.motor_index; break;
     default: index = UINT8_MAX; break;
     }
     if (index != UINT8_MAX && r->motor_owned(index)) return RESPONSE_MOTOR_OWNED;
@@ -32,6 +37,11 @@ uint8_t command_requirements_check(const controller_command_t *cmd, const comman
         if (!r->motor_initialized(index)) return RESPONSE_MOTOR_NOT_INITIALIZED;
         break;
     case SET_MOTOR_TARGET_SPEED:
+    case INITIALIZE_MOTOR_POSITION_PID_CONTROLLER:
+    case INITIALIZE_MOTOR_POSITION_CONTROLLER:
+    case RESET_MOTOR_POSITION:
+    case SET_MOTOR_POSITION:
+    case GET_MOTOR_POSITION:
         if (!r->controller_running(index)) return RESPONSE_CONTROLLER_NOT_INITIALIZED;
         break;
     case GET_ENCODER_VALUE:
@@ -44,6 +54,10 @@ uint8_t command_requirements_check(const controller_command_t *cmd, const comman
         if (!r->platform_initialized()) return RESPONSE_PLATFORM_NOT_INITIALIZED;
         break;
     case SET_PLATFORM_TARGET_VELOCITY:
+    case INITIALIZE_PLATFORM_POSITION_PID_CONTROLLER:
+    case INITIALIZE_PLATFORM_POSITION_CONTROLLER:
+    case RESET_PLATFORM_POSITION:
+    case SET_PLATFORM_POSITION:
         if (!r->platform_initialized()) return RESPONSE_PLATFORM_NOT_INITIALIZED;
         if (!r->platform_controller_running()) return RESPONSE_CONTROLLER_NOT_INITIALIZED;
         break;

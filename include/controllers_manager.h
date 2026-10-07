@@ -8,6 +8,15 @@
 #include "hw_encoder.h"
 #include <pid_controller.h>
 #include "commands.h"
+#include "position_controller.h"
+
+// Position initialization requires a running velocity controller. Angles are
+// continuous radians in its configured encoder frame, with zero at initialization.
+uint8_t controllers_manager_initialize_position(uint8_t index, position_settings_t settings);
+uint8_t controllers_manager_set_position(uint8_t index, double radians);
+uint8_t controllers_manager_reset_position(uint8_t index);
+uint8_t controllers_manager_get_position(uint8_t index, double *radians);
+void controllers_manager_stop_encoder(uint8_t encoder_index);
 
 // Define motor identifiers as bit masks
 #define BMOTOR0 0x01 // 0000 0001
