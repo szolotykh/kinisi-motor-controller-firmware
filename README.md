@@ -13,11 +13,7 @@ Python code to control motor controller can be find [here](https://github.com/sz
 
 API v2 is not compatible with API v1. Clients must support API v2 to use this firmware.
 
-Firmware 2.3.1 corrects the shared velocity PID; see [velocity PID migration](docs/velocity-pid.md) before reusing gains.
-
-Protocol 2.3 adds full motor and platform position PID control above the existing velocity
-controllers. Motor angles use continuous radians; platform `(x,y,t)` uses meters,
-meters and radians. See [position control setup and commands](docs/position-control.md).
+See [position control](docs/position-control.md) and [velocity PID tuning](docs/velocity-pid.md) for setup details.
 
 ## Generating Commands from commands.json
 
