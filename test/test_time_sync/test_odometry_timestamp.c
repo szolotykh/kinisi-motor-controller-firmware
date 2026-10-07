@@ -88,6 +88,7 @@ const hw_encoder_interface_t *get_encoder_interface(void)
  * @brief Return the fixture platform integration flag.
  */
 uint8_t platform_is_odometry_enabled(void) { return platform_enabled; }
+uint8_t platform_owns_motor(uint8_t index) { return index == 0; }
 /**
  * @brief Produce a known body-frame increment under the odometry lock.
  */
@@ -124,9 +125,11 @@ int main(void)
     assert(odometry_manager_get_platform_sample(&pose, &sampled) == RESPONSE_OK);
     assert(sampled == 20000 && pose.x == 1);
     encoder_reset_odometry(0);
+    counter = 30; // Five ticks before reset must not leak into the new origin.
     odometry_manager_reset_platform_odometry();
     assert(encoder_get_odometry_sample(0, &angle, &sampled) == RESPONSE_SAMPLE_NOT_AVAILABLE);
     assert(odometry_manager_get_platform_sample(&pose, &sampled) == RESPONSE_SAMPLE_NOT_AVAILABLE);
+    assert(fabs(encoder_get_odometry(0) - 0.1 * 3.141592653589793) < 1e-10);
     counter = 50; clock_us = 100000; step();
     assert(encoder_get_odometry_sample(0, &angle, &sampled) == RESPONSE_OK && sampled == 100000);
     encoder_stop_odometry(0);

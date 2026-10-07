@@ -31,7 +31,7 @@ int main(void)
     init_response response = initialization_response();
     const unsigned char expected[] = {
         1, 0, KINISI_BOARD_VERSION_MINOR, KINISI_BOARD_VERSION_PATCH,
-        2, 1, 0, 0x78, 0x56, 0x34, 0x12, 0xef, 0xcd, 0xab, 0x90,
+        2, 3, 1, 0x78, 0x56, 0x34, 0x12, 0xef, 0xcd, 0xab, 0x90,
     };
     assert(sizeof(response) == sizeof(expected));
     assert(memcmp(&response, expected, sizeof(expected)) == 0);

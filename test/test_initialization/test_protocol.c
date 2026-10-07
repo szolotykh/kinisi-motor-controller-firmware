@@ -154,5 +154,36 @@ int main(void)
     for (unsigned i = 0; i < MESSAGE_QUEUE_MAX_SIZE; ++i) assert(enqueue_multi(&queue, empty, 1));
     assert(!enqueue_multi(&queue, framed, sizeof(framed)));
     assert(queue.incomplete_count == 0 && queue.count == MESSAGE_QUEUE_MAX_SIZE);
+    const uint8_t position_ids[] = {INITIALIZE_MOTOR_POSITION_CONTROLLER, RESET_MOTOR_POSITION,
+        SET_MOTOR_POSITION, GET_MOTOR_POSITION, INITIALIZE_PLATFORM_POSITION_CONTROLLER,
+        RESET_PLATFORM_POSITION, SET_PLATFORM_POSITION, INITIALIZE_MOTOR_POSITION_PID_CONTROLLER, INITIALIZE_PLATFORM_POSITION_PID_CONTROLLER};
+    const size_t position_sizes[] = {28, 4, 12, 4, 51, 3, 27, 52, 99};
+    for (unsigned i = 0; i < sizeof(position_ids); ++i) {
+        controller_command_t c = {.commandType = position_ids[i], .message_id = 42};
+        assert(command_request_size(c.commandType) == position_sizes[i]);
+        expect_error((uint8_t *)&c, position_sizes[i]-1, RESPONSE_INVALID_LENGTH);
+        expect_error((uint8_t *)&c, position_sizes[i]+1, RESPONSE_INVALID_LENGTH);
+        expect_error((uint8_t *)&c, position_sizes[i], RESPONSE_OK);
+    }
+    controller_command_t c = {.commandType = SET_MOTOR_POSITION, .message_id = 42};
+    c.properties.set_motor_position.motor_index = 4;
+    expect_error((uint8_t *)&c, 12, RESPONSE_INVALID_ARGUMENT);
+    c.properties.set_motor_position.motor_index = 0;
+    c.properties.set_motor_position.position = NAN;
+    expect_error((uint8_t *)&c, 12, RESPONSE_INVALID_ARGUMENT);
+    c.commandType = SET_PLATFORM_POSITION;
+    c.properties.set_platform_position.t = INFINITY;
+    expect_error((uint8_t *)&c, 27, RESPONSE_INVALID_ARGUMENT);
+    const uint8_t velocity_ids[] = {INITIALIZE_MOTOR_CONTROLLER, START_PLATFORM_CONTROLLER};
+    for (unsigned i=0; i<sizeof(velocity_ids); ++i) {
+        c = (controller_command_t){.commandType=velocity_ids[i],.message_id=42};
+        const double limits[] = {-1, 0, 100, 101};
+        for (unsigned j=0; j<4; ++j) {
+            if (i == 0) c.properties.initialize_motor_controller.integral_limit = limits[j];
+            else c.properties.start_platform_controller.integral_limit = limits[j];
+            expect_error((uint8_t *)&c, command_request_size(c.commandType),
+                j==0 || j==3 ? RESPONSE_INVALID_ARGUMENT : RESPONSE_OK);
+        }
+    }
     return 0;
 }

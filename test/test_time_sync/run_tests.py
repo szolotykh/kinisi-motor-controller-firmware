@@ -22,6 +22,7 @@ with tempfile.TemporaryDirectory() as folder:
         "-Ilib/libcontrollers/src", "-Ilib/protocol",
         "test/test_time_sync/test_controller_stop.c", "src/controllers_manager.c",
         "lib/libcontrollers/src/pid_controller.c", "lib/libcontrollers/src/loop_frequency.c",
+        "lib/libcontrollers/src/position_controller.c",
         "-lm", "-o", str(binary)
     ], cwd=root, check=True)
     subprocess.run([str(binary)], check=True, timeout=10)

@@ -8,8 +8,14 @@
 #include <assert.h>
 #include <setjmp.h>
 #include <stdio.h>
+#include <math.h>
+#include "protocol.h"
 
 static unsigned locked, created, delays;
+static uint16_t counts[4];
+void platform_position_update(void) {}
+static void motor_init(motorIndex i, bool r) { (void)i; (void)r; }
+static void encoder_init(encoder_index_t i, double r, uint8_t rev) { (void)i; (void)r; (void)rev; }
 static unsigned stopped[4], braked[4], driven[4];
 static void (*task_fn)(void *);
 static void *task_arg;
@@ -46,19 +52,19 @@ static void brake(motorIndex index) { assert(index < 4); braked[index]++; }
 /** @brief Detect PID writes that could override a completed stop. */
 static void speed(motorIndex index, double value) { (void)value; driven[index]++; }
 /** @brief Supply harmless, stationary encoder feedback. */
-static uint16_t count(encoder_index_t index) { (void)index; return 0; }
+static uint16_t count(encoder_index_t index) { return counts[index]; }
 /** @brief Supply a nonzero encoder resolution. */
 static double resolution(encoder_index_t index) { (void)index; return 100; }
 /** @brief Expose motor callbacks without initializing a PID controller. */
 const hw_motor_interface_t *get_motor_interface(void)
 {
-    static const hw_motor_interface_t hardware = {.stop = stop, .brake = brake, .set_speed = speed};
+    static const hw_motor_interface_t hardware = {.initialize = motor_init, .stop = stop, .brake = brake, .set_speed = speed};
     return &hardware;
 }
 /** @brief Expose encoder callbacks for the real PID task. */
 const hw_encoder_interface_t *get_encoder_interface(void)
 {
-    static const hw_encoder_interface_t hardware = {.get_value = count, .get_resolution = resolution};
+    static const hw_encoder_interface_t hardware = {.initialize = encoder_init, .get_value = count, .get_resolution = resolution};
     return &hardware;
 }
 /** @brief Execute a single PID iteration after changing controller state. */
@@ -121,6 +127,73 @@ int main(void)
         unsigned writes = driven[index];
         tick();
         assert(driven[index] == writes && !locked);
+    }
+    position_settings_t settings = {2, 3, 0.001, 0, 0, 0};
+    assert(controllers_manager_initialize_position(0, settings) == RESPONSE_CONTROLLER_NOT_INITIALIZED);
+    // Motor 0 deliberately uses encoder 2, including counter wrap in both directions.
+    counts[2] = 65530;
+    controllers_manager_initialize_controller(0, 2, 1, 0, 0, false, false, 100, 10);
+    assert(controllers_manager_set_position(0, 1) == RESPONSE_CONTROLLER_NOT_INITIALIZED);
+    assert(controllers_manager_initialize_position(0, settings) == RESPONSE_OK);
+    assert(controllers_manager_set_position(0, 4 * M_PI) == RESPONSE_OK);
+    tick();
+    assert(controllers_manager_get_motor_controller_state(0).target_speed == 3);
+    counts[2] = 4;
+    tick();
+    double angle;
+    assert(controllers_manager_get_position(0, &angle) == RESPONSE_OK);
+    assert(fabs(angle - 0.2 * M_PI) < 1e-9);
+    counts[2] = 65530;
+    tick();
+    assert(controllers_manager_get_position(0, &angle) == RESPONSE_OK && fabs(angle) < 1e-9);
+    // A full four turns is retained, not wrapped to zero.
+    counts[2] = (uint16_t)(65530 + 400);
+    tick();
+    assert(controllers_manager_get_position(0, &angle) == RESPONSE_OK);
+    assert(fabs(angle - 8 * M_PI) < 1e-9);
+    assert(controllers_manager_get_motor_controller_state(0).target_speed == -3);
+    assert(controllers_manager_reset_position(0) == RESPONSE_OK);
+    tick();
+    assert(controllers_manager_get_position(0, &angle) == RESPONSE_OK && angle == 0);
+    assert(controllers_manager_get_motor_controller_state(0).output == 0);
+    controllers_manager_set_target_speed(0, 0.5);
+    tick();
+    assert(controllers_manager_get_motor_controller_state(0).target_speed == 0.5);
+    assert(controllers_manager_set_position(0, -1) == RESPONSE_OK);
+    tick();
+    assert(controllers_manager_get_motor_controller_state(0).target_speed == -2);
+    controllers_manager_set_frequency(50);
+    tick();
+    assert(controllers_manager_get_motor_controller_state(0).target_speed == -2);
+    assert(controllers_manager_set_position(0, NAN) == RESPONSE_INVALID_ARGUMENT);
+    // Position I/D are separate from velocity tuning and reset on a new target.
+    settings = (position_settings_t){.kp=1,.max_speed=10,.tolerance=0.001,.ki=1,.kd=0.1,.integral_limit=0.2};
+    assert(controllers_manager_initialize_position(0, settings) == RESPONSE_OK);
+    assert(controllers_manager_set_position(0, 1) == RESPONSE_OK);
+    tick();
+    double first = controllers_manager_get_motor_controller_state(0).target_speed;
+    tick();
+    assert(controllers_manager_get_motor_controller_state(0).target_speed > first);
+    assert(controllers_manager_set_position(0, -1) == RESPONSE_OK);
+    tick();
+    assert(fabs(controllers_manager_get_motor_controller_state(0).target_speed + first) < 1e-9);
+    assert(controllers_manager_reset_position(0) == RESPONSE_OK);
+    tick();
+    assert(controllers_manager_get_motor_controller_state(0).target_speed == 0);
+    controllers_manager_stop_encoder(2);
+    assert(!controllers_manager_is_running(0));
+    assert(controllers_manager_set_position(0, 1) == RESPONSE_CONTROLLER_NOT_INITIALIZED);
+    controllers_manager_initialize_controller_multiple(1, 1, 0, 0, 10);
+    assert(controllers_manager_set_position(0, 1) == RESPONSE_CONTROLLER_NOT_INITIALIZED);
+    puts("Position prerequisites, encoder mapping, rollover, multi-turn targets, reset, velocity override and stop passed");
+    // Platform wheels use this same multi-motor velocity PID path.
+    controllers_manager_initialize_controller_multiple(3, 2, 0, 0, 30);
+    uint8_t wheels[] = {0,1}; double speeds[] = {0.5,-0.5};
+    controllers_manager_set_target_speed_multiple(wheels,speeds,2);
+    for (int i=0;i<10;i++) {
+        tick();
+        assert(fabs(controllers_manager_get_motor_controller_state(0).output-1) < 1e-9);
+        assert(fabs(controllers_manager_get_motor_controller_state(1).output+1) < 1e-9);
     }
     puts("Single-motor and platform-mask stops passed with and without PID control");
     return 0;

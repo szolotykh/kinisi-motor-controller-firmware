@@ -1,112 +1,90 @@
 //------------------------------------------------------------
-// File name: pid_controller.c
+// Velocity PID: output and integral contribution are PWM percentage points.
 //------------------------------------------------------------
-#include <stdlib.h>
+#include <math.h>
 #include "pid_controller.h"
 
-int sing(int c);
-double limit_to_range(double value, double min_value, double max_value);
+static double clamp(double value, double limit)
+{
+    return fmax(-limit, fmin(limit, value));
+}
+
+bool pid_controller_settings_valid(double kp, double ki, double kd, double integral_limit)
+{
+    return isfinite(kp) && kp >= 0 && isfinite(ki) && ki >= 0 &&
+        isfinite(kd) && kd >= 0 && isfinite(integral_limit) &&
+        integral_limit >= 0 && integral_limit <= 100;
+}
 
 void pid_controller_init(pid_controller_t* controller, double T, double kp, double ki, double kd, double integral_limit)
 {
     controller->kp = kp;
     controller->ki = ki;
     controller->kd = kd;
-    // Sampling time of the discrete PID controller in seconds
     controller->T = T;
-    controller->tau = 0.01f;
+    controller->tau = 0.01;
+    controller->max_integral = integral_limit;
+    controller->min_integral = -integral_limit;
+    pid_controller_reset(controller);
+}
 
+void pid_controller_reset(pid_controller_t* controller)
+{
+    controller->integrator = 0;
+    controller->differentiator = 0;
     controller->previousError = 0;
     controller->previousSpeed = 0;
     controller->motorPWM = 0;
-    controller->integrator = 0;
-    controller->max_integral = 30.0;
-    controller->min_integral = -30.0;
-
-    if (integral_limit < 0)
-    {
-        integral_limit = 0;
-    }
-
-    controller->max_integral = integral_limit;
-    controller->min_integral = -integral_limit;
-}
-// Reset the runtime state of the PID controller, keeping its tuning.
-void pid_controller_reset(pid_controller_t* controller)
-{
-    controller->integrator = 0.0;
-    controller->differentiator = 0.0;
-    controller->previousError = 0.0;
-    controller->previousSpeed = 0.0;
-    controller->motorPWM = 0.0;
-    controller->target_speed = 0.0;
+    controller->target_speed = 0;
+    controller->has_previous = false;
 }
 
-// Update the PID controller
-// currentSpeed: Current speed of the motor in radians per second
-// targetSpeed: Target speed of the motor in radians per second
-// return: PWM value to be applied to the motor in range -100.0 to 100.0
 double pid_controller_update(pid_controller_t* controller, double currentSpeed, double targetSpeed)
 {
-    // TODO Add mutex
-    double kp = controller->kp;
-    double ki = controller->ki;
-    double kd = controller->kd;
-    controller->target_speed = targetSpeed;
-
-    // Hard stop on a zero setpoint. The incremental output below keeps a
-    // residual motorPWM and integrator; when the wheel then creeps slower than
-    // the encoder can resolve, currentSpeed quantizes to 0 so the error is 0
-    // and nothing drives that residual back down -> the motor keeps crawling.
-    // Force the output and internal state to zero so "stop" really stops.
-    if (targetSpeed < 1e-6 && targetSpeed > -1e-6)
-    {
-        controller->integrator = 0.0;
-        controller->differentiator = 0.0;
-        controller->previousError = -currentSpeed;
-        controller->previousSpeed = currentSpeed;
-        controller->motorPWM = 0.0;
-        return controller->motorPWM;
+    if (!isfinite(currentSpeed) || !isfinite(targetSpeed) ||
+        !isfinite(controller->T) || controller->T <= 0 ||
+        !isfinite(controller->tau) || controller->tau < 0 ||
+        !pid_controller_settings_valid(controller->kp, controller->ki, controller->kd, controller->max_integral)) {
+        pid_controller_reset(controller);
+        return 0;
     }
-
-    // Calculate error
+    // Preserve the API's explicit stop semantics: zero target clears all output.
+    if (fabs(targetSpeed) < 1e-6) {
+        pid_controller_reset(controller);
+        return 0;
+    }
     double error = targetSpeed - currentSpeed;
-
-    // Proportional
-    double proportional = kp * error;
-
-    // Integral
-    controller->integrator += 0.5f * ki * controller->T * (error + controller->previousError);
-    
-    // Check if max integral is zero therefore integral limit is disabled
-    // Checking only max integral sinc user supplied integral limit is always positive or zero
-    // Therefore if max integral is zero, min integral is also zero
-    if (controller->max_integral != 0)
-    {
-        controller->integrator = limit_to_range(controller->integrator, controller->min_integral, controller->max_integral);
+    double proportional = controller->kp * error;
+    double previous_error = controller->has_previous ? controller->previousError : error;
+    double integral = controller->ki > 0 ? clamp(controller->integrator +
+        controller->ki * controller->T * (0.5 * error + 0.5 * previous_error),
+        controller->max_integral) : 0;
+    // Derivative on measurement avoids target-step kicks. Backward Euler gives
+    // a stable 10 ms low-pass filter, including when the loop period changes.
+    double derivative = 0;
+    if (controller->has_previous && controller->kd > 0) {
+        double denominator = controller->tau + controller->T;
+        derivative = controller->tau / denominator * controller->differentiator
+            - controller->kd / denominator * (currentSpeed - controller->previousSpeed);
     }
-
-    // Derivative
-    controller->differentiator = -(2.0f * kd * (currentSpeed - controller->previousSpeed)
-                        + (2.0f * controller->tau - controller->T) * controller->differentiator)
-                        / (2.0f * controller->tau + controller->T);
-
-
-
-    // Calculate motor PWM
-    controller->motorPWM = controller->motorPWM + proportional + controller->integrator + controller->differentiator;
-    // Limit motor PWM to range -100.0 to 100.0
-    controller->motorPWM = limit_to_range(controller->motorPWM, -100.0, 100.0);
-
+    double output = proportional + integral + derivative;
+    // Only reject integration that pushes farther into actuator saturation;
+    // allow the stored integral to unwind during reversal or recovery.
+    if ((output > 100 && integral > controller->integrator) ||
+        (output < -100 && integral < controller->integrator)) {
+        integral = controller->integrator;
+        output = proportional + integral + derivative;
+    }
+    if (!isfinite(output) || !isfinite(derivative) || !isfinite(error)) {
+        pid_controller_reset(controller);
+        return 0;
+    }
+    controller->integrator = integral;
+    controller->differentiator = derivative;
     controller->previousError = error;
     controller->previousSpeed = currentSpeed;
-
+    controller->has_previous = true;
+    controller->target_speed = targetSpeed;
+    controller->motorPWM = clamp(output, 100);
     return controller->motorPWM;
-}
-
-double limit_to_range(double value, double min_value, double max_value)
-{
-    if (value >= max_value) return max_value;
-    if (value < min_value) return min_value;
-    return value;
 }
