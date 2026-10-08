@@ -13,7 +13,7 @@
 #define MOTOR2 2
 #define MOTOR3 3
 
-#define MOTOR_MAX_SPEED 840
+#include "motor_pwm_config.h"
 
 typedef unsigned char motorIndex;
 
