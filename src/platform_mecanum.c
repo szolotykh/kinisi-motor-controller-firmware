@@ -164,6 +164,11 @@ void initialize_mecanum_platform(
     motors->initialize(MOTOR2, isReversed2);
     motors->initialize(MOTOR3, isReversed3);
 
+    if (!platform_check_motor_initialization(BMOTOR0 | BMOTOR1 | BMOTOR2 | BMOTOR3)) {
+        mecanum_config.is_initialized = 0;
+        return;
+    }
+
     if (encoder_resolution > 0)
     {
         // Encoder direction configured independently of the motor.

@@ -88,6 +88,8 @@ void rcc_gpio_clk_enable(GPIO_TypeDef* port){
 		__HAL_RCC_GPIOC_CLK_ENABLE();
 	}else if (port == GPIOD){
 		__HAL_RCC_GPIOD_CLK_ENABLE();
+	}else if (port == GPIOE){
+		__HAL_RCC_GPIOE_CLK_ENABLE();
 	}
 }
 

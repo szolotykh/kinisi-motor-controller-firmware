@@ -33,6 +33,24 @@ uint8_t platform_is_initialized(void) { return platform.is_initialized; }
  */
 uint8_t platform_is_controller_running(void) { return platform.is_controller_initialized; }
 
+uint8_t platform_check_motor_initialization(uint8_t motor_mask)
+{
+    const hw_motor_interface_t *motors = get_motor_interface();
+    for (uint8_t i = MOTOR0; i <= MOTOR3; ++i) {
+        if ((motor_mask & (1u << i)) && !motors->is_initialized(i)) {
+            platform_position_cancel();
+            platform_stop_odometry();
+            controllers_manager_stop_controller_multiple(
+                motor_mask | (platform.is_initialized ? platform.motor_mask : 0));
+            platform.is_initialized = 0;
+            platform.is_controller_initialized = 0;
+            platform.motor_mask = 0;
+            return 0;
+        }
+    }
+    return 1;
+}
+
 /**
  * @brief Apply bounded open-loop platform velocity when a platform is initialized.
  */

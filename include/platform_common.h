@@ -56,3 +56,7 @@ typedef struct {
 
 // Global platform instance
 extern platform_t platform;
+
+// Validate all selected motor drivers; on failure stop the platform's wheels
+// and leave the dispatcher uninitialized so partial platforms cannot move.
+uint8_t platform_check_motor_initialization(uint8_t motor_mask);

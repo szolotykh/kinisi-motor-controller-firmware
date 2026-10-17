@@ -371,3 +371,16 @@ void test_calculate_velocity_correctly(void) {
     TEST_ASSERT_FLOAT_WITHIN(0.001, expected_velocity, result);
 }
 ```
+
+## Motor control models (host tests)
+
+Run `python test/test_motor_control/run_tests.py` with GCC or Clang on PATH,
+or set `CC` to its executable. This compiles the production motor control and
+DRV8873 helper against a fake HAL for MP_V1 through MP_V4. It checks signed
+duty, saturation, reversal, coast/brake, invalid input, shared timer setup,
+complementary output selection, SPI failures/readback and fault-pin handling.
+It also checks driver reinitialization after a reset, failed retries, and
+reuse of running PWM channels. `test/test_position/run_tests.py` checks whole
+platform rollback when any driver fails; `test/test_time_sync/run_tests.py`
+checks that a failed driver cannot leave a PID/position controller running.
+Physical PWM polarity and electrical behavior require powered board tests.

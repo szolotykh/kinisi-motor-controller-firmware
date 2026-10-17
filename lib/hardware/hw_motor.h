@@ -22,7 +22,10 @@ typedef void (*initialize_motor_fn)(motorIndex motorIndex, bool isReversed);
 typedef uint8_t (*motor_is_reversed_fn)(motorIndex motorIndex);
 typedef uint8_t (*motor_is_initialized_fn)(motorIndex motorIndex);
 typedef void (*set_motor_speed_fn)(motorIndex motorIndex, double pwm);
+// Coast: dual PWM inputs low, or enable/direction DISABLE high with EN duty zero.
 typedef void (*stop_motor_fn)(motorIndex motorIndex);
+// Short brake: dual PWM inputs high, or enable/direction DISABLE low with EN duty zero.
+// This resists rotation; it is not closed-loop position holding.
 typedef void (*brake_motor_fn)(motorIndex motorIndex);
 
 // Interface structure

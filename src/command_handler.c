@@ -19,6 +19,10 @@
 #include "hw_clock.h"
 #include "command_requirements.h"
 #include "platform_position.h"
+#include "board_revision.h"
+#ifdef MP_V4
+#include "hw_drv8873.h"
+#endif
 
 /**
  * @brief Execute a validated command after checking its resource prerequisites.
@@ -61,6 +65,8 @@ uint8_t command_handler(controller_command_t* cmd, void (*command_callback)(uint
                 controllers_manager_stop_controller(cmd->properties.initialize_motor.motor_index);
                 motor->initialize(cmd->properties.initialize_motor.motor_index,
                                 cmd->properties.initialize_motor.is_reversed);
+                if (!motor->is_initialized(cmd->properties.initialize_motor.motor_index))
+                    return RESPONSE_INTERNAL_ERROR;
             }
         break;
 
@@ -68,6 +74,13 @@ uint8_t command_handler(controller_command_t* cmd, void (*command_callback)(uint
             {
             {
                 controllers_manager_stop_controller(cmd->properties.set_motor_speed.motor_index);
+#ifdef MP_V4
+                if (cmd->properties.set_motor_speed.pwm != 0 &&
+                    hw_drv8873_fault_active(cmd->properties.set_motor_speed.motor_index)) {
+                    motor->stop(cmd->properties.set_motor_speed.motor_index);
+                    return RESPONSE_INTERNAL_ERROR;
+                }
+#endif
                 motor->set_speed(
                     cmd->properties.set_motor_speed.motor_index,
                     cmd->properties.set_motor_speed.pwm);
@@ -109,7 +122,7 @@ uint8_t command_handler(controller_command_t* cmd, void (*command_callback)(uint
                     platform_stop_odometry();
                 }
                 controllers_manager_stop_encoder(cmd->properties.initialize_motor_controller.encoder_index);
-                controllers_manager_initialize_controller(
+                return controllers_manager_initialize_controller(
                     cmd->properties.initialize_motor_controller.motor_index,
                     cmd->properties.initialize_motor_controller.encoder_index,
                     cmd->properties.initialize_motor_controller.kp,
@@ -303,6 +316,7 @@ uint8_t command_handler(controller_command_t* cmd, void (*command_callback)(uint
                 cmd->properties.initialize_mecanum_platform.wheels_diameter,
                 cmd->properties.initialize_mecanum_platform.encoder_resolution
             );
+            if (!platform_is_initialized()) return RESPONSE_INTERNAL_ERROR;
         break;
 
         case INITIALIZE_OMNI_PLATFORM:
@@ -319,6 +333,7 @@ uint8_t command_handler(controller_command_t* cmd, void (*command_callback)(uint
                 cmd->properties.initialize_omni_platform.robot_radius,
                 cmd->properties.initialize_omni_platform.encoder_resolution
             );
+            if (!platform_is_initialized()) return RESPONSE_INTERNAL_ERROR;
         break;
 
         case INITIALIZE_DIFFERENTIAL_PLATFORM:
@@ -333,6 +348,7 @@ uint8_t command_handler(controller_command_t* cmd, void (*command_callback)(uint
                 cmd->properties.initialize_differential_platform.wheel_base,
                 cmd->properties.initialize_differential_platform.encoder_resolution
             );
+            if (!platform_is_initialized()) return RESPONSE_INTERNAL_ERROR;
         break;
 
         case SET_PLATFORM_VELOCITY:

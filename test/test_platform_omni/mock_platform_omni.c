@@ -7,6 +7,10 @@
 // Global platform instance required by the linked platform_*.c files.
 platform_t platform = {0};
 
+// This unit suite assumes healthy drivers; failure rollback is covered by
+// test_position with the real platform dispatcher.
+uint8_t platform_check_motor_initialization(uint8_t mask) { (void)mask; return 1; }
+
 // Mock tracking variables
 static motorIndex last_motor = 0;
 static double last_speed = 0;
