@@ -140,14 +140,18 @@ void initialize_omni_platform(
 {
     // Re-initialization is allowed: calling this again re-applies motor/encoder
     // reverse flags, resolution and dimensions without a board reset. The
-    // hardware timer setup inside motor/encoder initialize is separately
-    // guarded, so only the settings are updated.
+    // hardware timer setup is separately guarded; V4 drivers are revalidated.
     const hw_motor_interface_t* motors = get_motor_interface();
     const hw_encoder_interface_t* encoders = get_encoder_interface();
 
     motors->initialize(MOTOR0, isReversed0);
     motors->initialize(MOTOR1, isReversed1);
     motors->initialize(MOTOR2, isReversed2);
+
+    if (!platform_check_motor_initialization(BMOTOR0 | BMOTOR1 | BMOTOR2)) {
+        omni_config.is_initialized = 0;
+        return;
+    }
 
     if (encoder_resolution > 0)
     {

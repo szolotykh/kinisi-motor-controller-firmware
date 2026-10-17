@@ -13,7 +13,7 @@ compiler = os.environ.get("CC") or shutil.which("gcc") or shutil.which("clang")
 if not compiler:
     raise SystemExit("Set CC to a host gcc or clang executable.")
 with tempfile.TemporaryDirectory() as folder:
-    for revision in ("MP_V1", "MP_V2", "MP_V3"):
+    for revision in ("MP_V1", "MP_V2", "MP_V3", "MP_V4"):
         binary = Path(folder) / (revision + ".exe")
         subprocess.run([
             compiler, "-std=c11", "-Wall", "-Wextra", "-Werror",

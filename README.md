@@ -48,6 +48,10 @@ To build the project for the `genericSTM32F405RG` configuration, follow these st
 
 This command will build the project for the `genericSTM32F405RG` configuration.
 
+For board v0.4 (STM32F405VGT6), use `pio run -e v0_4`. The original
+`genericSTM32F405RG` environment selects v0.3. See
+[board v0.4 support](docs/board-v0.4.md) for motor configuration and validation.
+
 ## Running Tests
 
 To run all the tests for the project, follow these steps:

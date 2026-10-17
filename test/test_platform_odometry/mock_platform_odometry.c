@@ -21,6 +21,9 @@
 // writes its function pointers here. Defined once for the whole test binary.
 platform_t platform = {0};
 
+// This odometry suite assumes healthy motor drivers.
+uint8_t platform_check_motor_initialization(uint8_t mask) { (void)mask; return 1; }
+
 //------------------------------------------------------------
 // Motor interface stubs
 //------------------------------------------------------------

@@ -114,6 +114,11 @@ void initialize_differential_platform(
     motors->initialize(MOTOR0, isReversed0);
     motors->initialize(MOTOR1, isReversed1);
 
+    if (!platform_check_motor_initialization(BMOTOR0 | BMOTOR1)) {
+        differential_config.is_initialized = 0;
+        return;
+    }
+
     if (encoder_resolution > 0)
     {
         // Encoder direction configured independently of the motor.

@@ -10,6 +10,8 @@
 
 static unsigned locked, pwm_writes, reset_count;
 static uint8_t running;
+static int failed_motor = -1;
+static uint8_t stopped_mask;
 static uint64_t now = 100000, sample = 100000;
 static uint8_t sample_error;
 static platform_odometry_t pose;
@@ -33,18 +35,19 @@ void odometry_manager_reset_platform_odometry(void)
 uint8_t controllers_manager_is_running(uint8_t i) { return (running >> i) & 1; }
 void controllers_manager_initialize_controller_multiple(uint8_t mask, double kp, double ki, double kd, double limit)
 { (void)kp; (void)ki; (void)kd; (void)limit; running = mask; }
-void controllers_manager_stop_controller_multiple(uint8_t mask) { running &= ~mask; }
+void controllers_manager_stop_controller_multiple(uint8_t mask) { running &= ~mask; stopped_mask |= mask; }
 void controllers_manager_brake_multiple(uint8_t mask) { running &= ~mask; }
 void controllers_manager_set_target_speed_multiple(uint8_t *indexes, double *speeds, uint8_t count)
 { for (uint8_t i = 0; i < count; ++i) wheel_speed[indexes[i]] = speeds[i]; }
 static void init_motor(motorIndex i, bool r) { (void)i; (void)r; }
+static uint8_t motor_ready(motorIndex i) { return i != failed_motor; }
 static void pwm(motorIndex i, double v) { (void)i; (void)v; pwm_writes++; }
 static void init_encoder(encoder_index_t i, double r, uint8_t reverse) { (void)i; (void)r; (void)reverse; }
 static uint8_t encoder_ready(encoder_index_t i) { (void)i; return 1; }
 static double encoder_resolution(encoder_index_t i) { (void)i; return 100; }
 static void start_encoder(uint8_t i) { (void)i; }
 const hw_motor_interface_t *get_motor_interface(void)
-{ static const hw_motor_interface_t h = {.initialize = init_motor, .set_speed = pwm}; return &h; }
+{ static const hw_motor_interface_t h = {.initialize = init_motor, .is_initialized = motor_ready, .set_speed = pwm}; return &h; }
 const hw_encoder_interface_t *get_encoder_interface(void)
 { static const hw_encoder_interface_t h = {.initialize = init_encoder, .is_initialized = encoder_ready, .get_resolution = encoder_resolution}; return &h; }
 const encoder_odometry_interface_t *get_encoder_odometry_interface(void)
@@ -213,5 +216,29 @@ int main(void)
     near(wheel_speed[0], 0); fresh();
     assert(platform_position_set((platform_odometry_t){0.2, 0, 0}) == RESPONSE_OK);
     platform_position_update(); near(wheel_speed[0], 4);
-    puts("Platform position frames, limits, differential kinematics, prerequisites, stale feedback, reset and overrides passed");
+    // Failure on any wheel must invalidate the whole platform, including on
+    // reinitialization, and stop its other wheels without claiming unrelated ones.
+    for (unsigned kind = 0; kind < 3; ++kind) {
+        unsigned wheels = kind + 2;
+        for (unsigned failed = 0; failed < wheels; ++failed) {
+            failed_motor = -1;
+            for (unsigned attempt = 0; attempt < 3; ++attempt) {
+                failed_motor = attempt == 1 ? (int)failed : -1;
+                stopped_mask = 0;
+                if (kind == 0) initialize_differential_platform(0, 0, 0, 0, 0.1, 0.3, 100);
+                if (kind == 1) initialize_omni_platform(0, 0, 0, 0, 0, 0, 0.1, 0.2, 100);
+                if (kind == 2) initialize_mecanum_platform(0, 0, 0, 0, 0, 0, 0, 0, 0.4, 0.3, 0.1, 100);
+                assert(platform_is_initialized() == (attempt != 1));
+                if (attempt == 1) {
+                    assert(!platform_is_controller_running() && platform.motor_mask == 0);
+                    assert(stopped_mask == (1u << wheels) - 1u);
+                    unsigned before = pwm_writes;
+                    set_platform_velocity((platform_velocity_t){10, 0, 0});
+                    platform_start_velocity_controller((plaform_controller_settings_t){1, 0, 0, 10});
+                    assert(pwm_writes == before && !platform_is_controller_running());
+                }
+            }
+        }
+    }
+    puts("Platform position and failed motor initialization checks passed");
 }

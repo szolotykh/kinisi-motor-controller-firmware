@@ -13,8 +13,10 @@
 
 static unsigned locked, created, delays;
 static uint16_t counts[4];
+static int failed_motor = -1;
 void platform_position_update(void) {}
 static void motor_init(motorIndex i, bool r) { (void)i; (void)r; }
+static uint8_t motor_ready(motorIndex i) { return i != failed_motor; }
 static void encoder_init(encoder_index_t i, double r, uint8_t rev) { (void)i; (void)r; (void)rev; }
 static unsigned stopped[4], braked[4], driven[4];
 static void (*task_fn)(void *);
@@ -58,7 +60,7 @@ static double resolution(encoder_index_t index) { (void)index; return 100; }
 /** @brief Expose motor callbacks without initializing a PID controller. */
 const hw_motor_interface_t *get_motor_interface(void)
 {
-    static const hw_motor_interface_t hardware = {.initialize = motor_init, .stop = stop, .brake = brake, .set_speed = speed};
+    static const hw_motor_interface_t hardware = {.initialize = motor_init, .is_initialized = motor_ready, .stop = stop, .brake = brake, .set_speed = speed};
     return &hardware;
 }
 /** @brief Expose encoder callbacks for the real PID task. */
@@ -195,6 +197,24 @@ int main(void)
         assert(fabs(controllers_manager_get_motor_controller_state(0).output-1) < 1e-9);
         assert(fabs(controllers_manager_get_motor_controller_state(1).output+1) < 1e-9);
     }
-    puts("Single-motor and platform-mask stops passed with and without PID control");
+    // A failed driver must not install a PID or leave a previous PID running.
+    for (unsigned i = 0; i < 4; ++i) {
+        assert(controllers_manager_initialize_controller(i, i, 1, 0, 0, false, false, 100, 10) == RESPONSE_OK);
+        controllers_manager_set_target_speed(i, 1);
+        assert(controllers_manager_initialize_position(i, settings) == RESPONSE_OK);
+        failed_motor = i;
+        unsigned writes = driven[i], stops = stopped[i];
+        assert(controllers_manager_initialize_controller(i, i, 1, 0, 0, false, false, 100, 10) == RESPONSE_INTERNAL_ERROR);
+        assert(!controllers_manager_is_running(i) && !locked && stopped[i] == stops + 1);
+        assert(controllers_manager_set_position(i, 1) == RESPONSE_CONTROLLER_NOT_INITIALIZED);
+        tick();
+        assert(driven[i] == writes);
+        // Retrying while still unavailable also fails; a later recovery succeeds.
+        assert(controllers_manager_initialize_controller(i, i, 1, 0, 0, false, false, 100, 10) == RESPONSE_INTERNAL_ERROR);
+        failed_motor = -1;
+        assert(controllers_manager_initialize_controller(i, i, 1, 0, 0, false, false, 100, 10) == RESPONSE_OK);
+        assert(controllers_manager_is_running(i) && !locked);
+    }
+    puts("Single-motor/platform stops and failed driver initialization checks passed");
     return 0;
 }

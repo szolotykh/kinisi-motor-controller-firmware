@@ -199,7 +199,7 @@ uint8_t controllers_manager_is_not_init()
 /**
  * @brief Initialize motor/encoder resources and install a running PID controller.
  */
-void controllers_manager_initialize_controller(uint8_t motor_index, uint8_t encoder_index, double kp, double ki, double kd, bool is_reversed, bool is_encoder_reversed, double encoder_resolution, double integral_limit)
+uint8_t controllers_manager_initialize_controller(uint8_t motor_index, uint8_t encoder_index, double kp, double ki, double kd, bool is_reversed, bool is_encoder_reversed, double encoder_resolution, double integral_limit)
 {
     // Initialize controller manager which starts task for all controllers
     if (controllers_manager_is_not_init())
@@ -227,20 +227,29 @@ void controllers_manager_initialize_controller(uint8_t motor_index, uint8_t enco
     // Always (re-)apply motor and encoder settings so re-initializing a running
     // controller updates its reverse flags / resolution without a board reset.
     // The hardware timer setup inside these is separately guarded; only the
-    // settings are updated. previousEncoderValue is re-read below, so any change
-    // to the encoder's reverse frame stays consistent (no glitch tick).
+    // settings and V4 driver configuration are updated. previousEncoderValue is
+    // re-read below so changes to the encoder's reverse frame stay consistent.
     // Encoder direction is configured independently of the motor via
     // is_encoder_reversed, giving the closed loop negative feedback regardless
     // of how the encoder is wired relative to the motor.
     if (xSemaphoreTake(controllers_manager.state.controller_state_mutex, portMAX_DELAY))
     {
         motor->initialize(controller_info.mIndex, is_reversed);
+        if (!motor->is_initialized(controller_info.mIndex)) {
+            controllers_manager.state.Controller_info[motor_index] = (controller_info_t){0};
+            controllers_manager.state.target_motor_speed[motor_index] = 0;
+            motor->stop(motor_index);
+            xSemaphoreGive(controllers_manager.state.controller_state_mutex);
+            return RESPONSE_INTERNAL_ERROR;
+        }
         encoder->initialize(controller_info.eIndex, encoder_resolution, is_encoder_reversed);
         controllers_manager.state.previousEncoderValue[motor_index] = encoder->get_value(encoder_index);
         controllers_manager.state.Controller_info[motor_index] = controller_info;
         controllers_manager.state.target_motor_speed[motor_index] = 0;
         xSemaphoreGive(controllers_manager.state.controller_state_mutex);
+        return RESPONSE_OK;
     }
+    return RESPONSE_INTERNAL_ERROR;
 }
 
 /**
