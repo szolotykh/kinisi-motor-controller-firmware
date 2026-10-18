@@ -2,7 +2,8 @@
 
 ## Motor control configuration
 
-Board motor definitions live in [hw_config.h](../include/hw_config.h); their structure and
+Board motor definitions live in [v0.4.json](../boards/v0.4.json) and generate
+[hw_config.h](../include/hw_config.h); their structure and
 `motor_control_model_t` enum live in [hw_config_structs.h](../lib/hardware/hw_config_structs.h).
 Each motor's `controlModel` is `MOTOR_CONTROL_PWM` (V1-V3) or
 `MOTOR_CONTROL_ENABLE_DIRECTION` (V4). PWM uses `pwmChannel1` and
@@ -35,7 +36,8 @@ APB1 or APB2 timer clock; V4 uses TIM1 for all four motors.
 V4 explicitly programs IC1 SR=000 (53.2 V/us) and verifies readback for all
 four drivers. The reset SR=100 (10.8 V/us) has longer switching delays
 relative to the 10 us PWM period, limiting useful duty range at 100 kHz.
-`DRV8873_SLEW_RATE_BITS` selects the slew rate in the V4 board configuration.
+`motors.driver.slew_rate_v_per_us` in the JSON generates `DRV8873_SLEW_RATE_BITS`.
+See [board configuration](../boards/README.md) for generation and validation.
 Physical low-duty behavior, switching noise and motor startup still need
 board measurements; software duty is not a guarantee of bridge output duty.
 Failed motor initialization or a fault-blocked nonzero speed command returns
@@ -57,6 +59,30 @@ The four encoder mappings, eight external GPIOs, and PB14 status LED follow
 the new board. Sensor/FRAM support, current ADC measurements, asynchronous
 fault reporting, and UART support are outside this initial motor-control scope.
 Fault inputs are checked on speed commands, not monitored by a background task.
+
+Each motor's `current_sense` definition explicitly selects `"type": "adc"`.
+The generator requires this type and emits `CURRENT_SENSE_ADC` in the C
+configuration. Missing or unsupported types are rejected; I2C sensing requires
+a separate implementation before it can be selected. The ADC configuration
+currently describes the circuit only; it does not enable sampling or telemetry.
+
+Each motor's `hardware_current_limit.supported_thresholds_ma` lists the nominal
+hardware regulation settings in milliamps: `[4000, 5400, 6500, 7000]`.
+The generator emits this list and its count alongside `enabled` and `threshold_ma`
+in the C configuration. These describe hardware capability and the selected
+configuration; they do not expose a client command. The selected threshold must
+be in the list. Until IC4 programming is implemented, validation only accepts
+`enabled: true` and `threshold_ma: 6500`, matching the driver's factory default.
+
+Each motor also declares `overcurrent_protection` separately from current
+regulation. Its `supported_modes` are `latched_shutdown`, `automatic_retry`,
+`report_only`, and `disabled`; `mode` selects `latched_shutdown`, the factory
+default. The generator emits a typed mode, the supported-mode array and its
+count. This remains metadata: IC2 protection-mode programming is not implemented,
+so validation rejects other selected modes instead of silently ignoring them.
+The modes describe hardware capability, not available client commands. Legacy
+board profiles leave this metadata unavailable; that does not establish whether
+their drivers have internal protection.
 
 Before powered use, verify SPI readback, physical EN duty/polarity at zero and
 100%, motor direction/reversal, coast/brake, encoder counts, and fault behavior

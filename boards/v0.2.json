@@ -1,0 +1,129 @@
+{
+  "schema_version": 1,
+  "board": {
+    "model": 1,
+    "revision": "0.2.0",
+    "build_define": "MP_V2"
+  },
+  "mcu": {
+    "part": "STM32F405RGT6"
+  },
+  "buses": {},
+  "motors": {
+    "control_model": "pwm",
+    "pwm_frequency_hz": 100000,
+    "channels": [
+      {
+        "id": 0,
+        "pwm1": {
+          "pin": "PB14",
+          "timer": "TIM12",
+          "channel": 1,
+          "complementary": false
+        },
+        "pwm2": {
+          "pin": "PB15",
+          "timer": "TIM12",
+          "channel": 2,
+          "complementary": false
+        }
+      },
+      {
+        "id": 1,
+        "pwm1": {
+          "pin": "PC6",
+          "timer": "TIM8",
+          "channel": 1,
+          "complementary": false
+        },
+        "pwm2": {
+          "pin": "PC7",
+          "timer": "TIM8",
+          "channel": 2,
+          "complementary": false
+        }
+      },
+      {
+        "id": 2,
+        "pwm1": {
+          "pin": "PC8",
+          "timer": "TIM8",
+          "channel": 3,
+          "complementary": false
+        },
+        "pwm2": {
+          "pin": "PC9",
+          "timer": "TIM8",
+          "channel": 4,
+          "complementary": false
+        }
+      },
+      {
+        "id": 3,
+        "pwm1": {
+          "pin": "PA8",
+          "timer": "TIM1",
+          "channel": 1,
+          "complementary": false
+        },
+        "pwm2": {
+          "pin": "PA9",
+          "timer": "TIM1",
+          "channel": 2,
+          "complementary": false
+        }
+      }
+    ]
+  },
+  "encoders": [
+    {
+      "id": 0,
+      "timer": "TIM2",
+      "a": "PA15",
+      "b": "PB3"
+    },
+    {
+      "id": 1,
+      "timer": "TIM3",
+      "a": "PA6",
+      "b": "PA7"
+    },
+    {
+      "id": 2,
+      "timer": "TIM4",
+      "a": "PB6",
+      "b": "PB7"
+    },
+    {
+      "id": 3,
+      "timer": "TIM5",
+      "a": "PA0",
+      "b": "PA1"
+    }
+  ],
+  "gpio": [
+    {
+      "id": 0,
+      "pin": "PA2"
+    },
+    {
+      "id": 1,
+      "pin": "PA3"
+    },
+    {
+      "id": 2,
+      "pin": "PA4"
+    },
+    {
+      "id": 3,
+      "pin": "PA5"
+    }
+  ],
+  "status_leds": [
+    {
+      "id": 0,
+      "pin": "PC12",
+      "active_low": false
+    }
+  ]
+}

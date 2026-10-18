@@ -19,8 +19,8 @@
 #include "hw_clock.h"
 #include "command_requirements.h"
 #include "platform_position.h"
-#include "board_revision.h"
-#ifdef MP_V4
+#include "hw_config.h"
+#if MOTOR_CONTROL_MODEL == MOTOR_CONTROL_MODEL_ENABLE_DIRECTION
 #include "hw_drv8873.h"
 #endif
 
@@ -74,7 +74,7 @@ uint8_t command_handler(controller_command_t* cmd, void (*command_callback)(uint
             {
             {
                 controllers_manager_stop_controller(cmd->properties.set_motor_speed.motor_index);
-#ifdef MP_V4
+#if MOTOR_CONTROL_MODEL == MOTOR_CONTROL_MODEL_ENABLE_DIRECTION
                 if (cmd->properties.set_motor_speed.pwm != 0 &&
                     hw_drv8873_fault_active(cmd->properties.set_motor_speed.motor_index)) {
                     motor->stop(cmd->properties.set_motor_speed.motor_index);

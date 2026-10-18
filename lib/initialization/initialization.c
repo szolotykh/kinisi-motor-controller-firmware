@@ -26,7 +26,7 @@ int initialization_request_length_valid(size_t length)
 init_response initialization_response(void)
 {
     init_response response = {0};
-    response.board_model = 1; // Kinisi motor controller
+    response.board_model = KINISI_BOARD_MODEL;
     response.board_major = KINISI_BOARD_VERSION_MAJOR;
     response.board_minor = KINISI_BOARD_VERSION_MINOR;
     response.board_patch = KINISI_BOARD_VERSION_PATCH;

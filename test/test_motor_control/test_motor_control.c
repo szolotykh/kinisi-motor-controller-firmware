@@ -13,6 +13,7 @@ GPIO_TypeDef test_ports[5];
 TIM_TypeDef test_timers[12];
 static TIM_HandleTypeDef handles[12];
 static unsigned timer_inits, delays;
+static uint16_t spi_pins;
 static int fail_spi_motor = -1;
 static uint8_t corrupt_readback;
 static uint8_t registers[NUMBER_MOTORS];
@@ -37,7 +38,13 @@ void HAL_GPIO_WritePin(GPIO_TypeDef *port, uint16_t pin, GPIO_PinState state) {
     if (state) port->ODR |= pin; else port->ODR &= ~pin;
 }
 GPIO_PinState HAL_GPIO_ReadPin(GPIO_TypeDef *port, uint16_t pin) { return (port->IDR & pin) ? GPIO_PIN_SET : GPIO_PIN_RESET; }
-void HAL_GPIO_Init(GPIO_TypeDef *port, GPIO_InitTypeDef *gpio) { assert(port && gpio->Pin); }
+void HAL_GPIO_Init(GPIO_TypeDef *port, GPIO_InitTypeDef *gpio) {
+    assert(port && gpio->Pin);
+    if (gpio->Mode == GPIO_MODE_AF_PP && gpio->Alternate == GPIO_AF6_SPI3) {
+        assert(port == GPIOC);
+        spi_pins |= gpio->Pin;
+    }
+}
 void HAL_Delay(uint32_t duration) { delays += duration; }
 int HAL_TIM_Base_GetState(TIM_HandleTypeDef *timer) { return timer->State; }
 HAL_StatusTypeDef HAL_TIM_Base_Init(TIM_HandleTypeDef *timer) {
@@ -76,6 +83,8 @@ HAL_StatusTypeDef HAL_TIMEx_PWMN_Start(TIM_HandleTypeDef *timer, uint32_t channe
     timer->startedN |= 1u << (channel/4); return HAL_OK;
 }
 HAL_StatusTypeDef HAL_SPI_Init(SPI_HandleTypeDef *spi) {
+    assert(spi->Instance == SPI3);
+    assert(spi_pins == (GPIO_PIN_10 | GPIO_PIN_11 | GPIO_PIN_12));
     assert(spi->Init.CLKPolarity == SPI_POLARITY_LOW && spi->Init.CLKPhase == SPI_PHASE_2EDGE);
     assert(spi->Init.DataSize == SPI_DATASIZE_8BIT);
     return HAL_OK;

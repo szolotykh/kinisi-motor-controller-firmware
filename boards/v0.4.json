@@ -1,0 +1,213 @@
+{
+  "schema_version": 1,
+  "board": {
+    "model": 1,
+    "revision": "0.4.0",
+    "build_define": "MP_V4"
+  },
+  "mcu": {
+    "part": "STM32F405VGT6"
+  },
+  "buses": {
+    "motor_spi": {
+      "peripheral": "SPI3",
+      "sck": "PC10",
+      "miso": "PC11",
+      "mosi": "PC12"
+    }
+  },
+  "motors": {
+    "control_model": "enable_direction",
+    "pwm_frequency_hz": 100000,
+    "driver": {
+      "type": "DRV8873S",
+      "bus": "motor_spi",
+      "slew_rate_v_per_us": 53.2
+    },
+    "channels": [
+      {
+        "id": 0,
+        "enable": {
+          "pin": "PE14",
+          "timer": "TIM1",
+          "channel": 4,
+          "complementary": false
+        },
+        "direction": "PD14",
+        "disable": "PD13",
+        "sleep": "PB15",
+        "fault": "PD8",
+        "chip_select": "PD15",
+        "current_sense": {
+          "type": "adc",
+          "pin": "PC4",
+          "sense_resistor_ohm": 330,
+          "filter_capacitance_nf": 1000
+        },
+        "hardware_current_limit": {
+          "enabled": true,
+          "supported_thresholds_ma": [4000, 5400, 6500, 7000],
+          "threshold_ma": 6500
+        },
+        "overcurrent_protection": {
+          "mode": "latched_shutdown",
+          "supported_modes": ["latched_shutdown", "automatic_retry", "report_only", "disabled"]
+        }
+      },
+      {
+        "id": 1,
+        "enable": {
+          "pin": "PE12",
+          "timer": "TIM1",
+          "channel": 3,
+          "complementary": true
+        },
+        "direction": "PD0",
+        "disable": "PA15",
+        "sleep": "PD2",
+        "fault": "PD3",
+        "chip_select": "PD1",
+        "current_sense": {
+          "type": "adc",
+          "pin": "PC5",
+          "sense_resistor_ohm": 330,
+          "filter_capacitance_nf": 1000
+        },
+        "hardware_current_limit": {
+          "enabled": true,
+          "supported_thresholds_ma": [4000, 5400, 6500, 7000],
+          "threshold_ma": 6500
+        },
+        "overcurrent_protection": {
+          "mode": "latched_shutdown",
+          "supported_modes": ["latched_shutdown", "automatic_retry", "report_only", "disabled"]
+        }
+      },
+      {
+        "id": 2,
+        "enable": {
+          "pin": "PE10",
+          "timer": "TIM1",
+          "channel": 2,
+          "complementary": true
+        },
+        "direction": "PD5",
+        "disable": "PD4",
+        "sleep": "PB4",
+        "fault": "PB5",
+        "chip_select": "PD6",
+        "current_sense": {
+          "type": "adc",
+          "pin": "PC0",
+          "sense_resistor_ohm": 330,
+          "filter_capacitance_nf": 1000
+        },
+        "hardware_current_limit": {
+          "enabled": true,
+          "supported_thresholds_ma": [4000, 5400, 6500, 7000],
+          "threshold_ma": 6500
+        },
+        "overcurrent_protection": {
+          "mode": "latched_shutdown",
+          "supported_modes": ["latched_shutdown", "automatic_retry", "report_only", "disabled"]
+        }
+      },
+      {
+        "id": 3,
+        "enable": {
+          "pin": "PE8",
+          "timer": "TIM1",
+          "channel": 1,
+          "complementary": true
+        },
+        "direction": "PE5",
+        "disable": "PE4",
+        "sleep": "PB8",
+        "fault": "PB9",
+        "chip_select": "PE6",
+        "current_sense": {
+          "type": "adc",
+          "pin": "PC1",
+          "sense_resistor_ohm": 330,
+          "filter_capacitance_nf": 1000
+        },
+        "hardware_current_limit": {
+          "enabled": true,
+          "supported_thresholds_ma": [4000, 5400, 6500, 7000],
+          "threshold_ma": 6500
+        },
+        "overcurrent_protection": {
+          "mode": "latched_shutdown",
+          "supported_modes": ["latched_shutdown", "automatic_retry", "report_only", "disabled"]
+        }
+      }
+    ]
+  },
+  "encoders": [
+    {
+      "id": 0,
+      "timer": "TIM3",
+      "a": "PA6",
+      "b": "PA7"
+    },
+    {
+      "id": 1,
+      "timer": "TIM5",
+      "a": "PA0",
+      "b": "PA1"
+    },
+    {
+      "id": 2,
+      "timer": "TIM4",
+      "a": "PB6",
+      "b": "PB7"
+    },
+    {
+      "id": 3,
+      "timer": "TIM8",
+      "a": "PC6",
+      "b": "PC7"
+    }
+  ],
+  "gpio": [
+    {
+      "id": 0,
+      "pin": "PE15"
+    },
+    {
+      "id": 1,
+      "pin": "PE13"
+    },
+    {
+      "id": 2,
+      "pin": "PE11"
+    },
+    {
+      "id": 3,
+      "pin": "PE9"
+    },
+    {
+      "id": 4,
+      "pin": "PE7"
+    },
+    {
+      "id": 5,
+      "pin": "PB1"
+    },
+    {
+      "id": 6,
+      "pin": "PB0"
+    },
+    {
+      "id": 7,
+      "pin": "PA5"
+    }
+  ],
+  "status_leds": [
+    {
+      "id": 0,
+      "pin": "PB14",
+      "active_low": false
+    }
+  ]
+}

@@ -62,26 +62,31 @@ static void stm32_toggle_pin(gpio_pin_t pin)
 
 static void stm32_init_status_led(void)
 {
-    rcc_gpiox_clk_enable(STATUS_LED_PORT);
-    
-    GPIO_InitTypeDef StatusLEDPinInitStruct = {0};
-    StatusLEDPinInitStruct.Pin = STATUS_LED_PIN;
-    StatusLEDPinInitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-    StatusLEDPinInitStruct.Pull = GPIO_NOPULL;
-    StatusLEDPinInitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-    
-    HAL_GPIO_Init(STATUS_LED_PORT, &StatusLEDPinInitStruct);
-    HAL_GPIO_WritePin(STATUS_LED_PORT, STATUS_LED_PIN, GPIO_PIN_RESET);
+    for (unsigned i = 0; i < NUMBER_STATUS_LEDS; ++i) {
+        const status_led_info_t *led = &status_led_info[i];
+        rcc_gpiox_clk_enable(led->gpio.port);
+        HAL_GPIO_WritePin(led->gpio.port, led->gpio.pin,
+                         led->activeLow ? GPIO_PIN_SET : GPIO_PIN_RESET);
+        GPIO_InitTypeDef init = {0};
+        init.Pin = led->gpio.pin;
+        init.Mode = GPIO_MODE_OUTPUT_PP;
+        init.Pull = GPIO_NOPULL;
+        init.Speed = GPIO_SPEED_FREQ_LOW;
+        HAL_GPIO_Init(led->gpio.port, &init);
+    }
 }
 
 static void stm32_set_status_led(uint8_t state)
 {
-    HAL_GPIO_WritePin(STATUS_LED_PORT, STATUS_LED_PIN, state);
+    // Existing protocol commands address the primary status LED (ID 0).
+    const status_led_info_t *led = &status_led_info[0];
+    HAL_GPIO_WritePin(led->gpio.port, led->gpio.pin,
+                     ((state != 0) != led->activeLow) ? GPIO_PIN_SET : GPIO_PIN_RESET);
 }
 
 static void stm32_toggle_status_led(void)
 {
-    HAL_GPIO_TogglePin(STATUS_LED_PORT, STATUS_LED_PIN);
+    HAL_GPIO_TogglePin(status_led_info[0].gpio.port, status_led_info[0].gpio.pin);
 }
 
 // STM32 GPIO interface implementation

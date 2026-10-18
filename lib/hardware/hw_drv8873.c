@@ -45,14 +45,17 @@ bool hw_drv8873_prepare(void) {
         g.Pin = motor_info[i].fault.pin; g.Mode = GPIO_MODE_INPUT;
         HAL_GPIO_Init(motor_info[i].fault.port, &g);
     }
-    __HAL_RCC_SPI3_CLK_ENABLE();
-    __HAL_RCC_GPIOC_CLK_ENABLE();
-    GPIO_InitTypeDef g = {0};
-    g.Pin = GPIO_PIN_10|GPIO_PIN_11|GPIO_PIN_12;
-    g.Mode = GPIO_MODE_AF_PP; g.Alternate = GPIO_AF6_SPI3;
-    g.Speed = GPIO_SPEED_FREQ_HIGH;
-    HAL_GPIO_Init(GPIOC, &g);
-    spi.Instance = SPI3;
+    MOTOR_SPI_CLK_ENABLE();
+    const gpio_info_t pins[] = {motor_spi_info.sck, motor_spi_info.miso, motor_spi_info.mosi};
+    for (unsigned i = 0; i < sizeof(pins) / sizeof(pins[0]); ++i) {
+        rcc_gpio_clk_enable(pins[i].port);
+        GPIO_InitTypeDef g = {0};
+        g.Pin = pins[i].pin;
+        g.Mode = GPIO_MODE_AF_PP; g.Alternate = motor_spi_info.alternate;
+        g.Speed = GPIO_SPEED_FREQ_HIGH;
+        HAL_GPIO_Init(pins[i].port, &g);
+    }
+    spi.Instance = motor_spi_info.instance;
     spi.Init.Mode = SPI_MODE_MASTER;
     spi.Init.Direction = SPI_DIRECTION_2LINES;
     spi.Init.DataSize = SPI_DATASIZE_8BIT;

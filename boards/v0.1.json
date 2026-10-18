@@ -1,0 +1,138 @@
+{
+  "schema_version": 1,
+  "board": {
+    "model": 1,
+    "revision": "0.1.0",
+    "build_define": "MP_V1"
+  },
+  "mcu": {
+    "part": "STM32F405RGT6"
+  },
+  "buses": {},
+  "motors": {
+    "control_model": "pwm",
+    "pwm_frequency_hz": 100000,
+    "channels": [
+      {
+        "id": 0,
+        "pwm1": {
+          "pin": "PA0",
+          "timer": "TIM5",
+          "channel": 1,
+          "complementary": false
+        },
+        "pwm2": {
+          "pin": "PA1",
+          "timer": "TIM5",
+          "channel": 2,
+          "complementary": false
+        }
+      },
+      {
+        "id": 1,
+        "pwm1": {
+          "pin": "PA2",
+          "timer": "TIM5",
+          "channel": 3,
+          "complementary": false
+        },
+        "pwm2": {
+          "pin": "PA3",
+          "timer": "TIM5",
+          "channel": 4,
+          "complementary": false
+        }
+      },
+      {
+        "id": 2,
+        "pwm1": {
+          "pin": "PA5",
+          "timer": "TIM2",
+          "channel": 1,
+          "complementary": false
+        },
+        "pwm2": {
+          "pin": "PB3",
+          "timer": "TIM2",
+          "channel": 2,
+          "complementary": false
+        }
+      },
+      {
+        "id": 3,
+        "pwm1": {
+          "pin": "PB10",
+          "timer": "TIM2",
+          "channel": 3,
+          "complementary": false
+        },
+        "pwm2": {
+          "pin": "PB11",
+          "timer": "TIM2",
+          "channel": 4,
+          "complementary": false
+        }
+      }
+    ]
+  },
+  "encoders": [
+    {
+      "id": 0,
+      "timer": "TIM4",
+      "a": "PB6",
+      "b": "PB7"
+    }
+  ],
+  "gpio": [
+    {
+      "id": 0,
+      "pin": "PA2"
+    },
+    {
+      "id": 1,
+      "pin": "PA3"
+    },
+    {
+      "id": 2,
+      "pin": "PA4"
+    },
+    {
+      "id": 3,
+      "pin": "PA5"
+    }
+  ],
+  "status_leds": [
+    {
+      "id": 0,
+      "pin": "PA2",
+      "active_low": false
+    }
+  ],
+  "shared_pins": [
+    {
+      "pin": "PA2",
+      "users": [
+        "motors.1.pwm1",
+        "gpio.0",
+        "status_leds.0"
+      ],
+      "reason": "Legacy v0.1 mapping: LED and GPIO share motor 1 output; do not use simultaneously."
+    },
+    {
+      "pin": "PA3",
+      "users": [
+        "motors.1.pwm2",
+        "gpio.1"
+      ],
+      "reason": "Legacy v0.1 mapping: GPIO shares motor 1 output; do not use simultaneously."
+    },
+    {
+      "pin": "PA5",
+      "users": [
+        "motors.2.pwm1",
+        "gpio.3"
+      ],
+      "reason": "Legacy v0.1 mapping: GPIO shares motor 2 output; do not use simultaneously."
+    }
+  ]
+}
