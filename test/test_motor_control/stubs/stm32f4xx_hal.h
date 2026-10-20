@@ -5,6 +5,10 @@ typedef enum { HAL_OK, HAL_ERROR } HAL_StatusTypeDef;
 typedef enum { GPIO_PIN_RESET, GPIO_PIN_SET } GPIO_PinState;
 typedef struct { uint32_t ODR, IDR; } GPIO_TypeDef;
 typedef struct { uint32_t compare[4]; } TIM_TypeDef;
+typedef struct { uint32_t unused; } SPI_TypeDef;
+typedef struct { uint32_t unused; } I2C_TypeDef;
+#define I2C3 ((I2C_TypeDef *)3)
+#define GPIO_AF4_I2C3 4
 extern GPIO_TypeDef test_ports[5];
 extern TIM_TypeDef test_timers[12];
 #define GPIOA (&test_ports[0])
@@ -49,12 +53,15 @@ void HAL_RCC_GetClockConfig(RCC_ClkInitTypeDef *, uint32_t *);
 #define GPIO_SPEED_FREQ_LOW 0
 #define GPIO_SPEED_FREQ_HIGH 1
 #define GPIO_AF6_SPI3 6
-#define SPI3 ((void *)3)
+#define GPIO_AF5_SPI2 5
+#define SPI2 ((SPI_TypeDef *)2)
+#define SPI3 ((SPI_TypeDef *)3)
 #define SPI_MODE_MASTER 1
 #define SPI_DIRECTION_2LINES 2
 #define SPI_DATASIZE_8BIT 8
 #define SPI_POLARITY_LOW 0
 #define SPI_PHASE_2EDGE 1
+#define SPI_PHASE_1EDGE 0
 #define SPI_NSS_SOFT 1
 #define SPI_BAUDRATEPRESCALER_64 64
 #define SPI_FIRSTBIT_MSB 0
@@ -77,7 +84,7 @@ typedef struct { uint32_t MasterOutputTrigger, MasterSlaveMode; } TIM_MasterConf
 typedef struct {
     uint32_t Mode, Direction, DataSize, CLKPolarity, CLKPhase, NSS, BaudRatePrescaler, FirstBit;
 } SPI_InitTypeDef;
-typedef struct { void *Instance; SPI_InitTypeDef Init; } SPI_HandleTypeDef;
+typedef struct { SPI_TypeDef *Instance; SPI_InitTypeDef Init; } SPI_HandleTypeDef;
 #define __HAL_TIM_SET_COMPARE(t,c,v) ((t)->Instance->compare[(c)/4]=(v))
 #define __HAL_TIM_DISABLE_OCxPRELOAD(t,c) ((t)->noPreload |= 1u << ((c)/4))
 void HAL_GPIO_WritePin(GPIO_TypeDef *, uint16_t, GPIO_PinState);

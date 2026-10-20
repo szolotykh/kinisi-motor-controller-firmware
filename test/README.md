@@ -372,6 +372,19 @@ void test_calculate_velocity_correctly(void) {
 }
 ```
 
+## Board configuration generation (host tests)
+
+Run `python test/test_board_config/run_tests.py` with GCC or Clang on PATH, or
+set `CC` to its executable. This validates the JSON generator, deterministic
+output and `--check`, MCU/board selection, and rejection of unsafe or unsupported
+settings. It compiles all four generated C profiles and compares their mappings
+against a snapshot of the original manual header. It also tests production LED
+initialization and commands, including multiple LEDs and active-low polarity.
+The separate motor and INIT suites below check integration behavior.
+`python test/test_board_config/run_build_tests.py` additionally builds an isolated
+synthetic board revision and checks the compiled startup and command fault paths.
+It needs PlatformIO on PATH, or `--pio` set to its executable.
+
 ## Motor control models (host tests)
 
 Run `python test/test_motor_control/run_tests.py` with GCC or Clang on PATH,
@@ -384,3 +397,27 @@ reuse of running PWM channels. `test/test_position/run_tests.py` checks whole
 platform rollback when any driver fails; `test/test_time_sync/run_tests.py`
 checks that a failed driver cannot leave a PID/position controller running.
 Physical PWM polarity and electrical behavior require powered board tests.
+
+## Board temperature (host tests)
+
+Run `python test/test_temperature/run_tests.py` with GCC or Clang on PATH, or
+set `CC`. This compiles the production TMP102 driver against a fake HAL for all
+four boards. It checks I2C3 addressing and pin setup, signed temperature decoding,
+startup readiness, tick wraparound, configuration verification, I2C failures and
+recovery. Legacy builds link without sensor I2C functions. The board configuration
+suite checks sensor definitions and pin conflicts; the INIT suite checks protocol
+compatibility and temperature command framing. Physical readings require a board.
+Recovery tests model a timeout leaving BUSY asserted, configuration-transfer
+failures, SDA release after nine clocks, permanently low SDA/SCL, timer wrap,
+failed peripheral reinitialization, and two temperature sensors sharing the bus.
+They verify bounded failure and a fresh conversion wait after recovery.
+
+## IMU (host tests)
+
+Run `python test/test_imu/run_tests.py` with GCC or Clang on PATH, or set `CC`.
+It compiles the production BMI088 driver for all four board revisions and checks
+SPI2 pin/mode setup, independent chip selects, accel dummy bytes, device IDs,
+reset/write delays, signed six-axis SI conversion, settling and tick wraparound,
+configuration readback, errors and recovery. Legacy builds link without IMU SPI
+functions. Board generator tests check sensor/bus/pin definitions; INIT tests check
+the 48-byte `GET_IMU` reply and invalid requests. Host tests do not verify the PCB.

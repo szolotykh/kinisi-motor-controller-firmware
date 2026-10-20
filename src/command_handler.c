@@ -13,14 +13,16 @@
 #include "platform.h"
 #include "commands_handler.h"
 #include "hardware_i2c.h"
+#include "hw_temperature.h"
+#include "hw_imu.h"
 #include "stdbool.h"
 #include "initialization.h"
 #include "connection.h"
 #include "hw_clock.h"
 #include "command_requirements.h"
 #include "platform_position.h"
-#include "board_revision.h"
-#ifdef MP_V4
+#include "hw_config.h"
+#if MOTOR_CONTROL_MODEL == MOTOR_CONTROL_MODEL_ENABLE_DIRECTION
 #include "hw_drv8873.h"
 #endif
 
@@ -74,7 +76,7 @@ uint8_t command_handler(controller_command_t* cmd, void (*command_callback)(uint
             {
             {
                 controllers_manager_stop_controller(cmd->properties.set_motor_speed.motor_index);
-#ifdef MP_V4
+#if MOTOR_CONTROL_MODEL == MOTOR_CONTROL_MODEL_ENABLE_DIRECTION
                 if (cmd->properties.set_motor_speed.pwm != 0 &&
                     hw_drv8873_fault_active(cmd->properties.set_motor_speed.motor_index)) {
                     motor->stop(cmd->properties.set_motor_speed.motor_index);
@@ -504,6 +506,33 @@ uint8_t command_handler(controller_command_t* cmd, void (*command_callback)(uint
                 cmd->properties.set_platform_position.x,
                 cmd->properties.set_platform_position.y,
                 cmd->properties.set_platform_position.t});
+        case GET_IMU: {
+            hw_imu_sample_t sample;
+            switch (hw_imu_read(cmd->properties.get_imu.sensor_index, &sample)) {
+                case HW_IMU_UNAVAILABLE: return RESPONSE_SENSOR_NOT_AVAILABLE;
+                case HW_IMU_NOT_READY: return RESPONSE_SAMPLE_NOT_AVAILABLE;
+                case HW_IMU_OK: break;
+                default: return RESPONSE_INTERNAL_ERROR;
+            }
+            // Generated packed wire type keeps the protocol independent of driver layout.
+            const imu_sample response = {
+                sample.acceleration_x, sample.acceleration_y, sample.acceleration_z,
+                sample.angular_velocity_x, sample.angular_velocity_y, sample.angular_velocity_z
+            };
+            command_callback((uint8_t *)&response, sizeof(response));
+            return RESPONSE_OK;
+        }
+        case GET_TEMPERATURE: {
+            double celsius;
+            switch (hw_temperature_read(cmd->properties.get_temperature.sensor_index, &celsius)) {
+                case HW_TEMPERATURE_UNAVAILABLE: return RESPONSE_SENSOR_NOT_AVAILABLE;
+                case HW_TEMPERATURE_NOT_READY: return RESPONSE_SAMPLE_NOT_AVAILABLE;
+                case HW_TEMPERATURE_OK: break;
+                default: return RESPONSE_INTERNAL_ERROR;
+            }
+            command_callback((uint8_t *)&celsius, sizeof(celsius));
+            break;
+        }
         default: return RESPONSE_UNKNOWN_COMMAND;
     }
     return RESPONSE_OK;

@@ -5,7 +5,8 @@
 #include "stm32f4xx.h"
 #include "hw_gpio.h"
 #include "hw_motor.h"
-#include "board_revision.h"
+#include "hw_temperature.h"
+#include "hw_imu.h"
 #include "usb_device.h"
 #include "os_interface.h"
 #include "commands_manager.h"
@@ -19,9 +20,10 @@ int main(void)
 { 
     HAL_Init();
     SystemClock_Config();
-#ifdef MP_V4
+    // The hardware layer selects driver preparation from the board configuration.
     hw_motor_init();
-#endif
+    hw_temperature_init();
+    hw_imu_init();
     
     // Initialize GPIO interface
     const gpio_interface_t* gpio = get_gpio_interface();

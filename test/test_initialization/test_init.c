@@ -31,7 +31,7 @@ int main(void)
     init_response response = initialization_response();
     const unsigned char expected[] = {
         1, 0, KINISI_BOARD_VERSION_MINOR, KINISI_BOARD_VERSION_PATCH,
-        2, 3, 1, 0x78, 0x56, 0x34, 0x12, 0xef, 0xcd, 0xab, 0x90,
+        2, 5, 0, 0x78, 0x56, 0x34, 0x12, 0xef, 0xcd, 0xab, 0x90,
     };
     assert(sizeof(response) == sizeof(expected));
     assert(memcmp(&response, expected, sizeof(expected)) == 0);
@@ -52,6 +52,12 @@ int main(void)
     command.properties.init.protocol_minor = 0;
     assert(initialization_validate(&command) == INIT_STATUS_OK);
     command.properties.init.protocol_minor = 1;
+    assert(initialization_validate(&command) == INIT_STATUS_OK);
+    command.properties.init.protocol_minor = 3; // Existing clients remain compatible.
+    assert(initialization_validate(&command) == INIT_STATUS_OK);
+    command.properties.init.protocol_minor = 4; // Temperature command available.
+    assert(initialization_validate(&command) == INIT_STATUS_OK);
+    command.properties.init.protocol_minor = 5; // IMU command available.
     assert(initialization_validate(&command) == INIT_STATUS_OK);
     command.properties.init.sdk_type = 255;
     assert(initialization_validate(&command) == INIT_STATUS_INVALID);

@@ -5,3 +5,5 @@
 .vscode/ipch
 .aider*
 .env
+__pycache__/
+*.pyc

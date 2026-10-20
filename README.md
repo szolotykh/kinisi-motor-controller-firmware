@@ -13,6 +13,24 @@ Python code to control motor controller can be find [here](https://github.com/sz
 
 API v2 is not compatible with API v1. Clients must support API v2 to use this firmware.
 
+## Communication protocol versions
+
+The communication protocol uses `major.minor.patch`. A major release introduces
+breaking changes, a minor release adds features while preserving existing
+commands, and a patch release provides compatible fixes. The client and firmware
+must support the same protocol major; the firmware must also meet the client's
+minimum required minor. Optional commands are checked against the firmware's
+reported protocol version. Patch differences do not block connection.
+
+Board revision, client library release and firmware build identity are separate
+from the communication protocol version. See the
+[protocol versioning policy](docs/initialization.md#protocol-versioning-and-compatibility)
+for command evolution rules and compatibility examples.
+
+Board definitions also generate a compact [client profile bundle](docs/board-profiles.md)
+for resource counts and hardware features. Clients select a profile using the
+board identity reported during initialization and check protocol support separately.
+
 See [position control](docs/position-control.md) and [velocity PID tuning](docs/velocity-pid.md) for setup details.
 
 ## Generating Commands from commands.json
@@ -51,6 +69,29 @@ This command will build the project for the `genericSTM32F405RG` configuration.
 For board v0.4 (STM32F405VGT6), use `pio run -e v0_4`. The original
 `genericSTM32F405RG` environment selects v0.3. See
 [board v0.4 support](docs/board-v0.4.md) for motor configuration and validation.
+
+## Board configuration
+
+Hardware definitions for v0.1 through v0.4 live in [boards](boards/README.md).
+Edit the board JSON and generate the C configuration with:
+
+```sh
+python tools/board_config_generator/generator.py
+```
+
+This produces `include/hw_config.h` (C structures and compile-time selectors)
+and `include/board_revision.h` (board identity). Both files are checked in;
+PlatformIO regenerates them before firmware builds. Use `--check` to detect
+stale output without changing files. JSON is never parsed on the MCU.
+
+Explicit build targets are `v0_1`, `v0_2`, `v0_3`, and `v0_4`:
+
+```sh
+pio run -e v0_1 -e v0_2 -e v0_3 -e v0_4
+```
+
+The original `genericSTM32F405RG` target remains v0.3. Builds reject conflicting
+board selections and an MCU that does not match the selected JSON definition.
 
 ## Running Tests
 

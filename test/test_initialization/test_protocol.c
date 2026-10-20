@@ -26,6 +26,19 @@ static void send_reply(uint8_t *bytes, uint8_t length)
 static uint8_t handle(controller_command_t *command, protocol_send_fn callback)
 {
     ++calls;
+    if (command->commandType == GET_IMU) {
+        if (command->properties.get_imu.sensor_index != 0) return RESPONSE_SENSOR_NOT_AVAILABLE;
+        imu_sample sample = {0, -1, 9.80665, 0.125, -0.25, 0.5};
+        callback((uint8_t *)&sample, sizeof(sample));
+        return RESPONSE_OK;
+    }
+    if (command->commandType == GET_TEMPERATURE) {
+        if (command->properties.get_temperature.sensor_index != 0)
+            return RESPONSE_SENSOR_NOT_AVAILABLE;
+        double temperature = -0.0625;
+        callback((uint8_t *)&temperature, sizeof(temperature));
+        return RESPONSE_OK;
+    }
     if (command->commandType == INIT) {
         uint8_t error = initialization_validate(command);
         if (error) return error;
@@ -120,6 +133,20 @@ int main(void)
     uint8_t error_request[] = {KINISI_MESSAGE_ERROR, 42, 0};
     expect_error(error_request, sizeof(error_request), RESPONSE_UNKNOWN_COMMAND);
 
+    uint8_t imu_request[] = {GET_IMU, 0x34, 0x12, 0};
+    assert(GET_IMU == 0x51 && command_request_size(GET_IMU) == 4);
+    assert(sizeof(imu_sample) == 48);
+    protocol_dispatch(imu_request, sizeof(imu_request), handle, send_reply);
+    assert(received_length == 52 && received[0] == 51 && received[1] == GET_IMU);
+    assert(received[2] == 0x34 && received[3] == 0x12);
+    const uint8_t minus_one[] = {0, 0, 0, 0, 0, 0, 0xF0, 0xBF};
+    assert(!memcmp(received + 12, minus_one, sizeof(minus_one)));
+    imu_request[3] = 255;
+    expect_error(imu_request, sizeof(imu_request), RESPONSE_SENSOR_NOT_AVAILABLE);
+    expect_error(imu_request, sizeof(imu_request) - 1, RESPONSE_INVALID_LENGTH);
+    uint8_t long_imu[] = {GET_IMU, 1, 0, 0, 0};
+    expect_error(long_imu, sizeof(long_imu), RESPONSE_INVALID_LENGTH);
+
     // Every possible split of an INIT frame, followed by another command.
     char framed[sizeof(init) + 5];
     framed[0] = sizeof(init);
@@ -185,5 +212,17 @@ int main(void)
                 j==0 || j==3 ? RESPONSE_INVALID_ARGUMENT : RESPONSE_OK);
         }
     }
+    // New sensor command preserves framing, signed double payload and correlation.
+    uint8_t temperature_request[] = {GET_TEMPERATURE, 0x34, 0x12, 0};
+    assert(GET_TEMPERATURE == 0x50 && command_request_size(GET_TEMPERATURE) == 4);
+    protocol_dispatch(temperature_request, sizeof(temperature_request), handle, send_reply);
+    const uint8_t temperature_reply[] = {11, 0x50, 0x34, 0x12, 0, 0, 0, 0, 0, 0, 0xB0, 0xBF};
+    assert(received_length == sizeof(temperature_reply));
+    assert(memcmp(received, temperature_reply, sizeof(temperature_reply)) == 0);
+    temperature_request[3] = 255;
+    expect_error(temperature_request, sizeof(temperature_request), RESPONSE_SENSOR_NOT_AVAILABLE);
+    expect_error(temperature_request, 3, RESPONSE_INVALID_LENGTH);
+    uint8_t long_temperature_request[] = {GET_TEMPERATURE, 1, 0, 0, 0};
+    expect_error(long_temperature_request, sizeof(long_temperature_request), RESPONSE_INVALID_LENGTH);
     return 0;
 }
