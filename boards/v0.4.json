@@ -9,13 +9,44 @@
     "part": "STM32F405VGT6"
   },
   "buses": {
+    "imu_spi": {
+      "peripheral": "SPI2",
+      "sck": "PB13",
+      "miso": "PC2",
+      "mosi": "PC3"
+    },
     "motor_spi": {
       "peripheral": "SPI3",
       "sck": "PC10",
       "miso": "PC11",
       "mosi": "PC12"
+    },
+    "sensor_i2c": {
+      "peripheral": "I2C3",
+      "scl": "PA8",
+      "sda": "PC9",
+      "frequency_hz": 100000
     }
   },
+  "imu_sensors": [
+    {
+      "id": 0,
+      "type": "BMI088",
+      "bus": "imu_spi",
+      "accel_chip_select": "PD10",
+      "gyro_chip_select": "PD12",
+      "accel_interrupt": "PD11",
+      "gyro_interrupt": "PD9"
+    }
+  ],
+  "temperature_sensors": [
+    {
+      "id": 0,
+      "type": "TMP102",
+      "bus": "sensor_i2c",
+      "address": 72
+    }
+  ],
   "motors": {
     "control_model": "enable_direction",
     "pwm_frequency_hz": 100000,

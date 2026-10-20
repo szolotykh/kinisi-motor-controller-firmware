@@ -29,9 +29,50 @@ class BoardConfigTests(unittest.TestCase):
             self.assertEqual(before, {p.name: (p.read_bytes(), p.stat().st_mtime_ns) for p in Path(tmp).glob("*.h")})
             header = Path(tmp) / "hw_config.h"
             header.write_text("stale", encoding="utf-8")
-            with self.assertRaisesRegex(g.ConfigError, "stale generated headers"):
+            with self.assertRaisesRegex(g.ConfigError, "stale generated board files"):
                 g.generate(output_dir=tmp, check=True)
             self.assertEqual(header.read_text(), "stale")
+
+    def test_public_profiles_are_derived_without_wiring_details(self):
+        output = g.render(self.boards)
+        bundle = json.loads(output["board_profiles.json"])
+        self.assertEqual(bundle["schema_version"], 1)
+        self.assertEqual(len(bundle["boards"]), 4)
+        for board, profile in zip(self.boards, bundle["boards"]):
+            self.assertEqual(profile["board"], {k: board["board"][k] for k in ("model", "revision")})
+            self.assertEqual(profile["resources"]["motors"], len(board["motors"]["channels"]))
+            self.assertEqual(profile["resources"]["encoders"], len(board["encoders"]))
+            self.assertEqual(profile["resources"]["gpio"], len(board["gpio"]))
+            self.assertEqual(profile["resources"]["status_leds"], len(board["status_leds"]))
+            keys = set()
+            def collect(value):
+                if isinstance(value, dict):
+                    keys.update(value)
+                    for v in value.values(): collect(v)
+                elif isinstance(value, list):
+                    for v in value: collect(v)
+            collect(profile)
+            self.assertFalse(keys & {"pin", "bus", "buses", "timer", "peripheral", "mcu", "address",
+                                     "build_define", "control_model", "chip_select", "sense_resistor_ohm"})
+        v4 = bundle["boards"][3]
+        self.assertEqual(v4["sensors"], {"temperature": [{"id": 0}],
+                         "imu": [{"id": 0, "accelerometer": True, "gyroscope": True}]})
+        self.assertTrue(all(m["current_sense"] and m["current_limit"] for m in v4["motor_features"]))
+        for profile in bundle["boards"][:3]:
+            self.assertEqual(profile["sensors"], {"temperature": [], "imu": []})
+            self.assertTrue(all(not m["current_sense"] and not m["current_limit"] for m in profile["motor_features"]))
+
+    def test_profile_changes_are_checked_with_headers(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            g.generate(output_dir=tmp)
+            profile = Path(tmp) / "board_profiles.json"
+            before = profile.stat().st_mtime_ns
+            self.assertEqual(g.generate(output_dir=tmp), [])
+            self.assertEqual(profile.stat().st_mtime_ns, before)
+            profile.write_text("stale")
+            with self.assertRaisesRegex(g.ConfigError, "stale generated board files: board_profiles.json"):
+                g.generate(output_dir=tmp, check=True)
+            self.assertEqual(profile.read_text(), "stale")
 
     def test_invalid_input_never_overwrites_output(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -245,6 +286,83 @@ class BoardConfigTests(unittest.TestCase):
             (Path(tmp) / "copy.json").write_text(json.dumps(board))
             with self.assertRaisesRegex(g.ConfigError, "duplicate board model/revision"):
                 g.load_boards(tmp)
+
+    def test_imu_sensor_validation(self):
+        for key, value, message in (
+                ("type", "unknown", "unsupported sensor"),
+                ("bus", "missing", "unknown bus"),
+                ("bus", "motor_spi", "requires SPI2"),
+                ("bus", "sensor_i2c", "requires SPI2"),
+                ("accel_chip_select", "PD12", "pin PD12 is shared"),
+                ("gyro_chip_select", "PA11", "reserved by firmware"),
+                ("accel_interrupt", "PD99", "invalid pin"),
+                ("gyro_interrupt", "PD10", "pin PD10 is shared"),
+                ("id", 1, "IDs must be")):
+            with self.subTest(key=key, value=value):
+                board = copy.deepcopy(self.v4)
+                board["imu_sensors"][0][key] = value
+                self.reject(board, message)
+        del self.v4["imu_sensors"][0]["accel_chip_select"]
+        self.reject(self.v4, "missing fields.*accel_chip_select")
+
+    def test_imu_bus_and_optional_presence(self):
+        board = copy.deepcopy(self.v4)
+        board["buses"]["imu_spi"]["mosi"] = "PB15"
+        self.reject(board, "supported SPI routes")
+        board = copy.deepcopy(self.v4)
+        board["imu_sensors"] = []
+        self.reject(board, "unused bus definition")
+        del board["buses"]["imu_spi"]
+        g.validate(board)
+        self.assertIn("#define NUMBER_IMU_SENSORS 0", g.render([board])["hw_config.h"])
+        del board["imu_sensors"]
+        g.validate(board)
+
+    def test_temperature_sensor_validation(self):
+        for key, value, message in (
+                ("type", "TMP117", "unsupported sensor"),
+                ("bus", "missing", "unknown bus"),
+                ("bus", "motor_spi", "requires I2C3"),
+                ("address", 0x90, "expected integer"),
+                ("address", 0x47, "expected integer"),
+                ("address", True, "expected integer"),
+                ("id", 1, "IDs must be")):
+            with self.subTest(key=key, value=value):
+                board = copy.deepcopy(self.v4)
+                board["temperature_sensors"][0][key] = value
+                self.reject(board, message)
+        self.v4["temperature_sensors"].append(dict(id=1, type="TMP102", bus="sensor_i2c", address=0x48))
+        self.reject(self.v4, "duplicate I2C address")
+        self.v4["temperature_sensors"][1]["address"] = 0x49
+        g.validate(self.v4)
+        self.assertIn("#define NUMBER_TEMPERATURE_SENSORS 2", g.render([self.v4])["hw_config.h"])
+
+    def test_temperature_bus_validation(self):
+        for key, value, message in (("sda", "PB11", "supported I2C route"),
+                                    ("frequency_hz", 400000, "expected integer")):
+            board = copy.deepcopy(self.v4)
+            board["buses"]["sensor_i2c"][key] = value
+            self.reject(board, message)
+        self.v4["motors"]["driver"]["bus"] = "sensor_i2c"
+        self.reject(self.v4, "requires SPI3")
+        self.v4 = copy.deepcopy(self.boards[3])
+        self.v4["buses"]["second_i2c"] = copy.deepcopy(self.v4["buses"]["sensor_i2c"])
+        self.reject(self.v4, "peripheral already used")
+        self.v4 = copy.deepcopy(self.boards[3])
+        self.v4["gpio"][0]["pin"] = "PA8"
+        self.reject(self.v4, "pin PA8 is shared")
+
+    def test_boards_without_temperature_sensor(self):
+        for sensor_list in ([], None):
+            board = copy.deepcopy(self.v4)
+            if sensor_list is None:
+                del board["temperature_sensors"]
+            else:
+                board["temperature_sensors"] = sensor_list
+            self.reject(board, "unused bus definition")
+            del board["buses"]["sensor_i2c"]
+            g.validate(board)
+            self.assertIn("#define NUMBER_TEMPERATURE_SENSORS 0", g.render([board])["hw_config.h"])
 
 
 if __name__ == "__main__":

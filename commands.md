@@ -1,6 +1,6 @@
 # Kinisi motor controller commands
 
-**Protocol 2.3.1** · Generated from [commands.json](commands.json)
+**Protocol 2.5.0** · Generated from [commands.json](commands.json)
 
 [Command index](#command-index) · [Wire format](#wire-format) · [Error codes](#error-codes)
 
@@ -10,6 +10,8 @@
 
 | Command | Code | Direction | Response |
 | --- | --- | --- | --- |
+| [`GET_TEMPERATURE`](#get_temperature-0x50) | `0x50` | Client → controller | `double` |
+| [`GET_IMU`](#get_imu-0x51) | `0x51` | Client → controller | `imu_sample` |
 | [`INITIALIZE_MOTOR`](#initialize_motor-0x01) | `0x01` | Client → controller | ACK |
 | [`SET_MOTOR_SPEED`](#set_motor_speed-0x02) | `0x02` | Client → controller | ACK |
 | [`STOP_MOTOR`](#stop_motor-0x03) | `0x03` | Client → controller | ACK |
@@ -90,6 +92,71 @@ Multi-byte fields are little-endian. Length counts all bytes after itself. Param
 See [response framing](docs/responses.md) and [time synchronization](docs/time-sync.md) for details.
 
 ## Commands
+
+### GET_TEMPERATURE (0x50)
+
+**Client → controller** · **Payload:** 1 bytes
+
+Protocol 2.4: read the latest board temperature in degrees Celsius. Sensor 0 is the TMP102 on v0.4. Sampling runs at 4 Hz; faster reads may repeat a sample. Returns SAMPLE_NOT_AVAILABLE during the first 300 ms after sensor initialization or recovery, SENSOR_NOT_AVAILABLE when the board has no such sensor, and INTERNAL_ERROR on I2C or configuration failure.
+
+#### Parameters
+
+| Parameter | Type | Bytes | Description |
+| --- | --- | ---: | --- |
+| `sensor_index` | `uint8_t` | 1 | Zero-based index in the board temperature_sensors array. |
+
+#### Response
+
+**Controller → client** · `double` · **Payload:** 8 bytes
+
+Latest temperature in degrees Celsius, encoded as a little-endian IEEE 754 64-bit double.
+
+| Parameter | Type | Bytes | Description |
+| --- | --- | ---: | --- |
+| `temperature_celsius` | `double` | 8 | Latest temperature in degrees Celsius, encoded as a little-endian IEEE 754 64-bit double. |
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`SAMPLE_NOT_AVAILABLE`](#error-sample-not-available) (10) · [`INTERNAL_ERROR`](#error-internal-error) (6)
+
+[Back to command index](#command-index)
+
+---
+
+### GET_IMU (0x51)
+
+**Client → controller** · **Payload:** 1 bytes
+
+Protocol 2.5: read the latest accelerometer and gyroscope samples in native sensor axes. Acceleration is in m/s^2 and includes gravity; angular velocity is in rad/s. BMI088 uses +/-6 g and +/-500 degrees/s at 100 Hz. Each three-axis sample is coherent, but accel and gyro are not time-synchronized. Faster requests may repeat samples. No orientation or calibration is applied. Returns SAMPLE_NOT_AVAILABLE during the 50 ms settling interval after initialization or recovery, SENSOR_NOT_AVAILABLE for an absent sensor, and INTERNAL_ERROR on SPI, identity or configuration failure.
+
+#### Parameters
+
+| Parameter | Type | Bytes | Description |
+| --- | --- | ---: | --- |
+| `sensor_index` | `uint8_t` | 1 | Zero-based index in the board imu_sensors array. |
+
+#### Response
+
+**Controller → client** · `imu_sample` · **Payload:** 48 bytes
+
+Six little-endian IEEE 754 doubles, 48 bytes total.
+
+| Parameter | Type | Bytes | Description |
+| --- | --- | ---: | --- |
+| `acceleration_x` | `double` | 8 | X acceleration in m/s^2, including gravity. |
+| `acceleration_y` | `double` | 8 | Y acceleration in m/s^2, including gravity. |
+| `acceleration_z` | `double` | 8 | Z acceleration in m/s^2, including gravity. |
+| `angular_velocity_x` | `double` | 8 | X angular velocity in rad/s. |
+| `angular_velocity_y` | `double` | 8 | Y angular velocity in rad/s. |
+| `angular_velocity_z` | `double` | 8 | Z angular velocity in rad/s. |
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`SAMPLE_NOT_AVAILABLE`](#error-sample-not-available) (10) · [`INTERNAL_ERROR`](#error-internal-error) (6)
+
+[Back to command index](#command-index)
+
+---
 
 ### INITIALIZE_MOTOR (0x01)
 
@@ -1766,9 +1833,10 @@ Errors use the shared ERROR message. Each command above links to its possible er
 | 7 | <a id="error-clock-not-ready"></a>`CLOCK_NOT_READY` | Initial clock setup is incomplete; wait for READY. Uptime mode also supports READY. |
 | 8 | <a id="error-time-sync-failed"></a>`TIME_SYNC_FAILED` | Initial time sync exhausted its attempts without a valid sample. |
 | 9 | <a id="error-odometry-not-initialized"></a>`ODOMETRY_NOT_INITIALIZED` | Odometry is not running; start odometry before requesting a measurement. |
-| 10 | <a id="error-sample-not-available"></a>`SAMPLE_NOT_AVAILABLE` | Odometry is running but has no measurement yet, including immediately after reset; retry after an update. |
+| 10 | <a id="error-sample-not-available"></a>`SAMPLE_NOT_AVAILABLE` | The requested measurement is not ready yet, including after initialization or reset; retry after an update. |
 | 11 | <a id="error-encoder-not-initialized"></a>`ENCODER_NOT_INITIALIZED` | Initialize the encoder before reading it or starting encoder odometry. |
 | 12 | <a id="error-platform-not-initialized"></a>`PLATFORM_NOT_INITIALIZED` | Initialize a platform before performing this operation. |
 | 13 | <a id="error-motor-not-initialized"></a>`MOTOR_NOT_INITIALIZED` | Initialize the motor before setting its speed. |
 | 14 | <a id="error-controller-not-initialized"></a>`CONTROLLER_NOT_INITIALIZED` | Start or initialize the closed-loop controller before setting its target. |
 | 15 | <a id="error-init-required"></a>`INIT_REQUIRED` | Send a valid INIT request before performing this connection-dependent operation. |
+| 16 | <a id="error-sensor-not-available"></a>`SENSOR_NOT_AVAILABLE` | The selected sensor is not defined on this board. |

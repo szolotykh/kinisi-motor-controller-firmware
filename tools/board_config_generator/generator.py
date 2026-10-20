@@ -52,9 +52,9 @@ def boolean(value, at):
     require(type(value) is bool, f"{at}: expected true or false")
 
 
-def entries(value, maximum, at):
-    require(isinstance(value, list) and 1 <= len(value) <= maximum,
-            f"{at}: expected 1..{maximum} entries")
+def entries(value, maximum, at, minimum=1):
+    require(isinstance(value, list) and minimum <= len(value) <= maximum,
+            f"{at}: expected {minimum}..{maximum} entries")
     for index, item in enumerate(value):
         require(isinstance(item, dict) and type(item.get("id")) is int and item["id"] == index,
                 f"{at}: IDs must be unique, contiguous and ordered from 0")
@@ -63,7 +63,7 @@ def entries(value, maximum, at):
 
 def validate(board):
     fields(board, ("schema_version", "board", "mcu", "buses", "motors", "encoders", "gpio", "status_leds"),
-           ("shared_pins",))
+           ("shared_pins", "temperature_sensors", "imu_sensors"))
     integer(board["schema_version"], 1, 1, "schema_version")
     identity = board["board"]
     fields(identity, ("model", "revision", "build_define"), at="board")
@@ -102,13 +102,49 @@ def validate(board):
         timer_channels.add(key)
 
     require(isinstance(board["buses"], dict), "buses: expected an object")
+    peripherals, used_buses = set(), set()
     for name, bus in board["buses"].items():
         require(re.fullmatch(r"[a-z][a-z0-9_]*", name), "buses: invalid bus name")
-        fields(bus, ("peripheral", "sck", "miso", "mosi"), at=f"buses.{name}")
-        require(bus == {"peripheral": "SPI3", "sck": "PC10", "miso": "PC11", "mosi": "PC12"},
-                f"buses.{name}: currently supported SPI route is SPI3 on PC10/PC11/PC12")
-        for key in ("sck", "miso", "mosi"):
+        require(isinstance(bus, dict), f"buses.{name}: expected an object")
+        if bus.get("peripheral") == "I2C3":
+            fields(bus, ("peripheral", "scl", "sda", "frequency_hz"), at=f"buses.{name}")
+            require(bus["scl"] == "PA8" and bus["sda"] == "PC9",
+                    f"buses.{name}: supported I2C route is I2C3 on PA8/PC9")
+            integer(bus["frequency_hz"], 100000, 100000, f"buses.{name}.frequency_hz")
+            keys = ("scl", "sda")
+        else:
+            fields(bus, ("peripheral", "sck", "miso", "mosi"), at=f"buses.{name}")
+            require(bus in ({"peripheral": "SPI3", "sck": "PC10", "miso": "PC11", "mosi": "PC12"},
+                            {"peripheral": "SPI2", "sck": "PB13", "miso": "PC2", "mosi": "PC3"}),
+                    f"buses.{name}: supported SPI routes are SPI3 on PC10/PC11/PC12 or SPI2 on PB13/PC2/PC3")
+            keys = ("sck", "miso", "mosi")
+        require(bus["peripheral"] not in peripherals, f"buses.{name}: peripheral already used")
+        peripherals.add(bus["peripheral"])
+        for key in keys:
             pin(bus[key], f"buses.{name}.{key}")
+
+    addresses = set()
+    for sensor in entries(board.get("temperature_sensors", []), 4, "temperature_sensors", minimum=0):
+        at = f"temperature_sensors.{sensor['id']}"
+        fields(sensor, ("id", "type", "bus", "address"), at=at)
+        require(sensor["type"] == "TMP102", at + ".type: unsupported sensor")
+        require(isinstance(sensor["bus"], str) and sensor["bus"] in board["buses"], at + ".bus: unknown bus")
+        require(board["buses"][sensor["bus"]]["peripheral"] == "I2C3", at + ".bus: TMP102 requires I2C3")
+        integer(sensor["address"], 0x48, 0x4B, at + ".address")
+        require(sensor["address"] not in addresses, at + ".address: duplicate I2C address")
+        addresses.add(sensor["address"])
+        used_buses.add(sensor["bus"])
+
+    for sensor in entries(board.get("imu_sensors", []), 4, "imu_sensors", minimum=0):
+        at = f"imu_sensors.{sensor['id']}"
+        fields(sensor, ("id", "type", "bus", "accel_chip_select", "gyro_chip_select",
+                        "accel_interrupt", "gyro_interrupt"), at=at)
+        require(sensor["type"] == "BMI088", at + ".type: unsupported sensor")
+        require(isinstance(sensor["bus"], str) and sensor["bus"] in board["buses"], at + ".bus: unknown bus")
+        require(board["buses"][sensor["bus"]]["peripheral"] == "SPI2", at + ".bus: BMI088 requires SPI2")
+        for key in ("accel_chip_select", "gyro_chip_select", "accel_interrupt", "gyro_interrupt"):
+            pin(sensor[key], at + "." + key)
+        used_buses.add(sensor["bus"])
 
     motors = board["motors"]
     fields(motors, ("control_model", "pwm_frequency_hz", "channels"), ("driver",), at="motors")
@@ -121,11 +157,13 @@ def validate(board):
         fields(driver, ("type", "bus", "slew_rate_v_per_us"), at="motors.driver")
         require(driver["type"] == "DRV8873S", "motors.driver.type: unsupported driver")
         require(isinstance(driver["bus"], str) and driver["bus"] in board["buses"], "motors.driver.bus: unknown bus")
+        require(board["buses"][driver["bus"]]["peripheral"] == "SPI3", "motors.driver.bus: DRV8873S requires SPI3")
         require(type(driver["slew_rate_v_per_us"]) in (int, float) and driver["slew_rate_v_per_us"] in SLEW_RATES,
                 "motors.driver.slew_rate_v_per_us: unsupported DRV8873 slew rate")
-        require(set(board["buses"]) == {driver["bus"]}, "buses: unused bus definition")
+        used_buses.add(driver["bus"])
     else:
-        require("driver" not in motors and not board["buses"], "pwm: SPI driver/buses are not supported")
+        require("driver" not in motors, "pwm: SPI driver/buses are not supported")
+    require(set(board["buses"]) == used_buses, "buses: unused bus definition")
     for motor in entries(motors["channels"], 4, "motors.channels"):
         user = f"motors.{motor['id']}"
         if enable_direction:
@@ -260,6 +298,27 @@ def pwm(value):
         value["channel"], value["pin"][1], value["pin"][2:], str(value["complementary"]).lower())
 
 
+def client_profile(board):
+    """Project hardware definitions into public, language-neutral feature metadata."""
+    return {
+        "board": {"model": board["board"]["model"], "revision": board["board"]["revision"]},
+        "resources": {
+            "motors": len(board["motors"]["channels"]), "encoders": len(board["encoders"]),
+            "gpio": len(board["gpio"]), "status_leds": len(board["status_leds"]),
+        },
+        "motor_features": [{
+            "id": motor["id"],
+            "current_sense": "current_sense" in motor,
+            "current_limit": "hardware_current_limit" in motor,
+        } for motor in board["motors"]["channels"]],
+        "sensors": {
+            "temperature": [{"id": s["id"]} for s in board.get("temperature_sensors", [])],
+            "imu": [{"id": s["id"], "accelerometer": True, "gyroscope": True}
+                    for s in board.get("imu_sensors", [])],
+        },
+    }
+
+
 def render(boards):
     banner = "// Generated by tools/board_config_generator/generator.py. DO NOT EDIT.\n// Source: boards/*.json\n#pragma once\n"
     identity = [banner]
@@ -280,8 +339,33 @@ def render(boards):
         hardware += [selection, f"#define MOTOR_CONTROL_MODEL MOTOR_CONTROL_MODEL_{model}",
                      f"#define MOTOR_PWM_FREQUENCY_HZ {motors['pwm_frequency_hz']}U"]
         for count, items in (("MOTORS", motors["channels"]), ("ENCODERS", board["encoders"]),
-                             ("GPIO_PINS", board["gpio"]), ("STATUS_LEDS", board["status_leds"])):
+                             ("GPIO_PINS", board["gpio"]), ("STATUS_LEDS", board["status_leds"]),
+                             ("TEMPERATURE_SENSORS", board.get("temperature_sensors", [])),
+                             ("IMU_SENSORS", board.get("imu_sensors", []))):
             hardware.append(f"#define NUMBER_{count} {len(items)}")
+        sensors = board.get("temperature_sensors", [])
+        if sensors:
+            bus = board["buses"][sensors[0]["bus"]]
+            hardware += [f"#define TEMPERATURE_I2C_CLK_ENABLE() __HAL_RCC_{bus['peripheral']}_CLK_ENABLE()",
+                         "static const i2c_bus_info_t temperature_i2c_info = {",
+                         f"    .instance = {bus['peripheral']}, .alternate = GPIO_AF4_I2C3, .frequencyHz = {bus['frequency_hz']}U,",
+                         f"    .scl = {gpio(bus['scl'])}, .sda = {gpio(bus['sda'])}", "};",
+                         "static const temperature_sensor_info_t temperature_sensor_info[NUMBER_TEMPERATURE_SENSORS] = {"]
+            hardware += [f"    [{s['id']}] = {{.type = TEMPERATURE_SENSOR_TMP102, .address = 0x{s['address']:02X}U}}," for s in sensors]
+            hardware.append("};")
+        imus = board.get("imu_sensors", [])
+        if imus:
+            bus = board["buses"][imus[0]["bus"]]
+            hardware += [f"#define IMU_SPI_CLK_ENABLE() __HAL_RCC_{bus['peripheral']}_CLK_ENABLE()",
+                         "static const spi_bus_info_t imu_spi_info = {",
+                         f"    .instance = {bus['peripheral']}, .alternate = GPIO_AF5_SPI2,",
+                         f"    .sck = {gpio(bus['sck'])}, .miso = {gpio(bus['miso'])}, .mosi = {gpio(bus['mosi'])}", "};",
+                         "static const imu_sensor_info_t imu_sensor_info[NUMBER_IMU_SENSORS] = {"]
+            for sensor in imus:
+                hardware += [f"    [{sensor['id']}] = {{.type = IMU_SENSOR_BMI088,",
+                             f"        .accelChipSelect = {gpio(sensor['accel_chip_select'])}, .gyroChipSelect = {gpio(sensor['gyro_chip_select'])},",
+                             f"        .accelInterrupt = {gpio(sensor['accel_interrupt'])}, .gyroInterrupt = {gpio(sensor['gyro_interrupt'])}}},"]
+            hardware.append("};")
         if model == "ENABLE_DIRECTION":
             driver = motors["driver"]
             bus = board["buses"][driver["bus"]]
@@ -325,7 +409,9 @@ def render(boards):
         hardware += ["};", ""]
     identity.append("#endif\n")
     hardware.append("#endif\n")
-    return {"board_revision.h": "\n".join(identity), "hw_config.h": "\n".join(hardware)}
+    profiles = {"schema_version": 1, "boards": [client_profile(b) for b in boards]}
+    return {"board_revision.h": "\n".join(identity), "hw_config.h": "\n".join(hardware),
+            "board_profiles.json": json.dumps(profiles, indent=2) + "\n"}
 
 
 def generate(boards_dir=ROOT / "boards", output_dir=ROOT / "include", check=False):
@@ -339,7 +425,7 @@ def generate(boards_dir=ROOT / "boards", output_dir=ROOT / "include", check=Fals
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text(content, encoding="utf-8", newline="\n")
     if check and stale:
-        raise ConfigError("stale generated headers: " + ", ".join(stale) + "; run tools/board_config_generator/generator.py")
+        raise ConfigError("stale generated board files: " + ", ".join(stale) + "; run tools/board_config_generator/generator.py")
     return stale
 
 
@@ -347,7 +433,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--boards-dir", type=Path, default=ROOT / "boards")
     parser.add_argument("--output-dir", type=Path, default=ROOT / "include")
-    parser.add_argument("--check", action="store_true", help="fail if generated headers differ; do not write files")
+    parser.add_argument("--check", action="store_true", help="fail if generated headers or client profiles differ; do not write files")
     args = parser.parse_args()
     try:
         changed = generate(args.boards_dir, args.output_dir, args.check)

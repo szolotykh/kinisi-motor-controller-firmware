@@ -5,6 +5,8 @@
 #include "stm32f4xx.h"
 #include "hw_gpio.h"
 #include "hw_motor.h"
+#include "hw_temperature.h"
+#include "hw_imu.h"
 #include "usb_device.h"
 #include "os_interface.h"
 #include "commands_manager.h"
@@ -20,6 +22,8 @@ int main(void)
     SystemClock_Config();
     // The hardware layer selects driver preparation from the board configuration.
     hw_motor_init();
+    hw_temperature_init();
+    hw_imu_init();
     
     // Initialize GPIO interface
     const gpio_interface_t* gpio = get_gpio_interface();

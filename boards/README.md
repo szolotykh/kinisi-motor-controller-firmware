@@ -20,8 +20,15 @@ python tools/board_config_generator/generator.py
 The generator validates the definitions and produces
 [hw_config.h](../include/hw_config.h) and
 [board_revision.h](../include/board_revision.h). Edit the JSON sources and commit
-the regenerated headers alongside them. PlatformIO also runs generation before
+the regenerated outputs alongside them. The same pass also produces a compact
+[public board profile bundle](../include/board_profiles.json) for client libraries.
+PlatformIO runs generation before
 firmware builds and checks that the selected board matches the configured MCU.
+
+Profiles contain board identity, resource counts and hardware features, without
+pin or peripheral assignments. They describe physical hardware; firmware command
+support is checked separately. See [client board profiles](../docs/board-profiles.md)
+for the format and library integration.
 
 To check that generated files are current without modifying them:
 

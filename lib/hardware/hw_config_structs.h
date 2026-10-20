@@ -33,6 +33,36 @@ typedef struct {
 	gpio_info_t mosi;
 } spi_bus_info_t;
 
+typedef struct {
+	I2C_TypeDef* instance;
+	uint32_t alternate;
+	uint32_t frequencyHz;
+	gpio_info_t scl;
+	gpio_info_t sda;
+} i2c_bus_info_t;
+
+typedef enum {
+	TEMPERATURE_SENSOR_TMP102 = 1
+} temperature_sensor_type_t;
+
+typedef struct {
+	temperature_sensor_type_t type;
+	uint8_t address; // Unshifted 7-bit I2C address.
+} temperature_sensor_info_t;
+
+typedef enum {
+	IMU_SENSOR_BMI088 = 1
+} imu_sensor_type_t;
+
+typedef struct {
+	imu_sensor_type_t type;
+	gpio_info_t accelChipSelect;
+	gpio_info_t gyroChipSelect;
+	// Wiring metadata; the polled driver does not configure EXTI or data sync.
+	gpio_info_t accelInterrupt;
+	gpio_info_t gyroInterrupt;
+} imu_sensor_info_t;
+
 // Circuit/default metadata only; current measurement and IC2/IC4 configuration are not implemented.
 typedef enum {
 	CURRENT_SENSE_NONE = 0,

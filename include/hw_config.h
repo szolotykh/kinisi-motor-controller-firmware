@@ -13,6 +13,8 @@
 #define NUMBER_ENCODERS 1
 #define NUMBER_GPIO_PINS 4
 #define NUMBER_STATUS_LEDS 1
+#define NUMBER_TEMPERATURE_SENSORS 0
+#define NUMBER_IMU_SENSORS 0
 static const motor_info_t motor_info[NUMBER_MOTORS] = {
     [0] = {
         .controlModel = MOTOR_CONTROL_PWM, .timer = TIM5,
@@ -55,6 +57,8 @@ static const status_led_info_t status_led_info[NUMBER_STATUS_LEDS] = {
 #define NUMBER_ENCODERS 4
 #define NUMBER_GPIO_PINS 4
 #define NUMBER_STATUS_LEDS 1
+#define NUMBER_TEMPERATURE_SENSORS 0
+#define NUMBER_IMU_SENSORS 0
 static const motor_info_t motor_info[NUMBER_MOTORS] = {
     [0] = {
         .controlModel = MOTOR_CONTROL_PWM, .timer = TIM12,
@@ -100,6 +104,8 @@ static const status_led_info_t status_led_info[NUMBER_STATUS_LEDS] = {
 #define NUMBER_ENCODERS 4
 #define NUMBER_GPIO_PINS 10
 #define NUMBER_STATUS_LEDS 1
+#define NUMBER_TEMPERATURE_SENSORS 0
+#define NUMBER_IMU_SENSORS 0
 static const motor_info_t motor_info[NUMBER_MOTORS] = {
     [0] = {
         .controlModel = MOTOR_CONTROL_PWM, .timer = TIM12,
@@ -151,6 +157,26 @@ static const status_led_info_t status_led_info[NUMBER_STATUS_LEDS] = {
 #define NUMBER_ENCODERS 4
 #define NUMBER_GPIO_PINS 8
 #define NUMBER_STATUS_LEDS 1
+#define NUMBER_TEMPERATURE_SENSORS 1
+#define NUMBER_IMU_SENSORS 1
+#define TEMPERATURE_I2C_CLK_ENABLE() __HAL_RCC_I2C3_CLK_ENABLE()
+static const i2c_bus_info_t temperature_i2c_info = {
+    .instance = I2C3, .alternate = GPIO_AF4_I2C3, .frequencyHz = 100000U,
+    .scl = {GPIOA, GPIO_PIN_8}, .sda = {GPIOC, GPIO_PIN_9}
+};
+static const temperature_sensor_info_t temperature_sensor_info[NUMBER_TEMPERATURE_SENSORS] = {
+    [0] = {.type = TEMPERATURE_SENSOR_TMP102, .address = 0x48U},
+};
+#define IMU_SPI_CLK_ENABLE() __HAL_RCC_SPI2_CLK_ENABLE()
+static const spi_bus_info_t imu_spi_info = {
+    .instance = SPI2, .alternate = GPIO_AF5_SPI2,
+    .sck = {GPIOB, GPIO_PIN_13}, .miso = {GPIOC, GPIO_PIN_2}, .mosi = {GPIOC, GPIO_PIN_3}
+};
+static const imu_sensor_info_t imu_sensor_info[NUMBER_IMU_SENSORS] = {
+    [0] = {.type = IMU_SENSOR_BMI088,
+        .accelChipSelect = {GPIOD, GPIO_PIN_10}, .gyroChipSelect = {GPIOD, GPIO_PIN_12},
+        .accelInterrupt = {GPIOD, GPIO_PIN_11}, .gyroInterrupt = {GPIOD, GPIO_PIN_9}},
+};
 #define DRV8873_SLEW_RATE_BITS 0U
 #define MOTOR_SPI_CLK_ENABLE() __HAL_RCC_SPI3_CLK_ENABLE()
 static const spi_bus_info_t motor_spi_info = {

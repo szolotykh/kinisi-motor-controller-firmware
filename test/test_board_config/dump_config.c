@@ -19,6 +19,31 @@ static void pwm(pwm_channel_info_t p) {
     pin((gpio_info_t){p.port, p.pin});
 }
 int main(void) {
+#ifndef BASELINE_CONFIG
+#ifdef MP_V4
+    assert(NUMBER_IMU_SENSORS == 1);
+    assert(imu_sensor_info[0].type == IMU_SENSOR_BMI088);
+    assert(imu_spi_info.instance == SPI2 && imu_spi_info.alternate == GPIO_AF5_SPI2);
+    assert(imu_spi_info.sck.port == GPIOB && imu_spi_info.sck.pin == GPIO_PIN_13);
+    assert(imu_spi_info.miso.port == GPIOC && imu_spi_info.miso.pin == GPIO_PIN_2);
+    assert(imu_spi_info.mosi.port == GPIOC && imu_spi_info.mosi.pin == GPIO_PIN_3);
+    assert(imu_sensor_info[0].accelChipSelect.port == GPIOD && imu_sensor_info[0].accelChipSelect.pin == GPIO_PIN_10);
+    assert(imu_sensor_info[0].gyroChipSelect.port == GPIOD && imu_sensor_info[0].gyroChipSelect.pin == GPIO_PIN_12);
+    assert(imu_sensor_info[0].accelInterrupt.port == GPIOD && imu_sensor_info[0].accelInterrupt.pin == GPIO_PIN_11);
+    assert(imu_sensor_info[0].gyroInterrupt.port == GPIOD && imu_sensor_info[0].gyroInterrupt.pin == GPIO_PIN_9);
+    assert(NUMBER_TEMPERATURE_SENSORS == 1);
+    assert(temperature_sensor_info[0].type == TEMPERATURE_SENSOR_TMP102);
+    assert(temperature_sensor_info[0].address == 0x48);
+    assert(temperature_i2c_info.instance == I2C3);
+    assert(temperature_i2c_info.alternate == GPIO_AF4_I2C3);
+    assert(temperature_i2c_info.frequencyHz == 100000);
+    assert(temperature_i2c_info.scl.port == GPIOA && temperature_i2c_info.scl.pin == GPIO_PIN_8);
+    assert(temperature_i2c_info.sda.port == GPIOC && temperature_i2c_info.sda.pin == GPIO_PIN_9);
+#else
+    assert(NUMBER_TEMPERATURE_SENSORS == 0);
+    assert(NUMBER_IMU_SENSORS == 0);
+#endif
+#endif
     printf("0.%d.0 motors=%d encoders=%d gpio=%d pwm=%u model=%d\n",
            KINISI_BOARD_VERSION_MINOR, NUMBER_MOTORS, NUMBER_ENCODERS,
            NUMBER_GPIO_PINS, MOTOR_PWM_FREQUENCY_HZ, MOTOR_CONTROL_MODEL);

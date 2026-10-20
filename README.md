@@ -13,6 +13,24 @@ Python code to control motor controller can be find [here](https://github.com/sz
 
 API v2 is not compatible with API v1. Clients must support API v2 to use this firmware.
 
+## Communication protocol versions
+
+The communication protocol uses `major.minor.patch`. A major release introduces
+breaking changes, a minor release adds features while preserving existing
+commands, and a patch release provides compatible fixes. The client and firmware
+must support the same protocol major; the firmware must also meet the client's
+minimum required minor. Optional commands are checked against the firmware's
+reported protocol version. Patch differences do not block connection.
+
+Board revision, client library release and firmware build identity are separate
+from the communication protocol version. See the
+[protocol versioning policy](docs/initialization.md#protocol-versioning-and-compatibility)
+for command evolution rules and compatibility examples.
+
+Board definitions also generate a compact [client profile bundle](docs/board-profiles.md)
+for resource counts and hardware features. Clients select a profile using the
+board identity reported during initialization and check protocol support separately.
+
 See [position control](docs/position-control.md) and [velocity PID tuning](docs/velocity-pid.md) for setup details.
 
 ## Generating Commands from commands.json
