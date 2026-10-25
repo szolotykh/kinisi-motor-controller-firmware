@@ -1,4 +1,4 @@
-# Connection monitoring and odometry streams
+# Connection monitoring and telemetry
 
 Protocol 2.1 adds a configurable connection watchdog and odometry subscriptions. Protocol 2.0 clients can still initialize the controller; monitoring remains disabled until explicitly configured. The generated [command reference](../commands.md) defines the wire fields and errors.
 
@@ -12,7 +12,59 @@ On expiry, firmware stops closed-loop controllers, clears their targets and coas
 
 The heartbeat detects loss of client communication. It does not impose a lifetime on motor setpoints while a client continues sending valid traffic.
 
-## Odometry subscriptions
+## Generic subscriptions (protocol 2.6)
+
+The protocol schema defines a stable uint8 topic enum and maps each topic to a
+packed sample object. The command generator emits the C enum, payload types,
+sizes, selector validation and this mapping in the command reference.
+
+| Topic | ID | Index | Sample object | Minimum delivery interval |
+| --- | ---: | --- | --- | --- |
+| ENCODER_ODOMETRY | 1 | Encoder index | encoder_odometry_sample | Twice the calculation period |
+| PLATFORM_ODOMETRY | 2 | 0 | platform_odometry_sample | Twice the calculation period |
+| TEMPERATURE | 3 | Sensor index | temperature_sample | 250 ms |
+| IMU | 4 | Sensor index | imu_telemetry_sample | 10 ms |
+
+Send SUBSCRIBE(topic_id, index, interval_ms) after INIT/READY and enabling the
+heartbeat. It returns an ordinary ACK or ERROR. Intervals are integer
+milliseconds, at most 3,600,000. Odometry must already be running. Sensor
+availability is checked through the same reader as GET. Initial sample-not-ready
+is accepted; a hardware I/O failure at subscription creation returns an error.
+
+One slot is maintained per topic/index per connection. Repeating SUBSCRIBE
+replaces the interval only after validation succeeds. The current bounded
+storage reserves five odometry slots and eleven sensor slots; exhausting the
+sensor slots returns SUBSCRIPTION_LIMIT. There is no allocation or renewal.
+UNSUBSCRIBE(topic_id, index) is idempotent and does not stop calculation.
+Disabling heartbeat, INIT, disconnect and watchdog expiry remove subscriptions.
+
+TELEMETRY_EVENT (0x82) uses message ID zero and has no ACK. Its payload is two
+uint8 fields, topic_id and index, followed by the exact object defined for that
+topic. Timestamp and clock metadata are inside the sample, not repeated in the
+envelope. Complete frame sizes are 24 bytes for encoder odometry, 40 for platform
+odometry, 24 for temperature and 64 for IMU. I2C masters must provide buffers
+large enough for the complete frame and continue using POLL_TELEMETRY.
+
+Odometry preserves its original acquisition timestamp. Temperature and IMU
+timestamps mark completion of the sensor register read, not the hardware
+conversion instant. Sensor conversion rates are unchanged; accelerometer and
+gyroscope samples are not synchronized. Successful sensor reads are cached for
+the requested interval so transport backpressure cannot cause repeated bus I/O.
+After a failed read, no old sample is published; delivery resumes on recovery.
+Replies and synchronization keep priority, and telemetry never queues history.
+
+Legacy SUBSCRIBE_ODOMETRY / UNSUBSCRIBE_ODOMETRY and the original event formats
+remain supported. Both interfaces share the same odometry slots: the last
+successful subscribe selects the interval and event format for that connection.
+Either unsubscribe interface removes that source. Independent connections can
+use different formats. All existing GET, START, STOP and RESET operations remain.
+
+## Legacy odometry subscriptions
+
+These commands and their legacy event messages are **retired since protocol
+2.6.0**. They remain supported throughout protocol 2.x and may be removed in 3.0.0.
+New code should use the generic subscription commands when firmware supports
+them. See the [retirement policy](initialization.md#retired-commands).
 
 `START_ENCODER_ODOMETRY` and `START_PLATFORM_ODOMETRY` continue to control background calculation. GET commands still return a single cached measurement. Neither subscribing nor unsubscribing changes calculation state.
 

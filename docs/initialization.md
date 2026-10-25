@@ -53,6 +53,33 @@ numbers do not have to match each other or the protocol major. Hardware feature
 availability must also be checked separately: understanding a sensor command
 does not imply that a sensor is fitted to the selected board.
 
+### Retired commands
+
+A command or event is active unless its `commands.json` entry contains `retired`:
+
+```json
+"retired": {
+  "since": "2.6.0",
+  "replacement": "SUBSCRIBE",
+  "removal_major": 3
+}
+```
+
+These are communication protocol versions. `since` records when retirement was
+announced, `replacement` names an active message in the same direction, and
+`removal_major` is the earliest major that may remove the retired message.
+Retirement means supported for compatibility but discouraged for new code.
+IDs, payloads and runtime behavior remain unchanged within the current major.
+Generators keep retired messages and annotate documentation and SDK APIs; they
+never remove them automatically. Removal requires a deliberate major-version
+change. When supporting older firmware, clients may still use retired commands
+if the replacement is unavailable.
+
+The legacy odometry subscription commands and events are retired in protocol
+`2.6.0`, remain supported throughout `2.x`, and may be removed starting with
+`3.0.0`. Use generic `SUBSCRIBE`, `UNSUBSCRIBE` and `TELEMETRY_EVENT` instead.
+Odometry GET, START, STOP and RESET commands remain active.
+
 ## Wire format
 
 Requests and responses share `[length: uint8][command: uint8][message_id: uint16]`.

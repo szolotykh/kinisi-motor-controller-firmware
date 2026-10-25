@@ -5,6 +5,7 @@
 import copy
 import importlib.util
 import json
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -39,6 +40,64 @@ class ErrorSchemaTests(unittest.TestCase):
             schema = copy.deepcopy(self.schema)
             schema['commands'][0]['errors'] = value
             self.assertTrue(generator.validate_json(schema), value)
+
+    def test_topic_registry_and_wire_selector_validation(self):
+        for field, value in [('id', 0), ('id', 256), ('id', True), ('name', 'invalid-name'),
+                             ('payload_type', 'undefined'), ('payload_type', 'imu_sample'), ('index_max', 256),
+                             ('min_interval_ms', 0), ('min_interval_ms', 3600001)]:
+            schema = copy.deepcopy(self.schema)
+            schema['topics'][0][field] = value
+            self.assertTrue(generator.validate_json(schema), (field, value))
+        schema = copy.deepcopy(self.schema)
+        schema['topics'].append(copy.deepcopy(schema['topics'][0]))
+        self.assertTrue(generator.validate_json(schema))
+        schema = copy.deepcopy(self.schema)
+        event = next(c for c in schema['commands'] if c['command'] == 'TELEMETRY_EVENT')
+        event['topic_payload']['discriminator'] = 'unknown'
+        self.assertTrue(generator.validate_json(schema))
+
+    def test_generated_topic_sizes_and_documentation(self):
+        code = generator.generate_c_header_file(self.schema)
+        self.assertIn('TOPIC_ENCODER_ODOMETRY = 1', code)
+        self.assertIn('TOPIC_IMU = 4', code)
+        self.assertIn('sizeof(imu_telemetry_sample)', code)
+        self.assertIn('telemetry_payload_size(command->properties.subscribe.topic_id) != 0', code)
+        docs = generator.generate_md_file(self.schema)
+        self.assertIn('total payload length varies by topic', docs)
+        self.assertIn('2 bytes fixed prefix + topic payload', docs)
+        self.assertIn('| 4 | ' + chr(96) + 'IMU' + chr(96), docs)
+
+    def test_retirement_metadata_validation(self):
+        original = next(c for c in self.schema['commands'] if c['command'] == 'SUBSCRIBE_ODOMETRY')['retired']
+        invalid = [None, True, {}, {**original, 'unknown': 1}]
+        for field, value in [('since', '2.6'), ('since', '2.7.0'), ('since', True),
+                             ('since', '02.6.0'), ('removal_major', 2), ('removal_major', True),
+                             ('removal_major', 256), ('replacement', 'MISSING'),
+                             ('replacement', 'SUBSCRIBE_ODOMETRY'), ('replacement', 'UNSUBSCRIBE_ODOMETRY'),
+                             ('replacement', 'TELEMETRY_EVENT'), ('replacement', [])]:
+            invalid.append({**original, field: value})
+        for retired in invalid:
+            schema = copy.deepcopy(self.schema)
+            next(c for c in schema['commands'] if c['command'] == 'SUBSCRIBE_ODOMETRY')['retired'] = retired
+            with self.subTest(retired=retired):
+                self.assertTrue(generator.validate_json(schema))
+
+    def test_retirement_annotations_preserve_generated_wire_code(self):
+        active = copy.deepcopy(self.schema)
+        for command in active['commands']:
+            command.pop('retired', None)
+        strip_comments = lambda code: re.sub(r'\s+', '', re.sub(r'/\*.*?\*/|//[^\n]*', '', code, flags=re.S))
+        for generate in [generator.generate_c_header_file, generator.generate_cpp_code]:
+            annotated = generate(self.schema)
+            self.assertIn('Retired since protocol 2.6.0. Use SUBSCRIBE.', annotated)
+            self.assertEqual(strip_comments(annotated), strip_comments(generate(active)))
+        docs = generator.generate_md_file(self.schema)
+        self.assertIn('## Command lifecycle', docs)
+        self.assertIn('**Retired since protocol 2.6.0.**', docs)
+        self.assertIn('eligible for removal in protocol 3.0.0.', docs)
+        retired = {c['command'] for c in self.schema['commands'] if 'retired' in c}
+        self.assertEqual(retired, {'SUBSCRIBE_ODOMETRY', 'UNSUBSCRIBE_ODOMETRY',
+                                   'ENCODER_ODOMETRY_EVENT', 'PLATFORM_ODOMETRY_EVENT'})
 
     def test_cli_rejects_without_overwriting_output(self):
         """Verify schema validation failure preserves the previous generated output file."""

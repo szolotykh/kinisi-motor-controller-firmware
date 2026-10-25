@@ -61,6 +61,15 @@ with tempfile.TemporaryDirectory() as folder:
     ], cwd=root, check=True)
     subprocess.run([str(binary)], check=True)
     binary = Path(folder) / "odometry_timestamp.exe"
+    telemetry = Path(folder) / "telemetry.exe"
+    subprocess.run([
+        compiler, "-std=c11", "-Wall", "-Wextra", "-Werror",
+        "-Iinclude", "-Ilib/initialization", "-Ilib/protocol", "-Ilib/time_sync", "-Ilib/connection",
+        "test/test_time_sync/test_telemetry.c", "lib/time_sync/time_sync.c",
+        "lib/connection/connection.c", "lib/protocol/protocol.c", "lib/initialization/initialization.c",
+        "-o", str(telemetry)
+    ], cwd=root, check=True)
+    subprocess.run([str(telemetry)], check=True, timeout=10)
     subprocess.run([
         compiler, "-std=c11", "-Wall", "-Wextra", "-Werror",
         "-Itest/test_time_sync/stubs", "-Iinclude", "-Ilib/hardware", "-Ilib/libcontrollers/src", "-Ilib/protocol",
