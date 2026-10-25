@@ -1,6 +1,6 @@
 # Kinisi motor controller commands
 
-**Protocol 2.5.0** · Generated from [commands.json](commands.json)
+**Protocol 2.6.0** · Generated from [commands.json](commands.json)
 
 [Command index](#command-index) · [Wire format](#wire-format) · [Error codes](#error-codes)
 
@@ -61,10 +61,10 @@
 | [`PING`](#ping-0x76) | `0x76` | Client → controller | ACK |
 | [`SET_HEARTBEAT_CONFIG`](#set_heartbeat_config-0x77) | `0x77` | Client → controller | ACK |
 | [`GET_HEARTBEAT_CONFIG`](#get_heartbeat_config-0x78) | `0x78` | Client → controller | `heartbeat_config` |
-| [`SUBSCRIBE_ODOMETRY`](#subscribe_odometry-0x79) | `0x79` | Client → controller | ACK |
-| [`UNSUBSCRIBE_ODOMETRY`](#unsubscribe_odometry-0x7a) | `0x7a` | Client → controller | ACK |
-| [`ENCODER_ODOMETRY_EVENT`](#encoder_odometry_event-0x7b) | `0x7b` | Controller → client | — |
-| [`PLATFORM_ODOMETRY_EVENT`](#platform_odometry_event-0x7c) | `0x7c` | Controller → client | — |
+| [`SUBSCRIBE_ODOMETRY`](#subscribe_odometry-0x79) **Retired** | `0x79` | Client → controller | ACK |
+| [`UNSUBSCRIBE_ODOMETRY`](#unsubscribe_odometry-0x7a) **Retired** | `0x7a` | Client → controller | ACK |
+| [`ENCODER_ODOMETRY_EVENT`](#encoder_odometry_event-0x7b) **Retired** | `0x7b` | Controller → client | — |
+| [`PLATFORM_ODOMETRY_EVENT`](#platform_odometry_event-0x7c) **Retired** | `0x7c` | Controller → client | — |
 | [`POLL_TELEMETRY`](#poll_telemetry-0x7d) | `0x7d` | Client → controller | ACK |
 | [`INITIALIZE_MOTOR_POSITION_CONTROLLER`](#initialize_motor_position_controller-0x0c) | `0x0C` | Client → controller | ACK |
 | [`RESET_MOTOR_POSITION`](#reset_motor_position-0x0d) | `0x0D` | Client → controller | ACK |
@@ -75,6 +75,13 @@
 | [`SET_PLATFORM_POSITION`](#set_platform_position-0x4d) | `0x4D` | Client → controller | ACK |
 | [`INITIALIZE_MOTOR_POSITION_PID_CONTROLLER`](#initialize_motor_position_pid_controller-0x10) | `0x10` | Client → controller | ACK |
 | [`INITIALIZE_PLATFORM_POSITION_PID_CONTROLLER`](#initialize_platform_position_pid_controller-0x4e) | `0x4E` | Client → controller | ACK |
+| [`SUBSCRIBE`](#subscribe-0x80) | `0x80` | Client → controller | ACK |
+| [`UNSUBSCRIBE`](#unsubscribe-0x81) | `0x81` | Client → controller | ACK |
+| [`TELEMETRY_EVENT`](#telemetry_event-0x82) | `0x82` | Controller → client | — |
+
+## Command lifecycle
+
+Commands are active unless marked **Retired**. Retired commands and events remain supported with their existing IDs, payloads and behavior for compatibility. Use their replacements for new code when the connected firmware supports them. Removal is allowed only in a later protocol major; the earliest removal major is recorded in the schema. Retirement does not automatically remove or reject a command.
 
 ## Wire format
 
@@ -93,11 +100,75 @@ See [response framing](docs/responses.md) and [time synchronization](docs/time-s
 
 ## Commands
 
+### Telemetry topics
+
+The selector is a uint8 enum. IDs remain stable within a protocol major.
+
+| ID | Topic | Payload object | Bytes | Maximum index | Minimum interval (ms) |
+| ---: | --- | --- | ---: | ---: | ---: |
+| 1 | `ENCODER_ODOMETRY` | `encoder_odometry_sample` | 18 | 3 | 2 |
+| 2 | `PLATFORM_ODOMETRY` | `platform_odometry_sample` | 34 | 0 | 2 |
+| 3 | `TEMPERATURE` | `temperature_sample` | 18 | 255 | 250 |
+| 4 | `IMU` | `imu_telemetry_sample` | 58 | 255 | 10 |
+
+Odometry also requires an interval at least twice the calculation period. Actual resource counts depend on the board.
+
+#### encoder_odometry_sample
+
+Odometry state with controller-captured timestamp and clock metadata.
+
+| Parameter | Type | Bytes | Description |
+| --- | --- | ---: | --- |
+| `timestamp_us` | `uint64_t` | 8 | Measurement timestamp in selected clock domain. |
+| `clock_mode` | `uint8_t` | 1 | 0 uptime, 1 Unix wall time. |
+| `clock_quality` | `uint8_t` | 1 | 1 valid, 2 stale. |
+| `angle` | `double` | 8 | Encoder odometry radians. |
+
+#### platform_odometry_sample
+
+Odometry state with controller-captured timestamp and clock metadata.
+
+| Parameter | Type | Bytes | Description |
+| --- | --- | ---: | --- |
+| `timestamp_us` | `uint64_t` | 8 | Measurement timestamp in selected clock domain. |
+| `clock_mode` | `uint8_t` | 1 | 0 uptime, 1 Unix wall time. |
+| `clock_quality` | `uint8_t` | 1 | 1 valid, 2 stale. |
+| `x` | `double` | 8 | X meters. |
+| `y` | `double` | 8 | Y meters. |
+| `t` | `double` | 8 | Heading radians. |
+
+#### temperature_sample
+
+Timestamped temperature register reading in degrees Celsius.
+
+| Parameter | Type | Bytes | Description |
+| --- | --- | ---: | --- |
+| `timestamp_us` | `uint64_t` | 8 | Sensor register-read completion timestamp in the selected clock domain; not a hardware conversion timestamp. |
+| `clock_mode` | `uint8_t` | 1 | 0 uptime, 1 Unix wall time. |
+| `clock_quality` | `uint8_t` | 1 | 1 valid, 2 stale. |
+| `celsius` | `double` | 8 | Temperature in degrees Celsius. |
+
+#### imu_telemetry_sample
+
+Timestamped IMU register reading. Acceleration and angular velocity are not synchronized with each other.
+
+| Parameter | Type | Bytes | Description |
+| --- | --- | ---: | --- |
+| `timestamp_us` | `uint64_t` | 8 | Sensor register-read completion timestamp in the selected clock domain; not a hardware conversion timestamp. |
+| `clock_mode` | `uint8_t` | 1 | 0 uptime, 1 Unix wall time. |
+| `clock_quality` | `uint8_t` | 1 | 1 valid, 2 stale. |
+| `acceleration_x` | `double` | 8 | X acceleration in m/s^2, including gravity. |
+| `acceleration_y` | `double` | 8 | Y acceleration in m/s^2, including gravity. |
+| `acceleration_z` | `double` | 8 | Z acceleration in m/s^2, including gravity. |
+| `angular_velocity_x` | `double` | 8 | X angular velocity in rad/s. |
+| `angular_velocity_y` | `double` | 8 | Y angular velocity in rad/s. |
+| `angular_velocity_z` | `double` | 8 | Z angular velocity in rad/s. |
+
 ### GET_TEMPERATURE (0x50)
 
 **Client → controller** · **Payload:** 1 bytes
 
-Protocol 2.4: read the latest board temperature in degrees Celsius. Sensor 0 is the TMP102 on v0.4. Sampling runs at 4 Hz; faster reads may repeat a sample. Returns SAMPLE_NOT_AVAILABLE during the first 300 ms after sensor initialization or recovery, SENSOR_NOT_AVAILABLE when the board has no such sensor, and INTERNAL_ERROR on I2C or configuration failure.
+Read the latest board temperature in degrees Celsius. Sensor 0 is the TMP102 on v0.4. Sampling runs at 4 Hz; faster reads may repeat a sample. Returns SAMPLE_NOT_AVAILABLE during the first 300 ms after sensor initialization or recovery, SENSOR_NOT_AVAILABLE when the board has no such sensor, and INTERNAL_ERROR on I2C or configuration failure.
 
 #### Parameters
 
@@ -127,7 +198,7 @@ Latest temperature in degrees Celsius, encoded as a little-endian IEEE 754 64-bi
 
 **Client → controller** · **Payload:** 1 bytes
 
-Protocol 2.5: read the latest accelerometer and gyroscope samples in native sensor axes. Acceleration is in m/s^2 and includes gravity; angular velocity is in rad/s. BMI088 uses +/-6 g and +/-500 degrees/s at 100 Hz. Each three-axis sample is coherent, but accel and gyro are not time-synchronized. Faster requests may repeat samples. No orientation or calibration is applied. Returns SAMPLE_NOT_AVAILABLE during the 50 ms settling interval after initialization or recovery, SENSOR_NOT_AVAILABLE for an absent sensor, and INTERNAL_ERROR on SPI, identity or configuration failure.
+Read the latest accelerometer and gyroscope samples in native sensor axes. Acceleration is in m/s^2 and includes gravity; angular velocity is in rad/s. BMI088 uses +/-6 g and +/-500 degrees/s at 100 Hz. Each three-axis sample is coherent, but accel and gyro are not time-synchronized. Faster requests may repeat samples. No orientation or calibration is applied. Returns SAMPLE_NOT_AVAILABLE during the 50 ms settling interval after initialization or recovery, SENSOR_NOT_AVAILABLE for an absent sensor, and INTERNAL_ERROR on SPI, identity or configuration failure.
 
 #### Parameters
 
@@ -1454,7 +1525,9 @@ Read this session watchdog configuration.
 
 **Client → controller** · **Payload:** 5 bytes
 
-Publish the latest completed sample using the requested scheduling interval without rounding it to calculation ticks. Delivery is subject to transport capacity and task scheduling. Requires READY, an enabled heartbeat and running odometry. Replaces an existing subscription for this source. Interval must be at least twice the calculation period. No renewal is needed. Stop/reset of calculation pauses samples until fresh measurements exist; unsubscribe, INIT, disconnect or watchdog timeout removes subscriptions.
+> **Retired since protocol 2.6.0.** Use [`SUBSCRIBE`](#subscribe-0x80). Kept for compatibility; eligible for removal in protocol 3.0.0.
+
+Create or replace this connection's subscription for an odometry source. Requires READY, enabled heartbeat and running odometry. The interval must be at least twice the calculation period. Stop or reset pauses delivery until a fresh sample is available.
 
 #### Parameters
 
@@ -1479,7 +1552,9 @@ Publish the latest completed sample using the requested scheduling interval with
 
 **Client → controller** · **Payload:** 1 bytes
 
-Remove this source subscription; succeeds if already absent. Does not stop odometry calculation.
+> **Retired since protocol 2.6.0.** Use [`UNSUBSCRIBE`](#unsubscribe-0x81). Kept for compatibility; eligible for removal in protocol 3.0.0.
+
+Remove this connection's subscription for an odometry source. Succeeds if already absent and leaves odometry calculation running.
 
 #### Parameters
 
@@ -1503,7 +1578,9 @@ Remove this source subscription; succeeds if already absent. Does not stop odome
 
 **Controller → client** · **Payload:** 19 bytes
 
-Unsolicited latest encoder sample, message_id zero. No response is expected. Slow transports skip intermediate samples rather than queueing stale history.
+> **Retired since protocol 2.6.0.** Use [`TELEMETRY_EVENT`](#telemetry_event-0x82). Kept for compatibility; eligible for removal in protocol 3.0.0.
+
+Deliver the latest encoder sample using message ID zero. No ACK is required. Slow transports skip intermediate samples.
 
 #### Parameters
 
@@ -1527,7 +1604,9 @@ None in this message's declared direction.
 
 **Controller → client** · **Payload:** 34 bytes
 
-Unsolicited latest platform sample, message_id zero. No response is expected. Timestamp is the measurement time, not the transmission time.
+> **Retired since protocol 2.6.0.** Use [`TELEMETRY_EVENT`](#telemetry_event-0x82). Kept for compatibility; eligible for removal in protocol 3.0.0.
+
+Deliver the latest platform sample using message ID zero. No ACK is required. The timestamp records measurement time.
 
 #### Parameters
 
@@ -1552,7 +1631,7 @@ None in this message's declared direction.
 
 **Client → controller** · **Payload:** 0 bytes
 
-I2C master service request. Allows at most one due odometry event before its empty ACK, so the master can clock out telemetry without waiting indefinitely when no sample is available. USB clients receive events automatically and do not need this command.
+Allow an I2C master to read at most one due telemetry event followed by an empty ACK. Return only the ACK when no sample is available. USB clients receive events automatically.
 
 #### Parameters
 
@@ -1757,7 +1836,7 @@ Set absolute (x,y,t) in the current odometry world frame: meters, meters, radian
 
 **Client → controller** · **Payload:** 49 bytes
 
-Protocol 2.3: initialize a position PID over the existing velocity controller. Initialize a bounded position PID loop over an already running motor velocity controller. Zero is the current encoder position; initially holds zero. Stop/delete/reinitialize of velocity control discards position tuning. Clears position PID history. Ki and Kd may be zero to disable I and D. Integral limits bound the integral velocity contribution.
+Initialize a position PID over the existing velocity controller. Initialize a bounded position PID loop over an already running motor velocity controller. Zero is the current encoder position; initially holds zero. Stop/delete/reinitialize of velocity control discards position tuning. Clears position PID history. Ki and Kd may be zero to disable I and D. Integral limits bound the integral velocity contribution.
 
 #### Parameters
 
@@ -1787,7 +1866,7 @@ Protocol 2.3: initialize a position PID over the existing velocity controller. I
 
 **Client → controller** · **Payload:** 96 bytes
 
-Protocol 2.3: initialize a position PID over the existing velocity controller. Initialize bounded pose control after START_PLATFORM_CONTROLLER. Starts odometry if needed, preserves its world frame and zeros velocity targets. No motion until SET_PLATFORM_POSITION. Supports omni, mecanum and differential bases. Clears position PID history. Ki and Kd may be zero to disable I and D. Integral limits bound the integral velocity contribution.
+Initialize a position PID over the existing velocity controller. Initialize bounded pose control after START_PLATFORM_CONTROLLER. Starts odometry if needed, preserves its world frame and zeros velocity targets. No motion until SET_PLATFORM_POSITION. Supports omni, mecanum and differential bases. Clears position PID history. Ki and Kd may be zero to disable I and D. Integral limits bound the integral velocity contribution.
 
 #### Parameters
 
@@ -1818,6 +1897,80 @@ Protocol 2.3: initialize a position PID over the existing velocity controller. I
 
 ---
 
+### SUBSCRIBE (0x80)
+
+**Client → controller** · **Payload:** 6 bytes
+
+Create or replace this connection's subscription for a topic and resource. Requires READY and enabled heartbeat. Odometry must be running. The interval must meet the topic minimum and, for odometry, be at least twice the calculation period. Failed reads pause delivery until recovery.
+
+#### Parameters
+
+| Parameter | Type | Bytes | Range | Description |
+| --- | --- | ---: | --- | --- |
+| `topic_id` | `uint8_t` | 1 | — | Generated telemetry topic enum. |
+| `index` | `uint8_t` | 1 | — | Resource index; platform uses 0. Hardware availability is checked by firmware. |
+| `interval_ms` | `uint32_t` | 4 | 2 to 3600000 | Requested delivery interval in milliseconds; scheduling is best effort. |
+
+#### Response
+
+**ACK** — empty payload; echoes the command and message ID.
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`ODOMETRY_NOT_INITIALIZED`](#error-odometry-not-initialized) (9) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`SUBSCRIPTION_LIMIT`](#error-subscription-limit) (17)
+
+[Back to command index](#command-index)
+
+---
+
+### UNSUBSCRIBE (0x81)
+
+**Client → controller** · **Payload:** 2 bytes
+
+Remove this connection's subscription for a topic and resource. Requires READY. Succeeds if already absent and leaves calculation running.
+
+#### Parameters
+
+| Parameter | Type | Bytes | Description |
+| --- | --- | ---: | --- |
+| `topic_id` | `uint8_t` | 1 | Generated telemetry topic enum. |
+| `index` | `uint8_t` | 1 | Resource index; platform uses 0. Hardware availability is checked by firmware. |
+
+#### Response
+
+**ACK** — empty payload; echoes the command and message ID.
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7)
+
+[Back to command index](#command-index)
+
+---
+
+### TELEMETRY_EVENT (0x82)
+
+**Controller → client** · **Payload:** 2 bytes fixed prefix + topic payload
+
+Deliver the latest sample for a topic and resource using message ID zero. The topic selects the payload object. No ACK is required. Odometry timestamps mark acquisition; sensor timestamps mark register-read completion. Slow transports skip intermediate samples.
+
+#### Parameters
+
+| Parameter | Type | Bytes | Description |
+| --- | --- | ---: | --- |
+| `topic_id` | `uint8_t` | 1 | Generated telemetry topic enum. |
+| `index` | `uint8_t` | 1 | Resource index; platform uses 0. Hardware availability is checked by firmware. |
+
+The fixed prefix is followed by the topic's payload object from [telemetry topics](#telemetry-topics); total payload length varies by topic.
+
+#### Errors
+
+None in this message's declared direction.
+
+[Back to command index](#command-index)
+
+---
+
 ## Error codes
 
 Errors use the shared ERROR message. Each command above links to its possible errors below. `UNKNOWN_COMMAND` also covers unrecognized or incorrectly directed messages.
@@ -1840,3 +1993,4 @@ Errors use the shared ERROR message. Each command above links to its possible er
 | 14 | <a id="error-controller-not-initialized"></a>`CONTROLLER_NOT_INITIALIZED` | Start or initialize the closed-loop controller before setting its target. |
 | 15 | <a id="error-init-required"></a>`INIT_REQUIRED` | Send a valid INIT request before performing this connection-dependent operation. |
 | 16 | <a id="error-sensor-not-available"></a>`SENSOR_NOT_AVAILABLE` | The selected sensor is not defined on this board. |
+| 17 | <a id="error-subscription-limit"></a>`SUBSCRIPTION_LIMIT` | This connection has no free subscription slots; unsubscribe an existing source first. |

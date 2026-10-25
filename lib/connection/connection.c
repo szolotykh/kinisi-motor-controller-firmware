@@ -7,7 +7,8 @@
 #include <string.h>
 
 static connection_t *active;
-static uint8_t sample_payload[sizeof(platform_odometry_sample)], sample_length;
+static uint8_t sample_payload[sizeof(telemetry_payload_t)], sample_length;
+static bool check_heartbeat(connection_t *c);
 
 /** @brief Copy a cached measurement returned by the regular odometry handler. */
 static void capture_sample(uint8_t *data, uint8_t length)
@@ -19,17 +20,90 @@ static void capture_sample(uint8_t *data, uint8_t length)
 }
 
 /** @brief Read through the same handler as GET, preserving measurement timestamps. */
-static uint8_t read_sample(connection_t *c, uint8_t source)
+static uint8_t read_sample(connection_t *c, connection_subscription_t *sub)
 {
+    bool sensor = sub->topic == TOPIC_TEMPERATURE || sub->topic == TOPIC_IMU;
+    if (sensor && sub->sample_length && c->now() < sub->next_read_us) {
+        sample_length = sub->sample_length;
+        memcpy(sample_payload, sub->sample, sample_length);
+        return RESPONSE_OK;
+    }
     controller_command_t request = {0};
-    request.commandType = source == 4 ? GET_PLATFORM_ODOMETRY : GET_ENCODER_ODOMETRY;
-    request.properties.get_encoder_odometry.encoder_index = source;
+    switch (sub->topic) {
+    case TOPIC_ENCODER_ODOMETRY:
+        request.commandType = GET_ENCODER_ODOMETRY;
+        request.properties.get_encoder_odometry.encoder_index = sub->index;
+        break;
+    case TOPIC_PLATFORM_ODOMETRY: request.commandType = GET_PLATFORM_ODOMETRY; break;
+    case TOPIC_TEMPERATURE:
+        request.commandType = GET_TEMPERATURE;
+        request.properties.get_temperature.sensor_index = sub->index;
+        break;
+    case TOPIC_IMU:
+        request.commandType = GET_IMU;
+        request.properties.get_imu.sensor_index = sub->index;
+        break;
+    default: return RESPONSE_INVALID_ARGUMENT;
+    }
     sample_length = 0;
     connection_t *previous = active;
     active = c;
     uint8_t status = c->handler(&request, capture_sample);
     active = previous;
+    if (sensor) {
+        sub->sample_length = 0;
+        if (status != RESPONSE_OK) return status;
+        uint8_t expected = sub->topic == TOPIC_TEMPERATURE ? sizeof(double) : sizeof(imu_sample);
+        if (sample_length != expected) return RESPONSE_INTERNAL_ERROR;
+        uint64_t completed = c->now(), timestamp;
+        if (!time_sync_convert(&c->clock, completed, &timestamp)) return RESPONSE_CLOCK_NOT_READY;
+        memmove(sample_payload + 10, sample_payload, sample_length);
+        memcpy(sample_payload, &timestamp, sizeof(timestamp));
+        sample_payload[8] = c->clock.mode;
+        sample_payload[9] = time_sync_quality(&c->clock, completed);
+        sample_length += 10;
+        memcpy(sub->sample, sample_payload, sample_length);
+        sub->sample_length = sample_length;
+        sub->next_read_us = completed + (uint64_t)sub->interval_ms * 1000;
+    }
     return status;
+}
+
+/** @brief Odometry has stable slots; sensor slots are bounded and keyed by topic/index. */
+static connection_subscription_t *subscription_slot(connection_t *c, uint8_t topic, uint8_t index, bool create)
+{
+    if (!telemetry_payload_size(topic) || index > telemetry_index_limit(topic)) return NULL;
+    if (topic == TOPIC_ENCODER_ODOMETRY) return &c->subscriptions[index];
+    if (topic == TOPIC_PLATFORM_ODOMETRY) return &c->subscriptions[4];
+    connection_subscription_t *free_slot = NULL;
+    for (unsigned i = CONNECTION_ODOMETRY_SOURCES; i < CONNECTION_SUBSCRIPTION_CAPACITY; ++i) {
+        connection_subscription_t *sub = &c->subscriptions[i];
+        if (sub->interval_ms && sub->topic == topic && sub->index == index) return sub;
+        if (!sub->interval_ms && !free_slot) free_slot = sub;
+    }
+    return create ? free_slot : NULL;
+}
+
+static uint8_t subscribe(connection_t *c, uint8_t topic, uint8_t index, uint32_t interval, bool legacy)
+{
+    if (!c->clock.initialized) return RESPONSE_INIT_REQUIRED;
+    if (!c->ready_announced) return RESPONSE_CLOCK_NOT_READY;
+    if (!c->heartbeat.enabled || !telemetry_payload_size(topic) ||
+        index > telemetry_index_limit(topic) || interval < telemetry_min_interval_ms(topic))
+        return RESPONSE_INVALID_ARGUMENT;
+    bool odometry = topic == TOPIC_ENCODER_ODOMETRY || topic == TOPIC_PLATFORM_ODOMETRY;
+    if (odometry && (!c->services.calculation_period_ms ||
+                    interval < 2ULL * c->services.calculation_period_ms())) return RESPONSE_INVALID_ARGUMENT;
+    connection_subscription_t *slot = subscription_slot(c, topic, index, true);
+    if (!slot) return RESPONSE_SUBSCRIPTION_LIMIT;
+    connection_subscription_t replacement = {.topic = topic, .index = index, .interval_ms = interval, .legacy = legacy};
+    uint8_t status = read_sample(c, &replacement);
+    // Sensor operations may consume time. Never revive a session that expired during a read.
+    if (check_heartbeat(c)) return RESPONSE_INIT_REQUIRED;
+    if (status != RESPONSE_OK && status != RESPONSE_SAMPLE_NOT_AVAILABLE) return status;
+    replacement.next_us = c->now() + (uint64_t)interval * 1000;
+    *slot = replacement;
+    return RESPONSE_OK;
 }
 
 /** @brief Permit stop/brake operations even when connection loss is latched. */
@@ -106,16 +180,20 @@ static uint8_t handle(controller_command_t *cmd, protocol_send_fn reply)
         reply((uint8_t *)&active->heartbeat, sizeof(active->heartbeat));
         return RESPONSE_OK;
     case SUBSCRIBE_ODOMETRY: {
+        uint8_t source = cmd->properties.subscribe_odometry.source;
+        return subscribe(active, source == 4 ? TOPIC_PLATFORM_ODOMETRY : TOPIC_ENCODER_ODOMETRY,
+                         source == 4 ? 0 : source, cmd->properties.subscribe_odometry.interval_ms, true);
+    }
+    case SUBSCRIBE:
+        return subscribe(active, cmd->properties.subscribe.topic_id, cmd->properties.subscribe.index,
+                         cmd->properties.subscribe.interval_ms, false);
+    case UNSUBSCRIBE: {
         if (!active->clock.initialized) return RESPONSE_INIT_REQUIRED;
         if (!active->ready_announced) return RESPONSE_CLOCK_NOT_READY;
-        if (!active->heartbeat.enabled || !active->services.calculation_period_ms) return RESPONSE_INVALID_ARGUMENT;
-        uint32_t interval = cmd->properties.subscribe_odometry.interval_ms;
-        if (interval < 2ULL * active->services.calculation_period_ms()) return RESPONSE_INVALID_ARGUMENT;
-        uint8_t source = cmd->properties.subscribe_odometry.source;
-        uint8_t status = read_sample(active, source);
-        if (status != RESPONSE_OK && status != RESPONSE_SAMPLE_NOT_AVAILABLE) return status;
-        active->subscriptions[source].interval_ms = interval;
-        active->subscriptions[source].next_us = active->now() + (uint64_t)interval * 1000;
+        uint8_t topic = cmd->properties.unsubscribe.topic_id, index = cmd->properties.unsubscribe.index;
+        if (index > telemetry_index_limit(topic)) return RESPONSE_INVALID_ARGUMENT;
+        connection_subscription_t *slot = subscription_slot(active, topic, index, false);
+        if (slot) memset(slot, 0, sizeof(*slot));
         return RESPONSE_OK;
     }
     case UNSUBSCRIBE_ODOMETRY:
@@ -289,24 +367,32 @@ void connection_receive(connection_t *c, const uint8_t *data, size_t length)
 static int publish_sample(connection_t *c, uint64_t now)
 {
     // Round-robin sources; at most one telemetry frame per turn. Never queue history.
-    for (unsigned offset = 0; offset < CONNECTION_ODOMETRY_SOURCES; ++offset) {
-        uint8_t source = (c->next_subscription + offset) % CONNECTION_ODOMETRY_SOURCES;
+    for (unsigned offset = 0; offset < CONNECTION_SUBSCRIPTION_CAPACITY; ++offset) {
+        uint8_t source = (c->next_subscription + offset) % CONNECTION_SUBSCRIPTION_CAPACITY;
         connection_subscription_t *sub = &c->subscriptions[source];
         if (!sub->interval_ms || now < sub->next_us) continue;
-        uint8_t status = read_sample(c, source);
-        bool encoder = source < 4;
-        uint8_t expected = encoder ? sizeof(encoder_odometry_sample) : sizeof(platform_odometry_sample);
+        uint8_t status = read_sample(c, sub);
+        if (check_heartbeat(c)) return 0;
+        bool encoder = sub->topic == TOPIC_ENCODER_ODOMETRY;
+        uint8_t expected = telemetry_payload_size(sub->topic);
         if (status == RESPONSE_OK && sample_length == expected) {
-            uint8_t frame[5 + sizeof(platform_odometry_sample)] = {0};
-            frame[0] = 3 + expected + encoder;
-            frame[1] = encoder ? KINISI_MESSAGE_ENCODER_ODOMETRY_EVENT : KINISI_MESSAGE_PLATFORM_ODOMETRY_EVENT;
-            if (encoder) frame[4] = source;
-            memcpy(frame + 4 + encoder, sample_payload, expected);
+            uint8_t frame[6 + sizeof(telemetry_payload_t)] = {0};
+            unsigned prefix = sub->legacy ? (encoder ? 1 : 0) : 2;
+            frame[0] = 3 + expected + prefix;
+            frame[1] = sub->legacy ? (encoder ? KINISI_MESSAGE_ENCODER_ODOMETRY_EVENT :
+                KINISI_MESSAGE_PLATFORM_ODOMETRY_EVENT) : KINISI_MESSAGE_TELEMETRY_EVENT;
+            if (sub->legacy && encoder) frame[4] = sub->index;
+            if (!sub->legacy) { frame[4] = sub->topic; frame[5] = sub->index; }
+            memcpy(frame + 4 + prefix, sample_payload, expected);
             if (!c->send(frame, frame[0] + 1)) return -1;
         }
+        now = c->now();
         uint64_t interval_us = (uint64_t)sub->interval_ms * 1000;
         sub->next_us += ((now - sub->next_us) / interval_us + 1) * interval_us;
-        c->next_subscription = (source + 1) % CONNECTION_ODOMETRY_SOURCES;
+        // A sensor read consumes time. Do not deliver the same cached sample at
+        // the next deadline just because its read-completion cadence is later.
+        if (sub->next_read_us > sub->next_us) sub->next_us = sub->next_read_us;
+        c->next_subscription = (source + 1) % CONNECTION_SUBSCRIPTION_CAPACITY;
         return status == RESPONSE_OK && sample_length == expected ? 1 : 0;
     }
     return 0;
@@ -337,6 +423,7 @@ void connection_poll(connection_t *c)
     if (c->output_length) {
         if (c->telemetry_before_reply) {
             int result = publish_sample(c, now);
+            if (!c->ready_announced || c->lost) return;
             if (result < 0) return;
             c->telemetry_before_reply = false;
             if (result > 0) return; // Master reads the event, then the correlated ACK.

@@ -11,6 +11,7 @@
 #define CONNECTION_REPLY_TIMEOUT_US 1000000ULL
 #define CONNECTION_HEARTBEAT_DEFAULT_MS 500U
 #define CONNECTION_ODOMETRY_SOURCES 5U
+#define CONNECTION_SUBSCRIPTION_CAPACITY 16U
 
 // Runtime services are optional for host tests, installed by the command task.
 typedef struct {
@@ -22,6 +23,11 @@ typedef struct {
 typedef struct {
     uint64_t next_us;
     uint32_t interval_ms;
+    uint8_t topic, index;
+    bool legacy;
+    // Sensor reads are bounded by their cadence even while a transport is busy.
+    uint64_t next_read_us;
+    uint8_t sample[sizeof(telemetry_payload_t)], sample_length;
 } connection_subscription_t;
 
 // Successful sends copy the complete frame before returning; false means retry later.
@@ -45,7 +51,7 @@ typedef struct {
     uint64_t last_activity_us;
     // Loss is latched so buffered motion cannot resume without a fresh INIT.
     bool lost;
-    connection_subscription_t subscriptions[CONNECTION_ODOMETRY_SOURCES];
+    connection_subscription_t subscriptions[CONNECTION_SUBSCRIPTION_CAPACITY];
     uint8_t next_subscription;
     bool telemetry_before_reply;
 } connection_t;

@@ -421,3 +421,13 @@ reset/write delays, signed six-axis SI conversion, settling and tick wraparound,
 configuration readback, errors and recovery. Legacy builds link without IMU SPI
 functions. Board generator tests check sensor/bus/pin definitions; INIT tests check
 the 48-byte `GET_IMU` reply and invalid requests. Host tests do not verify the PCB.
+
+## Generic telemetry (host tests)
+
+The time-sync runner also compiles test_telemetry.c against the production
+connection and protocol code. It verifies all four payload layouts, unknown
+topics, resource indices, rate validation, legacy/generic replacement and
+transport isolation, no backlog under backpressure, sensor error recovery,
+capacity/reuse, INIT/heartbeat cleanup and watchdog expiry during a slow read.
+The schema tests validate topic IDs, payload references and event discriminators.
+Physical sensor streaming and transport throughput still require board testing.
