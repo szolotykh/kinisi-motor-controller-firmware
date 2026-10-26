@@ -73,7 +73,9 @@
           "type": "adc",
           "pin": "PC4",
           "sense_resistor_ohm": 330,
-          "filter_capacitance_nf": 1000
+          "filter_capacitance_nf": 1000,
+          "reference_voltage_mv": 3300,
+          "current_mirror_ratio": 1100
         },
         "hardware_current_limit": {
           "enabled": true,
@@ -102,7 +104,9 @@
           "type": "adc",
           "pin": "PC5",
           "sense_resistor_ohm": 330,
-          "filter_capacitance_nf": 1000
+          "filter_capacitance_nf": 1000,
+          "reference_voltage_mv": 3300,
+          "current_mirror_ratio": 1100
         },
         "hardware_current_limit": {
           "enabled": true,
@@ -131,7 +135,9 @@
           "type": "adc",
           "pin": "PC0",
           "sense_resistor_ohm": 330,
-          "filter_capacitance_nf": 1000
+          "filter_capacitance_nf": 1000,
+          "reference_voltage_mv": 3300,
+          "current_mirror_ratio": 1100
         },
         "hardware_current_limit": {
           "enabled": true,
@@ -160,7 +166,9 @@
           "type": "adc",
           "pin": "PC1",
           "sense_resistor_ohm": 330,
-          "filter_capacitance_nf": 1000
+          "filter_capacitance_nf": 1000,
+          "reference_voltage_mv": 3300,
+          "current_mirror_ratio": 1100
         },
         "hardware_current_limit": {
           "enabled": true,

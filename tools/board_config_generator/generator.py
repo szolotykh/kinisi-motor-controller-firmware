@@ -176,12 +176,15 @@ def validate(board):
             require("type" in sense, user + ".current_sense: missing field 'type'")
             require(sense["type"] == "adc",
                     user + ".current_sense.type: unsupported type; only 'adc' configuration is supported")
-            fields(sense, ("type", "pin", "sense_resistor_ohm", "filter_capacitance_nf"), at=user + ".current_sense")
+            fields(sense, ("type", "pin", "sense_resistor_ohm", "filter_capacitance_nf",
+                           "reference_voltage_mv", "current_mirror_ratio"), at=user + ".current_sense")
             pin(sense["pin"], user + ".current_sense")
             require(sense["pin"] in {f"PA{n}" for n in range(8)} | {"PB0", "PB1"} | {f"PC{n}" for n in range(6)},
                     user + ".current_sense: expected an ADC-capable pin")
             integer(sense["sense_resistor_ohm"], 1, 65535, user + ".sense_resistor_ohm")
             integer(sense["filter_capacitance_nf"], 1, 65535, user + ".filter_capacitance_nf")
+            integer(sense["reference_voltage_mv"], 1800, 3600, user + ".reference_voltage_mv")
+            integer(sense["current_mirror_ratio"], 1, 65535, user + ".current_mirror_ratio")
             limit = motor["hardware_current_limit"]
             fields(limit, ("enabled", "threshold_ma", "supported_thresholds_ma"), at=user + ".hardware_current_limit")
             boolean(limit["enabled"], user + ".hardware_current_limit.enabled")
@@ -339,6 +342,7 @@ def render(boards):
         hardware += [selection, f"#define MOTOR_CONTROL_MODEL MOTOR_CONTROL_MODEL_{model}",
                      f"#define MOTOR_PWM_FREQUENCY_HZ {motors['pwm_frequency_hz']}U"]
         for count, items in (("MOTORS", motors["channels"]), ("ENCODERS", board["encoders"]),
+                             ("CURRENT_SENSORS", [m for m in motors["channels"] if "current_sense" in m]),
                              ("GPIO_PINS", board["gpio"]), ("STATUS_LEDS", board["status_leds"]),
                              ("TEMPERATURE_SENSORS", board.get("temperature_sensors", [])),
                              ("IMU_SENSORS", board.get("imu_sensors", []))):
@@ -389,9 +393,12 @@ def render(boards):
                     hardware.append(f"        .{target} = {gpio(item[source])},")
                 sense, limit = item["current_sense"], item["hardware_current_limit"]
                 protection = item["overcurrent_protection"]
-                hardware += ["        // Circuit/default metadata; ADC sampling and IC2/IC4 programming are not implemented.",
+                adc_channel = int(sense['pin'][2:]) + {'A': 0, 'B': 8, 'C': 10}[sense['pin'][1]]
+                hardware += [
                              f"        .currentSense = {{.available = true, .type = CURRENT_SENSE_{sense['type'].upper()}, .input = {gpio(sense['pin'])},",
-                             f"            .senseResistorOhm = {sense['sense_resistor_ohm']}, .filterCapacitanceNf = {sense['filter_capacitance_nf']}}},",
+                             f"            .senseResistorOhm = {sense['sense_resistor_ohm']}, .filterCapacitanceNf = {sense['filter_capacitance_nf']},",
+                             f"            .adcChannel = {adc_channel}U, .referenceMillivolts = {sense['reference_voltage_mv']}, .currentMirrorRatio = {sense['current_mirror_ratio']}}},",
+                             "        // IC2/IC4 settings describe the factory defaults; programming is not implemented.",
                              f"        .hardwareCurrentLimit = {{.available = true, .enabled = {str(limit['enabled']).lower()}, .thresholdMa = {limit['threshold_ma']},",
                              f"            .supportedThresholdsMa = motor_{item['id']}_current_limit_thresholds_ma, .supportedThresholdCount = {len(limit['supported_thresholds_ma'])}}},",
                              f"        .overcurrentProtection = {{.available = true, .mode = OVERCURRENT_PROTECTION_{protection['mode'].upper()},",

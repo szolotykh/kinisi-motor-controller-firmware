@@ -70,7 +70,7 @@ class ErrorSchemaTests(unittest.TestCase):
     def test_retirement_metadata_validation(self):
         original = next(c for c in self.schema['commands'] if c['command'] == 'SUBSCRIBE_ODOMETRY')['retired']
         invalid = [None, True, {}, {**original, 'unknown': 1}]
-        for field, value in [('since', '2.6'), ('since', '2.7.0'), ('since', True),
+        for field, value in [('since', '2.6'), ('since', '2.8.0'), ('since', True),
                              ('since', '02.6.0'), ('removal_major', 2), ('removal_major', True),
                              ('removal_major', 256), ('replacement', 'MISSING'),
                              ('replacement', 'SUBSCRIBE_ODOMETRY'), ('replacement', 'UNSUBSCRIBE_ODOMETRY'),

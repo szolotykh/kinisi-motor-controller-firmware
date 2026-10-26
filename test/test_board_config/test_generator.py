@@ -20,6 +20,17 @@ class BoardConfigTests(unittest.TestCase):
         with self.assertRaisesRegex(g.ConfigError, message):
             g.validate(board)
 
+    def test_current_conversion_requires_valid_reference_and_mirror_ratio(self):
+        for key, invalid_values in [('reference_voltage_mv', (0, 1799, 3601, True)),
+                                    ('current_mirror_ratio', (0, -1, 65536, 1.5, True))]:
+            for value in invalid_values:
+                board = copy.deepcopy(self.v4)
+                board['motors']['channels'][0]['current_sense'][key] = value
+                self.reject(board, key)
+            board = copy.deepcopy(self.v4)
+            del board['motors']['channels'][0]['current_sense'][key]
+            self.reject(board, key)
+
     def test_generation_is_current_deterministic_and_does_not_rewrite(self):
         g.generate(check=True)
         with tempfile.TemporaryDirectory() as tmp:

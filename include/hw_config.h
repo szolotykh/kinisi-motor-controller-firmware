@@ -11,6 +11,7 @@
 #define MOTOR_PWM_FREQUENCY_HZ 100000U
 #define NUMBER_MOTORS 4
 #define NUMBER_ENCODERS 1
+#define NUMBER_CURRENT_SENSORS 0
 #define NUMBER_GPIO_PINS 4
 #define NUMBER_STATUS_LEDS 1
 #define NUMBER_TEMPERATURE_SENSORS 0
@@ -55,6 +56,7 @@ static const status_led_info_t status_led_info[NUMBER_STATUS_LEDS] = {
 #define MOTOR_PWM_FREQUENCY_HZ 100000U
 #define NUMBER_MOTORS 4
 #define NUMBER_ENCODERS 4
+#define NUMBER_CURRENT_SENSORS 0
 #define NUMBER_GPIO_PINS 4
 #define NUMBER_STATUS_LEDS 1
 #define NUMBER_TEMPERATURE_SENSORS 0
@@ -102,6 +104,7 @@ static const status_led_info_t status_led_info[NUMBER_STATUS_LEDS] = {
 #define MOTOR_PWM_FREQUENCY_HZ 100000U
 #define NUMBER_MOTORS 4
 #define NUMBER_ENCODERS 4
+#define NUMBER_CURRENT_SENSORS 0
 #define NUMBER_GPIO_PINS 10
 #define NUMBER_STATUS_LEDS 1
 #define NUMBER_TEMPERATURE_SENSORS 0
@@ -155,6 +158,7 @@ static const status_led_info_t status_led_info[NUMBER_STATUS_LEDS] = {
 #define MOTOR_PWM_FREQUENCY_HZ 100000U
 #define NUMBER_MOTORS 4
 #define NUMBER_ENCODERS 4
+#define NUMBER_CURRENT_SENSORS 4
 #define NUMBER_GPIO_PINS 8
 #define NUMBER_STATUS_LEDS 1
 #define NUMBER_TEMPERATURE_SENSORS 1
@@ -200,9 +204,10 @@ static const motor_info_t motor_info[NUMBER_MOTORS] = {
         .sleep = {GPIOB, GPIO_PIN_15},
         .fault = {GPIOD, GPIO_PIN_8},
         .chipSelect = {GPIOD, GPIO_PIN_15},
-        // Circuit/default metadata; ADC sampling and IC2/IC4 programming are not implemented.
         .currentSense = {.available = true, .type = CURRENT_SENSE_ADC, .input = {GPIOC, GPIO_PIN_4},
-            .senseResistorOhm = 330, .filterCapacitanceNf = 1000},
+            .senseResistorOhm = 330, .filterCapacitanceNf = 1000,
+            .adcChannel = 14U, .referenceMillivolts = 3300, .currentMirrorRatio = 1100},
+        // IC2/IC4 settings describe the factory defaults; programming is not implemented.
         .hardwareCurrentLimit = {.available = true, .enabled = true, .thresholdMa = 6500,
             .supportedThresholdsMa = motor_0_current_limit_thresholds_ma, .supportedThresholdCount = 4},
         .overcurrentProtection = {.available = true, .mode = OVERCURRENT_PROTECTION_LATCHED_SHUTDOWN,
@@ -216,9 +221,10 @@ static const motor_info_t motor_info[NUMBER_MOTORS] = {
         .sleep = {GPIOD, GPIO_PIN_2},
         .fault = {GPIOD, GPIO_PIN_3},
         .chipSelect = {GPIOD, GPIO_PIN_1},
-        // Circuit/default metadata; ADC sampling and IC2/IC4 programming are not implemented.
         .currentSense = {.available = true, .type = CURRENT_SENSE_ADC, .input = {GPIOC, GPIO_PIN_5},
-            .senseResistorOhm = 330, .filterCapacitanceNf = 1000},
+            .senseResistorOhm = 330, .filterCapacitanceNf = 1000,
+            .adcChannel = 15U, .referenceMillivolts = 3300, .currentMirrorRatio = 1100},
+        // IC2/IC4 settings describe the factory defaults; programming is not implemented.
         .hardwareCurrentLimit = {.available = true, .enabled = true, .thresholdMa = 6500,
             .supportedThresholdsMa = motor_1_current_limit_thresholds_ma, .supportedThresholdCount = 4},
         .overcurrentProtection = {.available = true, .mode = OVERCURRENT_PROTECTION_LATCHED_SHUTDOWN,
@@ -232,9 +238,10 @@ static const motor_info_t motor_info[NUMBER_MOTORS] = {
         .sleep = {GPIOB, GPIO_PIN_4},
         .fault = {GPIOB, GPIO_PIN_5},
         .chipSelect = {GPIOD, GPIO_PIN_6},
-        // Circuit/default metadata; ADC sampling and IC2/IC4 programming are not implemented.
         .currentSense = {.available = true, .type = CURRENT_SENSE_ADC, .input = {GPIOC, GPIO_PIN_0},
-            .senseResistorOhm = 330, .filterCapacitanceNf = 1000},
+            .senseResistorOhm = 330, .filterCapacitanceNf = 1000,
+            .adcChannel = 10U, .referenceMillivolts = 3300, .currentMirrorRatio = 1100},
+        // IC2/IC4 settings describe the factory defaults; programming is not implemented.
         .hardwareCurrentLimit = {.available = true, .enabled = true, .thresholdMa = 6500,
             .supportedThresholdsMa = motor_2_current_limit_thresholds_ma, .supportedThresholdCount = 4},
         .overcurrentProtection = {.available = true, .mode = OVERCURRENT_PROTECTION_LATCHED_SHUTDOWN,
@@ -248,9 +255,10 @@ static const motor_info_t motor_info[NUMBER_MOTORS] = {
         .sleep = {GPIOB, GPIO_PIN_8},
         .fault = {GPIOB, GPIO_PIN_9},
         .chipSelect = {GPIOE, GPIO_PIN_6},
-        // Circuit/default metadata; ADC sampling and IC2/IC4 programming are not implemented.
         .currentSense = {.available = true, .type = CURRENT_SENSE_ADC, .input = {GPIOC, GPIO_PIN_1},
-            .senseResistorOhm = 330, .filterCapacitanceNf = 1000},
+            .senseResistorOhm = 330, .filterCapacitanceNf = 1000,
+            .adcChannel = 11U, .referenceMillivolts = 3300, .currentMirrorRatio = 1100},
+        // IC2/IC4 settings describe the factory defaults; programming is not implemented.
         .hardwareCurrentLimit = {.available = true, .enabled = true, .thresholdMa = 6500,
             .supportedThresholdsMa = motor_3_current_limit_thresholds_ma, .supportedThresholdCount = 4},
         .overcurrentProtection = {.available = true, .mode = OVERCURRENT_PROTECTION_LATCHED_SHUTDOWN,

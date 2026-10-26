@@ -33,6 +33,9 @@ board identity reported during initialization and check protocol support separat
 
 See [position control](docs/position-control.md) and [velocity PID tuning](docs/velocity-pid.md) for setup details.
 
+See [motor current sensing](docs/current-sensing.md) for per-motor ADC readings,
+pull commands, subscriptions, and measurement limits.
+
 ## Generating Commands from commands.json
 
 To generate commands from `commands.json`, follow these steps:

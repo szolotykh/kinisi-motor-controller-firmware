@@ -12,7 +12,7 @@ On expiry, firmware stops closed-loop controllers, clears their targets and coas
 
 The heartbeat detects loss of client communication. It does not impose a lifetime on motor setpoints while a client continues sending valid traffic.
 
-## Generic subscriptions (protocol 2.6)
+## Generic subscriptions
 
 The protocol schema defines a stable uint8 topic enum and maps each topic to a
 packed sample object. The command generator emits the C enum, payload types,
@@ -24,6 +24,10 @@ sizes, selector validation and this mapping in the command reference.
 | PLATFORM_ODOMETRY | 2 | 0 | platform_odometry_sample | Twice the calculation period |
 | TEMPERATURE | 3 | Sensor index | temperature_sample | 250 ms |
 | IMU | 4 | Sensor index | imu_telemetry_sample | 10 ms |
+| MOTOR_CURRENT | 5 | Motor index | motor_current_sample | 20 ms |
+
+Generic subscriptions require protocol 2.6; motor current requires 2.7. See
+[motor current sensing](current-sensing.md) for the measurement contract.
 
 Send SUBSCRIBE(topic_id, index, interval_ms) after INIT/READY and enabling the
 heartbeat. It returns an ordinary ACK or ERROR. Intervals are integer
@@ -42,7 +46,7 @@ TELEMETRY_EVENT (0x82) uses message ID zero and has no ACK. Its payload is two
 uint8 fields, topic_id and index, followed by the exact object defined for that
 topic. Timestamp and clock metadata are inside the sample, not repeated in the
 envelope. Complete frame sizes are 24 bytes for encoder odometry, 40 for platform
-odometry, 24 for temperature and 64 for IMU. I2C masters must provide buffers
+odometry, 24 for temperature, 64 for IMU and 24 for motor current. I2C masters must provide buffers
 large enough for the complete frame and continue using POLL_TELEMETRY.
 
 Odometry preserves its original acquisition timestamp. Temperature and IMU

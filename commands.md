@@ -1,6 +1,6 @@
 # Kinisi motor controller commands
 
-**Protocol 2.6.0** · Generated from [commands.json](commands.json)
+**Protocol 2.7.0** · Generated from [commands.json](commands.json)
 
 [Command index](#command-index) · [Wire format](#wire-format) · [Error codes](#error-codes)
 
@@ -12,6 +12,7 @@
 | --- | --- | --- | --- |
 | [`GET_TEMPERATURE`](#get_temperature-0x50) | `0x50` | Client → controller | `double` |
 | [`GET_IMU`](#get_imu-0x51) | `0x51` | Client → controller | `imu_sample` |
+| [`GET_MOTOR_CURRENT`](#get_motor_current-0x52) | `0x52` | Client → controller | `double` |
 | [`INITIALIZE_MOTOR`](#initialize_motor-0x01) | `0x01` | Client → controller | ACK |
 | [`SET_MOTOR_SPEED`](#set_motor_speed-0x02) | `0x02` | Client → controller | ACK |
 | [`STOP_MOTOR`](#stop_motor-0x03) | `0x03` | Client → controller | ACK |
@@ -110,6 +111,7 @@ The selector is a uint8 enum. IDs remain stable within a protocol major.
 | 2 | `PLATFORM_ODOMETRY` | `platform_odometry_sample` | 34 | 0 | 2 |
 | 3 | `TEMPERATURE` | `temperature_sample` | 18 | 255 | 250 |
 | 4 | `IMU` | `imu_telemetry_sample` | 58 | 255 | 10 |
+| 5 | `MOTOR_CURRENT` | `motor_current_sample` | 18 | 3 | 20 |
 
 Odometry also requires an interval at least twice the calculation period. Actual resource counts depend on the board.
 
@@ -163,6 +165,17 @@ Timestamped IMU register reading. Acceleration and angular velocity are not sync
 | `angular_velocity_x` | `double` | 8 | X angular velocity in rad/s. |
 | `angular_velocity_y` | `double` | 8 | Y angular velocity in rad/s. |
 | `angular_velocity_z` | `double` | 8 | Z angular velocity in rad/s. |
+
+#### motor_current_sample
+
+Timestamped filtered motor-current estimate.
+
+| Parameter | Type | Bytes | Description |
+| --- | --- | ---: | --- |
+| `timestamp_us` | `uint64_t` | 8 | ADC read completion timestamp in the selected clock domain. |
+| `clock_mode` | `uint8_t` | 1 | 0 uptime, 1 Unix wall time. |
+| `clock_quality` | `uint8_t` | 1 | 1 valid, 2 stale. |
+| `amps` | `double` | 8 | Nonnegative filtered high-side current estimate in amperes. |
 
 ### GET_TEMPERATURE (0x50)
 
@@ -224,6 +237,36 @@ Six little-endian IEEE 754 doubles, 48 bytes total.
 #### Errors
 
 [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`SAMPLE_NOT_AVAILABLE`](#error-sample-not-available) (10) · [`INTERNAL_ERROR`](#error-internal-error) (6)
+
+[Back to command index](#command-index)
+
+---
+
+### GET_MOTOR_CURRENT (0x52)
+
+**Client → controller** · **Payload:** 1 bytes
+
+Read the filtered motor-current estimate in amperes. The unsigned reading measures driver high-side current; PWM decay intervals and the analog filter affect it. Reading does not enable or initialize the motor.
+
+#### Parameters
+
+| Parameter | Type | Bytes | Range | Description |
+| --- | --- | ---: | --- | --- |
+| `motor_index` | `uint8_t` | 1 | 0 to 3 | Motor connector index. |
+
+#### Response
+
+**Controller → client** · `double` · **Payload:** 8 bytes
+
+Nonnegative current estimate in amperes, encoded as a little-endian IEEE 754 64-bit double.
+
+| Parameter | Type | Bytes | Description |
+| --- | --- | ---: | --- |
+| `current_amps` | `double` | 8 | Nonnegative current estimate in amperes, encoded as a little-endian IEEE 754 64-bit double. |
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`SAMPLE_OUT_OF_RANGE`](#error-sample-out-of-range) (18) · [`INTERNAL_ERROR`](#error-internal-error) (6)
 
 [Back to command index](#command-index)
 
@@ -1917,7 +1960,7 @@ Create or replace this connection's subscription for a topic and resource. Requi
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`ODOMETRY_NOT_INITIALIZED`](#error-odometry-not-initialized) (9) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`SUBSCRIPTION_LIMIT`](#error-subscription-limit) (17)
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`ODOMETRY_NOT_INITIALIZED`](#error-odometry-not-initialized) (9) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`SUBSCRIPTION_LIMIT`](#error-subscription-limit) (17) · [`SAMPLE_OUT_OF_RANGE`](#error-sample-out-of-range) (18)
 
 [Back to command index](#command-index)
 
@@ -1982,7 +2025,7 @@ Errors use the shared ERROR message. Each command above links to its possible er
 | 3 | <a id="error-unknown-command"></a>`UNKNOWN_COMMAND` | The received command ID is not accepted by the controller. |
 | 4 | <a id="error-invalid-length"></a>`INVALID_LENGTH` | The complete message has an invalid header or payload length. |
 | 5 | <a id="error-motor-owned"></a>`MOTOR_OWNED` | The motor belongs to a platform; use the corresponding platform command. |
-| 6 | <a id="error-internal-error"></a>`INTERNAL_ERROR` | The controller could not execute or encode the operation. |
+| 6 | <a id="error-internal-error"></a>`INTERNAL_ERROR` | The controller could not execute or encode the operation. During motor initialization, possible causes include missing motor power, a driver communication failure, or a faulty driver. |
 | 7 | <a id="error-clock-not-ready"></a>`CLOCK_NOT_READY` | Initial clock setup is incomplete; wait for READY. Uptime mode also supports READY. |
 | 8 | <a id="error-time-sync-failed"></a>`TIME_SYNC_FAILED` | Initial time sync exhausted its attempts without a valid sample. |
 | 9 | <a id="error-odometry-not-initialized"></a>`ODOMETRY_NOT_INITIALIZED` | Odometry is not running; start odometry before requesting a measurement. |
@@ -1994,3 +2037,4 @@ Errors use the shared ERROR message. Each command above links to its possible er
 | 15 | <a id="error-init-required"></a>`INIT_REQUIRED` | Send a valid INIT request before performing this connection-dependent operation. |
 | 16 | <a id="error-sensor-not-available"></a>`SENSOR_NOT_AVAILABLE` | The selected sensor is not defined on this board. |
 | 17 | <a id="error-subscription-limit"></a>`SUBSCRIPTION_LIMIT` | This connection has no free subscription slots; unsubscribe an existing source first. |
+| 18 | <a id="error-sample-out-of-range"></a>`SAMPLE_OUT_OF_RANGE` | The sensor reading is saturated; no valid measurement can be returned. |
