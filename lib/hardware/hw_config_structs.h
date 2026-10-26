@@ -63,7 +63,7 @@ typedef struct {
 	gpio_info_t gyroInterrupt;
 } imu_sensor_info_t;
 
-// Circuit/default metadata only; current measurement and IC2/IC4 configuration are not implemented.
+// ADC conversion parameters for each motor's current mirror.
 typedef enum {
 	CURRENT_SENSE_NONE = 0,
 	CURRENT_SENSE_ADC = 1
@@ -75,6 +75,9 @@ typedef struct {
 	gpio_info_t input;
 	uint16_t senseResistorOhm;
 	uint16_t filterCapacitanceNf;
+	uint32_t adcChannel;
+	uint16_t referenceMillivolts;
+	uint16_t currentMirrorRatio;
 } current_sense_info_t;
 
 typedef struct {

@@ -22,7 +22,7 @@ static void capture_sample(uint8_t *data, uint8_t length)
 /** @brief Read through the same handler as GET, preserving measurement timestamps. */
 static uint8_t read_sample(connection_t *c, connection_subscription_t *sub)
 {
-    bool sensor = sub->topic == TOPIC_TEMPERATURE || sub->topic == TOPIC_IMU;
+    bool sensor = sub->topic == TOPIC_TEMPERATURE || sub->topic == TOPIC_IMU || sub->topic == TOPIC_MOTOR_CURRENT;
     if (sensor && sub->sample_length && c->now() < sub->next_read_us) {
         sample_length = sub->sample_length;
         memcpy(sample_payload, sub->sample, sample_length);
@@ -43,6 +43,10 @@ static uint8_t read_sample(connection_t *c, connection_subscription_t *sub)
         request.commandType = GET_IMU;
         request.properties.get_imu.sensor_index = sub->index;
         break;
+    case TOPIC_MOTOR_CURRENT:
+        request.commandType = GET_MOTOR_CURRENT;
+        request.properties.get_motor_current.motor_index = sub->index;
+        break;
     default: return RESPONSE_INVALID_ARGUMENT;
     }
     sample_length = 0;
@@ -53,7 +57,7 @@ static uint8_t read_sample(connection_t *c, connection_subscription_t *sub)
     if (sensor) {
         sub->sample_length = 0;
         if (status != RESPONSE_OK) return status;
-        uint8_t expected = sub->topic == TOPIC_TEMPERATURE ? sizeof(double) : sizeof(imu_sample);
+        uint8_t expected = sub->topic == TOPIC_IMU ? sizeof(imu_sample) : sizeof(double);
         if (sample_length != expected) return RESPONSE_INTERNAL_ERROR;
         uint64_t completed = c->now(), timestamp;
         if (!time_sync_convert(&c->clock, completed, &timestamp)) return RESPONSE_CLOCK_NOT_READY;

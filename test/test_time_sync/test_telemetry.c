@@ -24,6 +24,11 @@ static uint8_t execute(controller_command_t *cmd, protocol_send_fn reply) {
         if (!running) return RESPONSE_ODOMETRY_NOT_INITIALIZED;
         platform_odometry_sample sample = {12345, 0, 1, 1.25, -2.5, 3.0};
         reply((uint8_t *)&sample, cmd->commandType == GET_ENCODER_ODOMETRY ? sizeof(encoder_odometry_sample) : sizeof(sample));
+    } else if (cmd->commandType == GET_MOTOR_CURRENT) {
+        ++reads;
+        if (sensor_error) return sensor_error;
+        double amps = cmd->properties.get_motor_current.motor_index + 0.5;
+        reply((uint8_t *)&amps, sizeof(amps));
     } else if (cmd->commandType == GET_TEMPERATURE || cmd->commandType == GET_IMU) {
         ++reads;
         ticks += read_duration_us;
@@ -148,5 +153,30 @@ int main(void) {
     count = sends;
     request(&a, (controller_command_t){.commandType = POLL_TELEMETRY});
     assert(a.lost && b.lost && sends == count); // Expiry during I/O sends neither sample nor empty frame.
-    puts("Generic topics: framing, legacy coexistence, bounds, cadence, backpressure, recovery, capacity and expiry passed");
+    slow_read = false; init(&a); heartbeat(&a, true);
+    subscribe(&a, TOPIC_MOTOR_CURRENT, 4, 100); error(RESPONSE_INVALID_ARGUMENT);
+    subscribe(&a, TOPIC_MOTOR_CURRENT, 0, 19); error(RESPONSE_INVALID_ARGUMENT);
+    sensor_error = RESPONSE_SAMPLE_OUT_OF_RANGE;
+    subscribe(&a, TOPIC_MOTOR_CURRENT, 0, 20); error(RESPONSE_SAMPLE_OUT_OF_RANGE);
+    sensor_error = 0;
+    for (uint8_t i = 0; i < 4; ++i) {
+        subscribe(&a, TOPIC_MOTOR_CURRENT, i, 20); assert(wire[1] == SUBSCRIBE);
+    }
+    ticks += 20000;
+    unsigned seen = 0;
+    for (unsigned i = 0; i < 4; ++i) {
+        connection_poll(&a); event(TOPIC_MOTOR_CURRENT, wire[5]);
+        motor_current_sample sample; memcpy(&sample, wire + 6, sizeof(sample));
+        assert(wire[5] < 4 && sample.amps == wire[5] + 0.5 && sample.timestamp_us == ticks);
+        seen |= 1U << wire[5];
+    }
+    assert(seen == 15); // All four sources coexist and keep independent indices.
+    sensor_error = RESPONSE_SAMPLE_OUT_OF_RANGE;
+    ticks += 20000; count = sends;
+    for (unsigned i = 0; i < 4; ++i) connection_poll(&a);
+    assert(sends == count); // Do not repeat the old current when the ADC saturates.
+    sensor_error = 0; ticks += 20000; connection_poll(&a); event(TOPIC_MOTOR_CURRENT, wire[5]);
+    for (uint8_t i = 0; i < 4; ++i) unsubscribe(&a, TOPIC_MOTOR_CURRENT, i);
+    count = sends; ticks += 20000; connection_poll(&a); assert(sends == count);
+    puts("Generic topics: framing, current sensing, bounds, cadence, backpressure, recovery, capacity and expiry passed");
 }

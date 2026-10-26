@@ -15,6 +15,7 @@
 #include "hardware_i2c.h"
 #include "hw_temperature.h"
 #include "hw_imu.h"
+#include "hw_current_sense.h"
 #include "stdbool.h"
 #include "initialization.h"
 #include "connection.h"
@@ -521,6 +522,17 @@ uint8_t command_handler(controller_command_t* cmd, void (*command_callback)(uint
             };
             command_callback((uint8_t *)&response, sizeof(response));
             return RESPONSE_OK;
+        }
+        case GET_MOTOR_CURRENT: {
+            double amps;
+            switch (hw_current_sense_read(cmd->properties.get_motor_current.motor_index, &amps)) {
+                case HW_CURRENT_SENSE_UNAVAILABLE: return RESPONSE_SENSOR_NOT_AVAILABLE;
+                case HW_CURRENT_SENSE_OUT_OF_RANGE: return RESPONSE_SAMPLE_OUT_OF_RANGE;
+                case HW_CURRENT_SENSE_OK: break;
+                default: return RESPONSE_INTERNAL_ERROR;
+            }
+            command_callback((uint8_t *)&amps, sizeof(amps));
+            break;
         }
         case GET_TEMPERATURE: {
             double celsius;

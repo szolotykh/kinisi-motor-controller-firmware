@@ -56,6 +56,9 @@ int main(void) {
         assert(m->currentSense.type == CURRENT_SENSE_ADC);
         assert(m->currentSense.input.pin == current_pins[i]);
         assert(m->currentSense.senseResistorOhm == 330 && m->currentSense.filterCapacitanceNf == 1000);
+        const uint32_t adc_channels[] = {14, 15, 10, 11};
+        assert(NUMBER_CURRENT_SENSORS == 4 && m->currentSense.adcChannel == adc_channels[i]);
+        assert(m->currentSense.referenceMillivolts == 3300 && m->currentSense.currentMirrorRatio == 1100);
         assert(m->hardwareCurrentLimit.available && m->hardwareCurrentLimit.enabled);
         assert(m->hardwareCurrentLimit.thresholdMa == 6500);
         const uint16_t thresholds[] = {4000, 5400, 6500, 7000};

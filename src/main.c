@@ -7,6 +7,7 @@
 #include "hw_motor.h"
 #include "hw_temperature.h"
 #include "hw_imu.h"
+#include "hw_current_sense.h"
 #include "usb_device.h"
 #include "os_interface.h"
 #include "commands_manager.h"
@@ -24,6 +25,7 @@ int main(void)
     hw_motor_init();
     hw_temperature_init();
     hw_imu_init();
+    hw_current_sense_init();
     
     // Initialize GPIO interface
     const gpio_interface_t* gpio = get_gpio_interface();
