@@ -14,6 +14,7 @@
 #include "initialization.h"
 #include "connection.h"
 #include "hw_clock.h"
+#include "hw_motor_faults.h"
 #include "controllers_manager.h"
 #include "odometry_manager.h"
 
@@ -44,6 +45,9 @@ static void stop_on_connection_loss(void)
 }
 
 /** @brief Validate a global calculation period against both transport subscriptions. */
+static uint32_t event_sequence(uint8_t topic, uint8_t index) {
+    return topic == TOPIC_MOTOR_FAULTS ? hw_motor_fault_event_sequence(index) : 0;
+}
 static bool period_allowed(uint32_t period_ms)
 {
     return connection_period_allowed(&usb_connection, period_ms) &&
@@ -132,7 +136,8 @@ void CommandHandlerTask(void *argument)
     const connection_services_t services = {
         .stop = stop_on_connection_loss,
         .calculation_period_ms = odometry_manager_get_period_ms,
-        .period_allowed = period_allowed
+        .period_allowed = period_allowed,
+        .event_sequence = event_sequence
     };
     usb_connection.services = i2c_connection.services = services;
 

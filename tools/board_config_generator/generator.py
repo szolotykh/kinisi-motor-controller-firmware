@@ -186,7 +186,7 @@ def validate(board):
             integer(sense["reference_voltage_mv"], 1800, 3600, user + ".reference_voltage_mv")
             integer(sense["current_mirror_ratio"], 1, 65535, user + ".current_mirror_ratio")
             limit = motor["hardware_current_limit"]
-            fields(limit, ("enabled", "threshold_ma", "supported_thresholds_ma"), at=user + ".hardware_current_limit")
+            fields(limit, ("enabled", "can_disable", "threshold_ma", "supported_thresholds_ma"), at=user + ".hardware_current_limit")
             boolean(limit["enabled"], user + ".hardware_current_limit.enabled")
             integer(limit["threshold_ma"], 1, 65535, user + ".hardware_current_limit.threshold_ma")
             thresholds = limit["supported_thresholds_ma"]
@@ -199,10 +199,8 @@ def validate(board):
             require(thresholds == sorted(set(thresholds)), at + ": expected unique values in ascending order")
             require(limit["threshold_ma"] in thresholds,
                     user + ".hardware_current_limit.threshold_ma: must be listed in supported_thresholds_ma")
-            # Metadata only until IC4 programming is implemented. Never silently
-            # accept a requested threshold that the firmware will not apply.
-            require(limit["enabled"] and limit["threshold_ma"] == 6500,
-                    user + ".hardware_current_limit: only the enabled 6500 mA factory default is implemented")
+            boolean(limit["can_disable"], user + ".hardware_current_limit.can_disable")
+            require(limit["enabled"] or limit["can_disable"], user + ".hardware_current_limit: disabling is not allowed")
             protection = motor["overcurrent_protection"]
             at = user + ".overcurrent_protection"
             fields(protection, ("mode", "supported_modes"), at=at)
@@ -313,6 +311,12 @@ def client_profile(board):
             "id": motor["id"],
             "current_sense": "current_sense" in motor,
             "current_limit": "hardware_current_limit" in motor,
+            **({"current_limit_options": {
+                "type": "discrete",
+                "supported_thresholds_ma": motor["hardware_current_limit"]["supported_thresholds_ma"],
+                "can_disable": motor["hardware_current_limit"]["can_disable"],
+            }} if "hardware_current_limit" in motor else {}),
+            "fault_reporting": "fault" in motor and board["motors"].get("driver", {}).get("type") == "DRV8873S",
         } for motor in board["motors"]["channels"]],
         "sensors": {
             "temperature": [{"id": s["id"]} for s in board.get("temperature_sensors", [])],
@@ -398,8 +402,8 @@ def render(boards):
                              f"        .currentSense = {{.available = true, .type = CURRENT_SENSE_{sense['type'].upper()}, .input = {gpio(sense['pin'])},",
                              f"            .senseResistorOhm = {sense['sense_resistor_ohm']}, .filterCapacitanceNf = {sense['filter_capacitance_nf']},",
                              f"            .adcChannel = {adc_channel}U, .referenceMillivolts = {sense['reference_voltage_mv']}, .currentMirrorRatio = {sense['current_mirror_ratio']}}},",
-                             "        // IC2/IC4 settings describe the factory defaults; programming is not implemented.",
-                             f"        .hardwareCurrentLimit = {{.available = true, .enabled = {str(limit['enabled']).lower()}, .thresholdMa = {limit['threshold_ma']},",
+                             "        // Current-limit defaults are applied at motor initialization; IC2 protection retains its factory default.",
+                             f"        .hardwareCurrentLimit = {{.available = true, .canDisable = {str(limit['can_disable']).lower()}, .enabled = {str(limit['enabled']).lower()}, .thresholdMa = {limit['threshold_ma']},",
                              f"            .supportedThresholdsMa = motor_{item['id']}_current_limit_thresholds_ma, .supportedThresholdCount = {len(limit['supported_thresholds_ma'])}}},",
                              f"        .overcurrentProtection = {{.available = true, .mode = OVERCURRENT_PROTECTION_{protection['mode'].upper()},",
                              f"            .supportedModes = motor_{item['id']}_overcurrent_modes, .supportedModeCount = {len(protection['supported_modes'])}}},"]

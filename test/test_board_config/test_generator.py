@@ -179,11 +179,19 @@ class BoardConfigTests(unittest.TestCase):
                 }]
                 self.reject(board, f"pin {pin} is reserved by firmware for USB_OTG_FS")
 
-    def test_unimplemented_current_settings_fail(self):
-        self.v4["motors"]["channels"][0]["hardware_current_limit"]["threshold_ma"] = 5400
-        self.reject(self.v4, "factory default")
-        self.v4["motors"]["channels"][0]["hardware_current_limit"].update(enabled=False, threshold_ma=6500)
-        self.reject(self.v4, "factory default")
+    def test_current_settings_and_public_options(self):
+        limit = self.v4["motors"]["channels"][0]["hardware_current_limit"]
+        for threshold in (4000, 5400, 6500, 7000):
+            limit.update(enabled=False, threshold_ma=threshold)
+            g.validate(self.v4)
+        options = g.client_profile(self.v4)['motor_features'][0]['current_limit_options']
+        self.assertEqual(options, dict(type='discrete', supported_thresholds_ma=[4000, 5400, 6500, 7000], can_disable=True))
+        limit['can_disable'] = False
+        self.reject(self.v4, 'disabling is not allowed')
+        limit['enabled'] = True
+        g.validate(self.v4)
+        limit['can_disable'] = 'yes'
+        self.reject(self.v4, 'can_disable')
 
     def test_current_sense_type_is_required(self):
         del self.v4["motors"]["channels"][0]["current_sense"]["type"]

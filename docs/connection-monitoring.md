@@ -18,16 +18,18 @@ The protocol schema defines a stable uint8 topic enum and maps each topic to a
 packed sample object. The command generator emits the C enum, payload types,
 sizes, selector validation and this mapping in the command reference.
 
-| Topic | ID | Index | Sample object | Minimum delivery interval |
+| Topic | ID | Index | Sample object | Minimum sampling interval |
 | --- | ---: | --- | --- | --- |
 | ENCODER_ODOMETRY | 1 | Encoder index | encoder_odometry_sample | Twice the calculation period |
 | PLATFORM_ODOMETRY | 2 | 0 | platform_odometry_sample | Twice the calculation period |
 | TEMPERATURE | 3 | Sensor index | temperature_sample | 250 ms |
 | IMU | 4 | Sensor index | imu_telemetry_sample | 10 ms |
 | MOTOR_CURRENT | 5 | Motor index | motor_current_sample | 20 ms |
+| MOTOR_FAULTS | 6 | Motor index | motor_fault_sample | 100 ms |
 
-Generic subscriptions require protocol 2.6; motor current requires 2.7. See
-[motor current sensing](current-sensing.md) for the measurement contract.
+Generic subscriptions require protocol 2.6; motor current requires 2.7 and
+motor faults require 2.8. See [motor current sensing](current-sensing.md) and
+[motor fault reporting](motor-faults.md) for their data contracts.
 
 Send SUBSCRIBE(topic_id, index, interval_ms) after INIT/READY and enabling the
 heartbeat. It returns an ordinary ACK or ERROR. Intervals are integer
@@ -46,7 +48,7 @@ TELEMETRY_EVENT (0x82) uses message ID zero and has no ACK. Its payload is two
 uint8 fields, topic_id and index, followed by the exact object defined for that
 topic. Timestamp and clock metadata are inside the sample, not repeated in the
 envelope. Complete frame sizes are 24 bytes for encoder odometry, 40 for platform
-odometry, 24 for temperature, 64 for IMU and 24 for motor current. I2C masters must provide buffers
+odometry, 24 for temperature, 64 for IMU, 24 for motor current, and 26 for motor faults. I2C masters must provide buffers
 large enough for the complete frame and continue using POLL_TELEMETRY.
 
 Odometry preserves its original acquisition timestamp. Temperature and IMU
@@ -62,6 +64,33 @@ remain supported. Both interfaces share the same odometry slots: the last
 successful subscribe selects the interval and event format for that connection.
 Either unsubscribe interface removes that source. Independent connections can
 use different formats. All existing GET, START, STOP and RESET operations remain.
+
+## Subscription delivery modes
+
+`PERIODIC` (0) sends the latest sample at each interval. `ON_CHANGE` (1)
+sends an initial snapshot, then another when the encoded value fields change.
+Timestamp and clock metadata are excluded from the comparison. Fault appearance,
+clearance, sleep, and diagnostic validity changes are included in the value fields.
+Numeric measurements use exact encoded comparisons, with no deadband.
+
+The interval controls how often firmware checks for changes; topic minimums still
+apply. Faults can be checked every 100 ms. This is sampled detection, not an
+interrupt-driven guarantee. A quiet change subscription remains active, and the
+connection heartbeat runs independently. Hardware protection remains independent
+of telemetry delivery.
+
+Each connection keeps its own baseline. Replacing a subscription requests a fresh
+initial snapshot. Failed reads pause delivery; the next successful read sends a
+snapshot even if the value matches the previous one. A failed transmit does not
+advance the baseline. Slow transports receive the latest state and can skip
+intermediate transitions; subscriptions are not a fault history. On I2C, the
+master must continue servicing `poll()` to retrieve queued samples.
+
+Delivery modes require protocol 2.9. SDKs keep the original `SUBSCRIBE`
+request for periodic mode, so existing applications and older compatible firmware
+keep working. Other modes use `SUBSCRIBE_WITH_MODE` (0x83), with the same topic,
+index and uint32 interval followed by a uint8 mode. Events and unsubscribe keep
+their existing formats. Unsupported modes are rejected before transmission.
 
 ## Legacy odometry subscriptions
 
@@ -91,3 +120,47 @@ Arduino's `poll()` services this exchange and idle heartbeats. It must run frequ
 The USB disconnect callback and CDC deinitialization notify the command task; motor operations are deferred out of the USB interrupt. The heartbeat watchdog detects loss of client communication when no disconnect notification is received.
 
 The current board does not support separate USB power sensing. Revision 3 uses PA9 for motor PWM; firmware does not read that pin as a USB power input.
+
+## Trigger and delivery settings
+
+`SUBSCRIBE_CONFIGURED` (protocol 2.12) separates when to read from what to send.
+It sends an initial snapshot, then applies these settings:
+
+| Setting | Values | Meaning |
+| --- | --- | --- |
+| `trigger` | `PERIODIC` (0), `ON_EVENT` (1) | Read on the polling schedule or on a source notification. |
+| `delivery` | `ALL` (0), `ON_CHANGE` (1) | Send every triggered update, or only changed value fields. |
+| `poll_interval_ms` | Integer milliseconds | Required for periodic triggering; zero for event triggering. Topic minimums apply. |
+| `max_silence_ms` | Integer milliseconds | For ON_CHANGE, send a fresh snapshot after this long without a successful send, even if unchanged. Zero disables refresh. |
+
+Nonzero intervals must meet the topic minimum and cannot exceed 3,600,000 ms.
+ALL requires zero maximum silence. Timestamp and clock metadata do not count as
+value changes. Odometry retains its acquisition timestamp; refresh does not start
+or restart calculation. Heartbeat monitoring remains independent and required.
+
+Only MOTOR_FAULTS currently supports ON_EVENT. The fault GPIO interrupt records a
+notification; the command task reads diagnostics and sends them as soon as it can.
+A 100 ms background check catches additional diagnostic changes while the fault
+pin is already asserted, and recovery conditions without an interrupt. Driver
+initialization enables thermal-warning reporting on the fault pin while preserving
+protection settings. Current-regulation reporting on that pin remains unchanged.
+
+ON_EVENT + ALL sends each observed notification batch, including unchanged values,
+and changes found by reconciliation. An unchanged background check is not an event.
+ON_EVENT + ON_CHANGE filters repeated values and can refresh after maximum silence.
+The firmware stores latest state, not a lossless event queue: bursts can coalesce,
+transient conditions may be missed, and bus/task delays affect delivery. Failed
+reads do not resend old data. Backpressure does not acknowledge a change until sent.
+Maximum silence is a best-effort reporting deadline, not a connection watchdog or
+a guarantee during failed reads, unavailable measurements, or a blocked transport.
+
+The request payload is `uint8 topic_id`, `uint8 index`, `uint32 poll_interval_ms`,
+`uint8 trigger`, `uint8 delivery`, `uint32 max_silence_ms`, in that order. Events,
+unsubscribe, session cleanup and capacity limits remain shared with the existing
+subscription commands. Existing interval/mode APIs retain their wire behavior.
+Configured subscriptions require 2.12 and are rejected locally on older firmware.
+
+On I2C, the board cannot initiate transfers. Continue calling Arduino `poll()`;
+event subscriptions request service every 10 ms (divided among active streams).
+USB receives notifications without client polling. Hardware protection acts
+independently of subscription and transport timing.

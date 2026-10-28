@@ -1,6 +1,6 @@
 # Kinisi motor controller commands
 
-**Protocol 2.7.0** · Generated from [commands.json](commands.json)
+**Protocol 2.12.0** · Generated from [commands.json](commands.json)
 
 [Command index](#command-index) · [Wire format](#wire-format) · [Error codes](#error-codes)
 
@@ -13,6 +13,7 @@
 | [`GET_TEMPERATURE`](#get_temperature-0x50) | `0x50` | Client → controller | `double` |
 | [`GET_IMU`](#get_imu-0x51) | `0x51` | Client → controller | `imu_sample` |
 | [`GET_MOTOR_CURRENT`](#get_motor_current-0x52) | `0x52` | Client → controller | `double` |
+| [`GET_MOTOR_FAULTS`](#get_motor_faults-0x53) | `0x53` | Client → controller | `motor_fault_status` |
 | [`INITIALIZE_MOTOR`](#initialize_motor-0x01) | `0x01` | Client → controller | ACK |
 | [`SET_MOTOR_SPEED`](#set_motor_speed-0x02) | `0x02` | Client → controller | ACK |
 | [`STOP_MOTOR`](#stop_motor-0x03) | `0x03` | Client → controller | ACK |
@@ -79,6 +80,11 @@
 | [`SUBSCRIBE`](#subscribe-0x80) | `0x80` | Client → controller | ACK |
 | [`UNSUBSCRIBE`](#unsubscribe-0x81) | `0x81` | Client → controller | ACK |
 | [`TELEMETRY_EVENT`](#telemetry_event-0x82) | `0x82` | Controller → client | — |
+| [`SUBSCRIBE_WITH_MODE`](#subscribe_with_mode-0x83) | `0x83` | Client → controller | ACK |
+| [`CLEAR_MOTOR_FAULTS`](#clear_motor_faults-0x54) | `0x54` | Client → controller | `motor_fault_status` |
+| [`GET_MOTOR_CURRENT_LIMIT`](#get_motor_current_limit-0x55) | `0x55` | Client → controller | `motor_current_limit` |
+| [`SET_MOTOR_CURRENT_LIMIT`](#set_motor_current_limit-0x56) | `0x56` | Client → controller | `motor_current_limit` |
+| [`SUBSCRIBE_CONFIGURED`](#subscribe_configured-0x84) | `0x84` | Client → controller | ACK |
 
 ## Command lifecycle
 
@@ -99,6 +105,27 @@ Multi-byte fields are little-endian. Length counts all bytes after itself. Param
 
 See [response framing](docs/responses.md) and [time synchronization](docs/time-sync.md) for details.
 
+## Subscription triggers
+
+| ID | Name | Behavior |
+| ---: | --- | --- |
+| 0 | PERIODIC | Read at the polling interval. |
+| 1 | ON_EVENT | Read promptly on a source event, with background diagnostic reconciliation. |
+
+## Subscription delivery filters
+
+| ID | Name | Behavior |
+| ---: | --- | --- |
+| 0 | ALL | Send each triggered update. |
+| 1 | ON_CHANGE | Send changed values and optional maximum-silence refreshes. |
+
+## Subscription modes
+
+| ID | Mode | Behavior |
+| ---: | --- | --- |
+| 0 | `PERIODIC` | Send the latest sample at each interval. |
+| 1 | `ON_CHANGE` | Send an initial sample, then changed values. Check values at each interval; exclude timestamp and clock metadata from comparison. |
+
 ## Commands
 
 ### Telemetry topics
@@ -112,6 +139,7 @@ The selector is a uint8 enum. IDs remain stable within a protocol major.
 | 3 | `TEMPERATURE` | `temperature_sample` | 18 | 255 | 250 |
 | 4 | `IMU` | `imu_telemetry_sample` | 58 | 255 | 10 |
 | 5 | `MOTOR_CURRENT` | `motor_current_sample` | 18 | 3 | 20 |
+| 6 | `MOTOR_FAULTS` | `motor_fault_sample` | 20 | 3 | 100 |
 
 Odometry also requires an interval at least twice the calculation period. Actual resource counts depend on the board.
 
@@ -176,6 +204,26 @@ Timestamped filtered motor-current estimate.
 | `clock_mode` | `uint8_t` | 1 | 0 uptime, 1 Unix wall time. |
 | `clock_quality` | `uint8_t` | 1 | 1 valid, 2 stale. |
 | `amps` | `double` | 8 | Nonnegative filtered high-side current estimate in amperes. |
+
+#### motor_fault_sample
+
+Timestamped motor-driver diagnostic status. Timestamp marks completion of the read; faults can be latched rather than new events.
+
+| Parameter | Type | Bytes | Description |
+| --- | --- | ---: | --- |
+| `timestamp_us` | `uint64_t` | 8 | ADC read completion timestamp in the selected clock domain. |
+| `clock_mode` | `uint8_t` | 1 | 0 uptime, 1 Unix wall time. |
+| `clock_quality` | `uint8_t` | 1 | 1 valid, 2 stale. |
+| `sleep_requested` | `bool` | 1 | The sleep control is asserted; reading never wakes the driver. |
+| `status_valid` | `bool` | 1 | Driver diagnostic registers were read successfully. Detailed flags are unknown when false. |
+| `fault_active` | `bool` | 1 | The fault input is asserted or a valid register reports a global fault. |
+| `overtemperature_warning` | `bool` | 1 | Driver temperature warning is reported. |
+| `undervoltage` | `bool` | 1 | Driver supply undervoltage is reported; this does not prove a disconnected supply. |
+| `charge_pump_undervoltage` | `bool` | 1 | Driver charge-pump undervoltage is reported. |
+| `overcurrent` | `bool` | 1 | An overcurrent fault is reported. |
+| `overtemperature_shutdown` | `bool` | 1 | A thermal shutdown fault is reported. |
+| `open_load` | `bool` | 1 | The configured open-load detector reports a fault; detection depends on operating conditions. |
+| `current_regulation` | `bool` | 1 | At least one output reports current regulation; this is not an overcurrent fault. |
 
 ### GET_TEMPERATURE (0x50)
 
@@ -267,6 +315,45 @@ Nonnegative current estimate in amperes, encoded as a little-endian IEEE 754 64-
 #### Errors
 
 [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`SAMPLE_OUT_OF_RANGE`](#error-sample-out-of-range) (18) · [`INTERNAL_ERROR`](#error-internal-error) (6)
+
+[Back to command index](#command-index)
+
+---
+
+### GET_MOTOR_FAULTS (0x53)
+
+**Client → controller** · **Payload:** 1 bytes
+
+Read motor-driver fault status without waking, initializing, enabling or clearing the driver. Detailed flags are meaningful only when status_valid is true. An unavailable SPI response cannot distinguish missing motor power from a communication or driver failure. Flags may retain latched faults until explicit motor reinitialization.
+
+#### Parameters
+
+| Parameter | Type | Bytes | Range | Description |
+| --- | --- | ---: | --- | --- |
+| `motor_index` | `uint8_t` | 1 | 0 to 3 | Motor connector index. |
+
+#### Response
+
+**Controller → client** · `motor_fault_status` · **Payload:** 10 bytes
+
+Driver state and diagnostic flags, encoded as ten one-byte booleans.
+
+| Parameter | Type | Bytes | Description |
+| --- | --- | ---: | --- |
+| `sleep_requested` | `bool` | 1 | The sleep control is asserted; reading never wakes the driver. |
+| `status_valid` | `bool` | 1 | Driver diagnostic registers were read successfully. Detailed flags are unknown when false. |
+| `fault_active` | `bool` | 1 | The fault input is asserted or a valid register reports a global fault. |
+| `overtemperature_warning` | `bool` | 1 | Driver temperature warning is reported. |
+| `undervoltage` | `bool` | 1 | Driver supply undervoltage is reported; this does not prove a disconnected supply. |
+| `charge_pump_undervoltage` | `bool` | 1 | Driver charge-pump undervoltage is reported. |
+| `overcurrent` | `bool` | 1 | An overcurrent fault is reported. |
+| `overtemperature_shutdown` | `bool` | 1 | A thermal shutdown fault is reported. |
+| `open_load` | `bool` | 1 | The configured open-load detector reports a fault; detection depends on operating conditions. |
+| `current_regulation` | `bool` | 1 | At least one output reports current regulation; this is not an overcurrent fault. |
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16)
 
 [Back to command index](#command-index)
 
@@ -2009,6 +2096,165 @@ The fixed prefix is followed by the topic's payload object from [telemetry topic
 #### Errors
 
 None in this message's declared direction.
+
+[Back to command index](#command-index)
+
+---
+
+### SUBSCRIBE_WITH_MODE (0x83)
+
+**Client → controller** · **Payload:** 7 bytes
+
+Create or replace this connection's subscription with a delivery mode. Requires READY and enabled heartbeat. The interval sets the sampling cadence and must meet the topic minimum; odometry also requires twice the calculation period. ON_CHANGE sends an initial snapshot and changed values, excluding timestamp and clock metadata. Failed reads pause delivery; recovery sends a fresh snapshot.
+
+#### Parameters
+
+| Parameter | Type | Bytes | Range | Description |
+| --- | --- | ---: | --- | --- |
+| `topic_id` | `uint8_t` | 1 | — | Generated telemetry topic enum. |
+| `index` | `uint8_t` | 1 | — | Resource index; platform uses 0. Hardware availability is checked by firmware. |
+| `interval_ms` | `uint32_t` | 4 | 2 to 3600000 | Sampling interval in milliseconds; scheduling is best effort. |
+| `mode` | `uint8_t` | 1 | — | Subscription delivery mode. |
+
+#### Response
+
+**ACK** — empty payload; echoes the command and message ID.
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`ODOMETRY_NOT_INITIALIZED`](#error-odometry-not-initialized) (9) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`SUBSCRIPTION_LIMIT`](#error-subscription-limit) (17) · [`SAMPLE_OUT_OF_RANGE`](#error-sample-out-of-range) (18)
+
+[Back to command index](#command-index)
+
+---
+
+### CLEAR_MOTOR_FAULTS (0x54)
+
+**Client → controller** · **Payload:** 1 bytes
+
+Stop the initialized motor and its controller, clear latched driver faults, and return fresh diagnostics. Requires a ready connection. The motor remains stopped. Active conditions can remain reported. Platform-owned motors are rejected. Driver configuration is preserved; sleeping drivers are not woken. A failed clear or unreadable verification returns an error.
+
+#### Parameters
+
+| Parameter | Type | Bytes | Range | Description |
+| --- | --- | ---: | --- | --- |
+| `motor_index` | `uint8_t` | 1 | 0 to 3 | Motor connector index. |
+
+#### Response
+
+**Controller → client** · `motor_fault_status` · **Payload:** 10 bytes
+
+Driver state and diagnostic flags, encoded as ten one-byte booleans.
+
+| Parameter | Type | Bytes | Description |
+| --- | --- | ---: | --- |
+| `sleep_requested` | `bool` | 1 | The sleep control is asserted; reading never wakes the driver. |
+| `status_valid` | `bool` | 1 | Driver diagnostic registers were read successfully. Detailed flags are unknown when false. |
+| `fault_active` | `bool` | 1 | The fault input is asserted or a valid register reports a global fault. |
+| `overtemperature_warning` | `bool` | 1 | Driver temperature warning is reported. |
+| `undervoltage` | `bool` | 1 | Driver supply undervoltage is reported; this does not prove a disconnected supply. |
+| `charge_pump_undervoltage` | `bool` | 1 | Driver charge-pump undervoltage is reported. |
+| `overcurrent` | `bool` | 1 | An overcurrent fault is reported. |
+| `overtemperature_shutdown` | `bool` | 1 | A thermal shutdown fault is reported. |
+| `open_load` | `bool` | 1 | The configured open-load detector reports a fault; detection depends on operating conditions. |
+| `current_regulation` | `bool` | 1 | At least one output reports current regulation; this is not an overcurrent fault. |
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`MOTOR_OWNED`](#error-motor-owned) (5) · [`MOTOR_NOT_INITIALIZED`](#error-motor-not-initialized) (13) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7)
+
+[Back to command index](#command-index)
+
+---
+
+### GET_MOTOR_CURRENT_LIMIT (0x55)
+
+**Client → controller** · **Payload:** 1 bytes
+
+Read the applied hardware current-regulation setting in milliamps. Requires a ready connection and an initialized, awake motor driver. Does not change motor state.
+
+#### Parameters
+
+| Parameter | Type | Bytes | Range | Description |
+| --- | --- | ---: | --- | --- |
+| `motor_index` | `uint8_t` | 1 | 0 to 3 | Motor connector index. |
+
+#### Response
+
+**Controller → client** · `motor_current_limit` · **Payload:** 3 bytes
+
+Applied current-regulation setting.
+
+| Parameter | Type | Bytes | Description |
+| --- | --- | ---: | --- |
+| `enabled` | `bool` | 1 | Current regulation is enabled on both outputs. |
+| `threshold_ma` | `uint16_t` | 2 | Nominal threshold in milliamps. |
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`MOTOR_NOT_INITIALIZED`](#error-motor-not-initialized) (13) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6)
+
+[Back to command index](#command-index)
+
+---
+
+### SET_MOTOR_CURRENT_LIMIT (0x56)
+
+**Client → controller** · **Payload:** 4 bytes
+
+Stop the motor and its controller, apply and verify hardware current regulation, and return the applied setting. Requires a ready connection and an initialized, awake driver. Only board-supported thresholds are accepted. Platform-owned motors are rejected. The motor stays stopped. Settings are volatile; motor reinitialization applies board defaults. Driver power loss requires reinitialization. Overcurrent protection is unchanged.
+
+#### Parameters
+
+| Parameter | Type | Bytes | Range | Description |
+| --- | --- | ---: | --- | --- |
+| `motor_index` | `uint8_t` | 1 | 0 to 3 | Motor connector index. |
+| `enabled` | `bool` | 1 | — | Enable current regulation on both motor outputs. |
+| `threshold_ma` | `uint16_t` | 2 | 1 to 65535 | Nominal regulation threshold in milliamps, selected from the board profile. |
+
+#### Response
+
+**Controller → client** · `motor_current_limit` · **Payload:** 3 bytes
+
+Applied current-regulation setting.
+
+| Parameter | Type | Bytes | Description |
+| --- | --- | ---: | --- |
+| `enabled` | `bool` | 1 | Current regulation is enabled on both outputs. |
+| `threshold_ma` | `uint16_t` | 2 | Nominal threshold in milliamps. |
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`MOTOR_NOT_INITIALIZED`](#error-motor-not-initialized) (13) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`MOTOR_OWNED`](#error-motor-owned) (5)
+
+[Back to command index](#command-index)
+
+---
+
+### SUBSCRIBE_CONFIGURED (0x84)
+
+**Client → controller** · **Payload:** 12 bytes
+
+Create or replace a subscription with independent trigger and delivery settings. Send an initial snapshot. PERIODIC uses poll_interval_ms; ON_EVENT requires zero polling interval and an event-capable source. ON_CHANGE suppresses unchanged values, excluding timestamp and clock metadata; max_silence_ms requests fresh refreshes, or zero disables refreshes. Delivery is best effort and requires READY and heartbeat.
+
+#### Parameters
+
+| Parameter | Type | Bytes | Range | Description |
+| --- | --- | ---: | --- | --- |
+| `topic_id` | `uint8_t` | 1 | — | Telemetry topic. |
+| `index` | `uint8_t` | 1 | — | Resource index. |
+| `poll_interval_ms` | `uint32_t` | 4 | 0 to 3600000 | Polling interval; zero for ON_EVENT. |
+| `trigger` | `uint8_t` | 1 | — | Update trigger. |
+| `delivery` | `uint8_t` | 1 | — | Delivery filter. |
+| `max_silence_ms` | `uint32_t` | 4 | 0 to 3600000 | Fresh-sample refresh interval for ON_CHANGE; zero disables refreshes. Must meet the topic minimum. |
+
+#### Response
+
+**ACK** — empty payload; echoes the command and message ID.
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`ODOMETRY_NOT_INITIALIZED`](#error-odometry-not-initialized) (9) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`SUBSCRIPTION_LIMIT`](#error-subscription-limit) (17) · [`SAMPLE_OUT_OF_RANGE`](#error-sample-out-of-range) (18)
 
 [Back to command index](#command-index)
 

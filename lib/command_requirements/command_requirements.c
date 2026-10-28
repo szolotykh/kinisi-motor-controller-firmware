@@ -15,6 +15,8 @@ uint8_t command_requirements_check(const controller_command_t *cmd, const comman
     // Keep ownership precedence consistent across all direct motor operations.
     uint8_t index;
     switch (cmd->commandType) {
+    case SET_MOTOR_CURRENT_LIMIT: index = cmd->properties.set_motor_current_limit.motor_index; break;
+    case CLEAR_MOTOR_FAULTS: index = cmd->properties.clear_motor_faults.motor_index; break;
     case INITIALIZE_MOTOR: index = cmd->properties.initialize_motor.motor_index; break;
     case SET_MOTOR_SPEED: index = cmd->properties.set_motor_speed.motor_index; break;
     case STOP_MOTOR: index = cmd->properties.stop_motor.motor_index; break;
@@ -33,6 +35,11 @@ uint8_t command_requirements_check(const controller_command_t *cmd, const comman
     if (index != UINT8_MAX && r->motor_owned(index)) return RESPONSE_MOTOR_OWNED;
 
     switch (cmd->commandType) {
+    case GET_MOTOR_CURRENT_LIMIT:
+        if (!r->motor_initialized(cmd->properties.get_motor_current_limit.motor_index)) return RESPONSE_MOTOR_NOT_INITIALIZED;
+        break;
+    case SET_MOTOR_CURRENT_LIMIT:
+    case CLEAR_MOTOR_FAULTS:
     case SET_MOTOR_SPEED:
         if (!r->motor_initialized(index)) return RESPONSE_MOTOR_NOT_INITIALIZED;
         break;

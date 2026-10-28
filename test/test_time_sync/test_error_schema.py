@@ -56,6 +56,19 @@ class ErrorSchemaTests(unittest.TestCase):
         event['topic_payload']['discriminator'] = 'unknown'
         self.assertTrue(generator.validate_json(schema))
 
+    def test_subscription_mode_catalog_and_wire_envelope(self):
+        for field, value in [('id', 2), ('id', True), ('name', 'UNKNOWN')]:
+            schema = copy.deepcopy(self.schema)
+            schema['subscription_modes'][1][field] = value
+            self.assertTrue(generator.validate_json(schema))
+        schema = copy.deepcopy(self.schema)
+        next(c for c in schema['commands'] if c['command'] == 'SUBSCRIBE_WITH_MODE')['properties'].pop()
+        self.assertTrue(generator.validate_json(schema))
+        code = generator.generate_c_header_file(self.schema)
+        self.assertIn('SUBSCRIPTION_MODE_ON_CHANGE = 1', code)
+        self.assertIn('case SUBSCRIBE: return 9U;', code)
+        self.assertIn('case SUBSCRIBE_WITH_MODE: return 10U;', code)
+
     def test_generated_topic_sizes_and_documentation(self):
         code = generator.generate_c_header_file(self.schema)
         self.assertIn('TOPIC_ENCODER_ODOMETRY = 1', code)
@@ -70,7 +83,7 @@ class ErrorSchemaTests(unittest.TestCase):
     def test_retirement_metadata_validation(self):
         original = next(c for c in self.schema['commands'] if c['command'] == 'SUBSCRIBE_ODOMETRY')['retired']
         invalid = [None, True, {}, {**original, 'unknown': 1}]
-        for field, value in [('since', '2.6'), ('since', '2.8.0'), ('since', True),
+        for field, value in [('since', '2.6'), ('since', '2.99.0'), ('since', True),
                              ('since', '02.6.0'), ('removal_major', 2), ('removal_major', True),
                              ('removal_major', 256), ('replacement', 'MISSING'),
                              ('replacement', 'SUBSCRIBE_ODOMETRY'), ('replacement', 'UNSUBSCRIBE_ODOMETRY'),

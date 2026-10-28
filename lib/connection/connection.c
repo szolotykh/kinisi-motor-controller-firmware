@@ -22,7 +22,7 @@ static void capture_sample(uint8_t *data, uint8_t length)
 /** @brief Read through the same handler as GET, preserving measurement timestamps. */
 static uint8_t read_sample(connection_t *c, connection_subscription_t *sub)
 {
-    bool sensor = sub->topic == TOPIC_TEMPERATURE || sub->topic == TOPIC_IMU || sub->topic == TOPIC_MOTOR_CURRENT;
+    bool sensor = sub->topic == TOPIC_TEMPERATURE || sub->topic == TOPIC_IMU || sub->topic == TOPIC_MOTOR_CURRENT || sub->topic == TOPIC_MOTOR_FAULTS;
     if (sensor && sub->sample_length && c->now() < sub->next_read_us) {
         sample_length = sub->sample_length;
         memcpy(sample_payload, sub->sample, sample_length);
@@ -43,6 +43,10 @@ static uint8_t read_sample(connection_t *c, connection_subscription_t *sub)
         request.commandType = GET_IMU;
         request.properties.get_imu.sensor_index = sub->index;
         break;
+    case TOPIC_MOTOR_FAULTS:
+        request.commandType = GET_MOTOR_FAULTS;
+        request.properties.get_motor_faults.motor_index = sub->index;
+        break;
     case TOPIC_MOTOR_CURRENT:
         request.commandType = GET_MOTOR_CURRENT;
         request.properties.get_motor_current.motor_index = sub->index;
@@ -57,7 +61,8 @@ static uint8_t read_sample(connection_t *c, connection_subscription_t *sub)
     if (sensor) {
         sub->sample_length = 0;
         if (status != RESPONSE_OK) return status;
-        uint8_t expected = sub->topic == TOPIC_IMU ? sizeof(imu_sample) : sizeof(double);
+        uint8_t expected = sub->topic == TOPIC_IMU ? sizeof(imu_sample) :
+            sub->topic == TOPIC_MOTOR_FAULTS ? sizeof(motor_fault_status) : sizeof(double);
         if (sample_length != expected) return RESPONSE_INTERNAL_ERROR;
         uint64_t completed = c->now(), timestamp;
         if (!time_sync_convert(&c->clock, completed, &timestamp)) return RESPONSE_CLOCK_NOT_READY;
@@ -68,7 +73,9 @@ static uint8_t read_sample(connection_t *c, connection_subscription_t *sub)
         sample_length += 10;
         memcpy(sub->sample, sample_payload, sample_length);
         sub->sample_length = sample_length;
-        sub->next_read_us = completed + (uint64_t)sub->interval_ms * 1000;
+        uint32_t cadence = sub->interval_ms;
+        if (sub->configured && sub->max_silence_ms && sub->max_silence_ms < cadence) cadence = sub->max_silence_ms;
+        sub->next_read_us = completed + (uint64_t)cadence * 1000;
     }
     return status;
 }
@@ -88,11 +95,11 @@ static connection_subscription_t *subscription_slot(connection_t *c, uint8_t top
     return create ? free_slot : NULL;
 }
 
-static uint8_t subscribe(connection_t *c, uint8_t topic, uint8_t index, uint32_t interval, bool legacy)
+static uint8_t subscribe(connection_t *c, uint8_t topic, uint8_t index, uint32_t interval, bool legacy, uint8_t mode)
 {
     if (!c->clock.initialized) return RESPONSE_INIT_REQUIRED;
     if (!c->ready_announced) return RESPONSE_CLOCK_NOT_READY;
-    if (!c->heartbeat.enabled || !telemetry_payload_size(topic) ||
+    if (mode > SUBSCRIPTION_MODE_ON_CHANGE || !c->heartbeat.enabled || !telemetry_payload_size(topic) ||
         index > telemetry_index_limit(topic) || interval < telemetry_min_interval_ms(topic))
         return RESPONSE_INVALID_ARGUMENT;
     bool odometry = topic == TOPIC_ENCODER_ODOMETRY || topic == TOPIC_PLATFORM_ODOMETRY;
@@ -100,13 +107,36 @@ static uint8_t subscribe(connection_t *c, uint8_t topic, uint8_t index, uint32_t
                     interval < 2ULL * c->services.calculation_period_ms())) return RESPONSE_INVALID_ARGUMENT;
     connection_subscription_t *slot = subscription_slot(c, topic, index, true);
     if (!slot) return RESPONSE_SUBSCRIPTION_LIMIT;
-    connection_subscription_t replacement = {.topic = topic, .index = index, .interval_ms = interval, .legacy = legacy};
+    connection_subscription_t replacement = {.topic = topic, .index = index, .interval_ms = interval, .legacy = legacy, .mode = mode};
     uint8_t status = read_sample(c, &replacement);
     // Sensor operations may consume time. Never revive a session that expired during a read.
     if (check_heartbeat(c)) return RESPONSE_INIT_REQUIRED;
     if (status != RESPONSE_OK && status != RESPONSE_SAMPLE_NOT_AVAILABLE) return status;
-    replacement.next_us = c->now() + (uint64_t)interval * 1000;
+    replacement.next_us = c->now() + (mode == SUBSCRIPTION_MODE_ON_CHANGE ? 0 : (uint64_t)interval * 1000);
     *slot = replacement;
+    return RESPONSE_OK;
+}
+
+/** @brief Install independent trigger/delivery settings without changing legacy commands. */
+static uint8_t subscribe_configured(connection_t *c, uint8_t topic, uint8_t index,
+    uint32_t poll_ms, uint8_t trigger, uint8_t delivery, uint32_t silence_ms)
+{
+    bool event = trigger == SUBSCRIPTION_TRIGGER_ON_EVENT;
+    uint32_t minimum = telemetry_min_interval_ms(topic);
+    if (trigger > SUBSCRIPTION_TRIGGER_ON_EVENT || delivery > SUBSCRIPTION_DELIVERY_ON_CHANGE ||
+        poll_ms > 3600000 || silence_ms > 3600000 ||
+        (event ? (poll_ms != 0 || !telemetry_event_supported(topic) || !c->services.event_sequence) : poll_ms < minimum) ||
+        (silence_ms && (delivery != SUBSCRIPTION_DELIVERY_ON_CHANGE || silence_ms < minimum)))
+        return RESPONSE_INVALID_ARGUMENT;
+    // Event diagnostics also reconcile every 100 ms: a second fault may not create an edge.
+    uint32_t cadence = event ? 100 : poll_ms;
+    uint32_t sequence = c->services.event_sequence ? c->services.event_sequence(topic, index) : 0;
+    uint8_t status = subscribe(c, topic, index, cadence, false, delivery);
+    if (status != RESPONSE_OK) return status;
+    connection_subscription_t *sub = subscription_slot(c, topic, index, false);
+    sub->configured = true; sub->trigger = trigger; sub->max_silence_ms = silence_ms;
+    sub->observed_sequence = sub->sampled_sequence = sequence;
+    sub->next_us = c->now(); // Every configured subscription starts with a snapshot.
     return RESPONSE_OK;
 }
 
@@ -166,6 +196,12 @@ static uint8_t handle(controller_command_t *cmd, protocol_send_fn reply)
     // protocol_dispatch already checked the command, fields and message ID.
     active->last_activity_us = active->now();
     switch (cmd->commandType) {
+    case GET_MOTOR_CURRENT_LIMIT:
+    case SET_MOTOR_CURRENT_LIMIT:
+    case CLEAR_MOTOR_FAULTS:
+        if (!active->clock.initialized) return RESPONSE_INIT_REQUIRED;
+        if (!active->ready_announced) return RESPONSE_CLOCK_NOT_READY;
+        break;
     case POLL_TELEMETRY:
         if (!active->clock.initialized) return RESPONSE_INIT_REQUIRED;
         if (!active->ready_announced) return RESPONSE_CLOCK_NOT_READY;
@@ -186,11 +222,19 @@ static uint8_t handle(controller_command_t *cmd, protocol_send_fn reply)
     case SUBSCRIBE_ODOMETRY: {
         uint8_t source = cmd->properties.subscribe_odometry.source;
         return subscribe(active, source == 4 ? TOPIC_PLATFORM_ODOMETRY : TOPIC_ENCODER_ODOMETRY,
-                         source == 4 ? 0 : source, cmd->properties.subscribe_odometry.interval_ms, true);
+                         source == 4 ? 0 : source, cmd->properties.subscribe_odometry.interval_ms, true, SUBSCRIPTION_MODE_PERIODIC);
     }
     case SUBSCRIBE:
         return subscribe(active, cmd->properties.subscribe.topic_id, cmd->properties.subscribe.index,
-                         cmd->properties.subscribe.interval_ms, false);
+                         cmd->properties.subscribe.interval_ms, false, SUBSCRIPTION_MODE_PERIODIC);
+    case SUBSCRIBE_WITH_MODE:
+        return subscribe(active, cmd->properties.subscribe_with_mode.topic_id, cmd->properties.subscribe_with_mode.index,
+                         cmd->properties.subscribe_with_mode.interval_ms, false, cmd->properties.subscribe_with_mode.mode);
+    case SUBSCRIBE_CONFIGURED:
+        return subscribe_configured(active, cmd->properties.subscribe_configured.topic_id,
+            cmd->properties.subscribe_configured.index, cmd->properties.subscribe_configured.poll_interval_ms,
+            cmd->properties.subscribe_configured.trigger, cmd->properties.subscribe_configured.delivery,
+            cmd->properties.subscribe_configured.max_silence_ms);
     case UNSUBSCRIBE: {
         if (!active->clock.initialized) return RESPONSE_INIT_REQUIRED;
         if (!active->ready_announced) return RESPONSE_CLOCK_NOT_READY;
@@ -371,15 +415,32 @@ void connection_receive(connection_t *c, const uint8_t *data, size_t length)
 static int publish_sample(connection_t *c, uint64_t now)
 {
     // Round-robin sources; at most one telemetry frame per turn. Never queue history.
+    const uint8_t start = c->next_subscription;
     for (unsigned offset = 0; offset < CONNECTION_SUBSCRIPTION_CAPACITY; ++offset) {
-        uint8_t source = (c->next_subscription + offset) % CONNECTION_SUBSCRIPTION_CAPACITY;
+        uint8_t source = (start + offset) % CONNECTION_SUBSCRIPTION_CAPACITY;
         connection_subscription_t *sub = &c->subscriptions[source];
-        if (!sub->interval_ms || now < sub->next_us) continue;
+        if (!sub->interval_ms) continue;
+        bool event = sub->configured && sub->trigger == SUBSCRIPTION_TRIGGER_ON_EVENT;
+        uint32_t sequence = event ? c->services.event_sequence(sub->topic, sub->index) : 0;
+        bool pending_event = event && sequence != sub->observed_sequence;
+        bool fresh_event = event && sequence != sub->sampled_sequence;
+        bool refresh = sub->configured && sub->max_silence_ms && sub->last_length &&
+            now - sub->last_sent_us >= (uint64_t)sub->max_silence_ms * 1000;
+        if (now < sub->next_us && !pending_event && !refresh) continue;
+        if (fresh_event || (refresh && !sub->refresh_pending)) sub->next_read_us = 0;
+        if (refresh) sub->refresh_pending = true;
+        sub->sampled_sequence = sequence;
         uint8_t status = read_sample(c, sub);
         if (check_heartbeat(c)) return 0;
         bool encoder = sub->topic == TOPIC_ENCODER_ODOMETRY;
         uint8_t expected = telemetry_payload_size(sub->topic);
-        if (status == RESPONSE_OK && sample_length == expected) {
+        bool valid = status == RESPONSE_OK && sample_length == expected;
+        bool changed = valid && (sub->last_length != expected ||
+            memcmp(sub->last_value, sample_payload + 10, expected - 10) != 0);
+        bool publish = valid && (changed || refresh ||
+            (sub->mode == SUBSCRIPTION_MODE_PERIODIC && (!event || pending_event)));
+        if (!valid) { sub->last_length = 0; sub->observed_sequence = sequence; sub->refresh_pending = false; } // Re-announce recovery even if values match.
+        if (publish) {
             uint8_t frame[6 + sizeof(telemetry_payload_t)] = {0};
             unsigned prefix = sub->legacy ? (encoder ? 1 : 0) : 2;
             frame[0] = 3 + expected + prefix;
@@ -389,15 +450,21 @@ static int publish_sample(connection_t *c, uint64_t now)
             if (!sub->legacy) { frame[4] = sub->topic; frame[5] = sub->index; }
             memcpy(frame + 4 + prefix, sample_payload, expected);
             if (!c->send(frame, frame[0] + 1)) return -1;
+            // Failed sends must not acknowledge a change or lose the first sample.
+            memcpy(sub->last_value, sample_payload + 10, expected - 10);
+            sub->last_length = expected;
+            sub->last_sent_us = c->now();
+            sub->refresh_pending = false;
         }
+        if (valid) sub->observed_sequence = sequence;
         now = c->now();
         uint64_t interval_us = (uint64_t)sub->interval_ms * 1000;
-        sub->next_us += ((now - sub->next_us) / interval_us + 1) * interval_us;
+        sub->next_us = now + interval_us;
         // A sensor read consumes time. Do not deliver the same cached sample at
         // the next deadline just because its read-completion cadence is later.
         if (sub->next_read_us > sub->next_us) sub->next_us = sub->next_read_us;
         c->next_subscription = (source + 1) % CONNECTION_SUBSCRIPTION_CAPACITY;
-        return status == RESPONSE_OK && sample_length == expected ? 1 : 0;
+        if (publish) return 1;
     }
     return 0;
 }

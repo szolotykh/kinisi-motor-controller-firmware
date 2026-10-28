@@ -3,6 +3,8 @@
 //------------------------------------------------------------
 #include "hw_motor.h"
 #include "hw_config.h"
+#include "hw_motor_faults.h"
+#include "hw_motor_current_limit.h"
 #include "hw_timers.h"
 #include <math.h>
 
@@ -192,4 +194,63 @@ static bool init_motor_timer(const motor_info_t *info) {
 #endif
     if (!success) Error_Handler();
     return success;
+}
+
+bool hw_motor_read_faults(uint8_t index, hw_motor_faults_t *faults) {
+#if MOTOR_CONTROL_MODEL == MOTOR_CONTROL_MODEL_ENABLE_DIRECTION
+    if (index >= NUMBER_MOTORS || !faults) return false;
+    hw_drv8873_read_faults(index, faults);
+    return true;
+#else
+    (void)index; (void)faults;
+    return false;
+#endif
+}
+
+bool hw_motor_clear_faults(uint8_t index, hw_motor_faults_t *faults) {
+#if MOTOR_CONTROL_MODEL == MOTOR_CONTROL_MODEL_ENABLE_DIRECTION
+    if (index >= NUMBER_MOTORS || !faults || !motor_is_initialized(index)) return false;
+    stop_motor(index);
+    return hw_drv8873_clear_faults(index, faults);
+#else
+    (void)index; (void)faults;
+    return false;
+#endif
+}
+
+bool hw_motor_current_limit_allowed(uint8_t index, const hw_motor_current_limit_t *setting) {
+    if (index >= NUMBER_MOTORS || !setting) return false;
+    const hardware_current_limit_info_t *info = &motor_info[index].hardwareCurrentLimit;
+    if (!info->available || (!setting->enabled && !info->canDisable)) return false;
+    for (uint8_t n = 0; n < info->supportedThresholdCount; ++n)
+        if (info->supportedThresholdsMa[n] == setting->threshold_ma) return true;
+    return false;
+}
+
+bool hw_motor_get_current_limit(uint8_t index, hw_motor_current_limit_t *setting) {
+#if MOTOR_CONTROL_MODEL == MOTOR_CONTROL_MODEL_ENABLE_DIRECTION
+    return index < NUMBER_MOTORS && motor_is_initialized(index) && hw_drv8873_get_current_limit(index, setting);
+#else
+    (void)index; (void)setting;
+    return false;
+#endif
+}
+
+bool hw_motor_set_current_limit(uint8_t index, const hw_motor_current_limit_t *setting) {
+#if MOTOR_CONTROL_MODEL == MOTOR_CONTROL_MODEL_ENABLE_DIRECTION
+    if (!hw_motor_current_limit_allowed(index, setting) || !motor_is_initialized(index)) return false;
+    stop_motor(index);
+    return hw_drv8873_set_current_limit(index, setting);
+#else
+    (void)index; (void)setting;
+    return false;
+#endif
+}
+
+uint32_t hw_motor_fault_event_sequence(uint8_t index) {
+#if MOTOR_CONTROL_MODEL == MOTOR_CONTROL_MODEL_ENABLE_DIRECTION
+    return hw_drv8873_event_sequence(index);
+#else
+    (void)index; return 0;
+#endif
 }

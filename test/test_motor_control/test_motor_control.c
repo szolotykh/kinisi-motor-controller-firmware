@@ -1,4 +1,6 @@
 #include "hw_motor.h"
+#include "hw_motor_faults.h"
+#include "hw_motor_current_limit.h"
 #include "hw_config.h"
 #include "hw_timers.h"
 #include <assert.h>
@@ -16,7 +18,13 @@ static unsigned timer_inits, delays;
 static uint16_t spi_pins;
 static int fail_spi_motor = -1;
 static uint8_t corrupt_readback;
-static uint8_t registers[NUMBER_MOTORS];
+static uint8_t registers[NUMBER_MOTORS], fault_registers[NUMBER_MOTORS], diag_registers[NUMBER_MOTORS];
+static uint8_t diagnostic_header = 0xc0;
+static uint8_t control2_registers[NUMBER_MOTORS], control3_registers[NUMBER_MOTORS], control4_registers[NUMBER_MOTORS];
+static bool corrupt_control4, lock_current_control;
+static unsigned transfer_count, fail_transfer;
+static bool persistent_fault, corrupt_control3;
+static unsigned spi_reads, spi_writes;
 static uint32_t apb2_divider = RCC_HCLK_DIV2, pclk2 = 84000000U;
 static uint32_t apb1_divider = RCC_HCLK_DIV4, pclk1 = 42000000U;
 
@@ -35,7 +43,8 @@ void rcc_tim_clk_enable(TIM_TypeDef *timer) { assert(timer >= TIM1 && timer <= T
 void Error_Handler(void) { assert(!"Unexpected hardware error"); }
 void HAL_GPIO_WritePin(GPIO_TypeDef *port, uint16_t pin, GPIO_PinState state) {
     assert(port >= GPIOA && port <= GPIOE);
-    if (state) port->ODR |= pin; else port->ODR &= ~pin;
+    if (state) { port->ODR |= pin; port->IDR |= pin; }
+    else { port->ODR &= ~pin; port->IDR &= ~pin; }
 }
 GPIO_PinState HAL_GPIO_ReadPin(GPIO_TypeDef *port, uint16_t pin) { return (port->IDR & pin) ? GPIO_PIN_SET : GPIO_PIN_RESET; }
 void HAL_GPIO_Init(GPIO_TypeDef *port, GPIO_InitTypeDef *gpio) {
@@ -91,21 +100,62 @@ HAL_StatusTypeDef HAL_SPI_Init(SPI_HandleTypeDef *spi) {
 }
 HAL_StatusTypeDef HAL_SPI_TransmitReceive(SPI_HandleTypeDef *spi, uint8_t *tx, uint8_t *rx, uint16_t size, uint32_t timeout) {
     (void)spi; (void)timeout;
-    assert(size == 2 && (tx[0] & 0x3f) == 4); // IC1 address occupies bits 13:9.
+    assert(size == 2);
+    unsigned reg = (tx[0] & 0x3e) >> 1;
+    assert(reg <= 5);
+    if (++transfer_count == fail_transfer) return HAL_ERROR;
     int selected = -1;
     for (unsigned i = 0; i < NUMBER_MOTORS; ++i) {
         const gpio_info_t *cs = &motor_info[i].chipSelect;
         if (!(cs->port->ODR & cs->pin)) { assert(selected == -1); selected = i; }
     }
     assert(selected >= 0);
-    assert(motor_info[selected].disable.port->ODR & motor_info[selected].disable.pin);
+    if (!(tx[0] & 0x40)) assert(motor_info[selected].disable.port->ODR & motor_info[selected].disable.pin);
     if (selected == fail_spi_motor) return HAL_ERROR;
+    if (reg == 3) {
+        rx[0] = diagnostic_header; rx[1] = control2_registers[selected];
+        if (tx[0] & 0x40) ++spi_reads;
+        else { ++spi_writes; control2_registers[selected] = tx[1]; }
+        return HAL_OK;
+    }
+    if (reg == 5) {
+        rx[0] = diagnostic_header; rx[1] = control4_registers[selected];
+        if (tx[0] & 0x40) ++spi_reads;
+        else {
+            ++spi_writes;
+            if (!lock_current_control) control4_registers[selected] = tx[1] ^ (corrupt_control4 ? 0x10 : 0);
+        }
+        return HAL_OK;
+    }
+    if (reg == 4) {
+        rx[0] = diagnostic_header;
+        rx[1] = control3_registers[selected];
+        if (tx[0] & 0x40) { ++spi_reads; }
+        else {
+            ++spi_writes;
+            assert(tx[1] == (uint8_t)(control3_registers[selected] | 0x80));
+            control3_registers[selected] = (tx[1] & 0x7f) ^ (corrupt_control3 ? 1 : 0);
+            if (!persistent_fault) {
+                fault_registers[selected] = diag_registers[selected] = 0;
+                motor_info[selected].fault.port->IDR |= motor_info[selected].fault.pin;
+            }
+        }
+        return HAL_OK;
+    }
+    if (reg < 2) {
+        assert(tx[0] & 0x40); // Diagnostic reads must never write control/fault registers.
+        ++spi_reads;
+        rx[0] = diagnostic_header;
+        rx[1] = reg == 0 ? fault_registers[selected] : diag_registers[selected];
+        return HAL_OK;
+    }
     rx[0] = 0xc0;
     rx[1] = registers[selected];
     if (tx[0] & 0x40) rx[1] ^= corrupt_readback;
     else {
         // PH/EN=00, physical pins, SR=000 (53.2 V/us), TOFF=01 (40 us).
         assert(tx[1] == 0x40);
+        ++spi_writes;
         registers[selected] = tx[1];
     }
     return HAL_OK;
@@ -125,6 +175,211 @@ static void assert_idle(unsigned i, bool braking) {
 #endif
 }
 
+
+static void fault_reporting(void) {
+    hw_motor_faults_t state;
+    assert(!hw_motor_read_faults(255, &state));
+    assert(!hw_motor_read_faults(0, NULL));
+#if MOTOR_CONTROL_MODEL == MOTOR_CONTROL_MODEL_ENABLE_DIRECTION
+    for (unsigned i = 0; i < NUMBER_MOTORS; ++i) {
+        const motor_info_t *info = &motor_info[i];
+        HAL_GPIO_WritePin(info->sleep.port, info->sleep.pin, GPIO_PIN_RESET);
+        unsigned reads = spi_reads;
+        assert(hw_motor_read_faults(i, &state));
+        assert(state.sleep_requested && !state.status_valid && spi_reads == reads);
+        get_motor_interface()->initialize(i, false);
+        info->fault.port->IDR |= info->fault.pin;
+        get_motor_interface()->set_speed(i, 25);
+        uint32_t duty = compare(i, info->enable.timerChannel);
+        uint32_t outputs[5];
+        for (unsigned port = 0; port < 5; ++port) outputs[port] = test_ports[port].ODR;
+        unsigned writes = spi_writes;
+        fault_registers[i] = 0x7f; diag_registers[i] = 0xff;
+        assert(hw_motor_read_faults(i, &state));
+        assert(state.status_valid && !state.sleep_requested && state.fault_active);
+        assert(state.overtemperature_warning && state.undervoltage && state.charge_pump_undervoltage);
+        assert(state.overcurrent && state.overtemperature_shutdown && state.open_load && state.current_regulation);
+        assert(fault_registers[i] == 0x7f && diag_registers[i] == 0xff && spi_writes == writes);
+        assert(compare(i, info->enable.timerChannel) == duty);
+        for (unsigned port = 0; port < 5; ++port) assert(outputs[port] == test_ports[port].ODR);
+        fault_registers[i] = 0; diag_registers[i] = 0;
+        assert(hw_motor_read_faults(i, &state) && state.status_valid && !state.fault_active && !state.overcurrent);
+        fault_registers[i] = 0x10; // Supply undervoltage, independently of charge pump and current.
+        assert(hw_motor_read_faults(i, &state) && state.undervoltage && !state.charge_pump_undervoltage && !state.overcurrent);
+        fault_registers[i] = 0x08;
+        assert(hw_motor_read_faults(i, &state) && state.charge_pump_undervoltage && !state.undervoltage);
+        fault_registers[i] = 0x20; // A warning is distinct from thermal shutdown.
+        assert(hw_motor_read_faults(i, &state) && state.overtemperature_warning && !state.overtemperature_shutdown);
+        fault_registers[i] = 0x02;
+        assert(hw_motor_read_faults(i, &state) && state.overtemperature_shutdown && !state.overtemperature_warning);
+        fault_registers[i] = 0x04;
+        assert(hw_motor_read_faults(i, &state) && state.overcurrent && !state.open_load);
+        fault_registers[i] = 0x01;
+        assert(hw_motor_read_faults(i, &state) && state.open_load && !state.overcurrent);
+        fault_registers[i] = 0;
+        // Each register bit is independent; DIAG regulation is not overcurrent.
+        diag_registers[i] = 0x30;
+        assert(hw_motor_read_faults(i, &state) && state.current_regulation && !state.overcurrent);
+        diag_registers[i] = 0x01;
+        assert(hw_motor_read_faults(i, &state) && state.overcurrent && !state.current_regulation);
+        diag_registers[i] = 0xc0;
+        assert(hw_motor_read_faults(i, &state) && state.open_load && !state.overcurrent);
+        diag_registers[i] = 0;
+        fail_spi_motor = i;
+        assert(hw_motor_read_faults(i, &state) && !state.status_valid && !state.overcurrent);
+        fail_spi_motor = -1;
+        diagnostic_header = 0;
+        assert(hw_motor_read_faults(i, &state) && !state.status_valid);
+        diagnostic_header = 0xff; fault_registers[i] = 0xff;
+        assert(hw_motor_read_faults(i, &state) && !state.status_valid);
+        diagnostic_header = 0xc0; fault_registers[i] = 0;
+        assert(hw_motor_read_faults(i, &state) && state.status_valid);
+        assert(spi_writes == writes);
+    }
+#else
+    assert(!hw_motor_read_faults(0, &state));
+#endif
+}
+
+
+static void clear_faults(void) {
+    hw_motor_faults_t state;
+    assert(!hw_motor_clear_faults(255, &state));
+    assert(!hw_motor_clear_faults(0, NULL));
+#if MOTOR_CONTROL_MODEL == MOTOR_CONTROL_MODEL_ENABLE_DIRECTION
+    const hw_motor_interface_t *motor = get_motor_interface();
+    for (unsigned i = 0; i < NUMBER_MOTORS; ++i) {
+        const motor_info_t *info = &motor_info[i];
+        // Exercise preserving both locked and unlocked IC3 settings and input bits.
+        control3_registers[i] = i % 2 ? 0x3b : 0x40;
+        uint8_t control = control3_registers[i], mode = registers[i];
+        info->fault.port->IDR |= info->fault.pin;
+        motor->set_speed(i, 25);
+        fault_registers[i] = 0x44; diag_registers[i] = 1;
+        info->fault.port->IDR &= ~info->fault.pin;
+        bool direction = high(info->direction);
+        uint32_t other_duties[NUMBER_MOTORS];
+        for (unsigned j = 0; j < NUMBER_MOTORS; ++j)
+            other_duties[j] = compare(j, motor_info[j].enable.timerChannel);
+        unsigned writes = spi_writes;
+        assert(hw_motor_clear_faults(i, &state));
+        assert(state.status_valid && !state.fault_active && !state.overcurrent);
+        assert(spi_writes == writes + 1 && control3_registers[i] == control && registers[i] == mode);
+        assert_idle(i, false); assert(high(info->sleep) && high(info->direction) == direction);
+        for (unsigned j = 0; j < NUMBER_MOTORS; ++j)
+            if (j != i) assert(compare(j, motor_info[j].enable.timerChannel) == other_duties[j]);
+        // Persistent conditions are reported honestly after a successful clear operation.
+        persistent_fault = true;
+        fault_registers[i] = 0x44; diag_registers[i] = 1;
+        info->fault.port->IDR &= ~info->fault.pin;
+        assert(hw_motor_clear_faults(i, &state));
+        assert(state.status_valid && state.fault_active && state.overcurrent);
+        assert_idle(i, false); persistent_fault = false;
+        // Every transaction can fail: control read, write, readback, FAULT and DIAG.
+        for (unsigned failure = 1; failure <= 5; ++failure) {
+            info->fault.port->IDR |= info->fault.pin;
+            motor->set_speed(i, 25); transfer_count = 0; fail_transfer = failure;
+            assert(!hw_motor_clear_faults(i, &state));
+            assert_idle(i, false); assert(high(info->sleep));
+        }
+        fail_transfer = 0;
+        corrupt_control3 = true;
+        assert(!hw_motor_clear_faults(i, &state)); assert_idle(i, false);
+        corrupt_control3 = false;
+        diagnostic_header = 0; writes = spi_writes;
+        assert(!hw_motor_clear_faults(i, &state) && spi_writes == writes); assert_idle(i, false);
+        diagnostic_header = 0xc0;
+        control3_registers[i] = 0xff;
+        assert(!hw_motor_clear_faults(i, &state) && spi_writes == writes);
+        control3_registers[i] = control;
+        HAL_GPIO_WritePin(info->sleep.port, info->sleep.pin, GPIO_PIN_RESET);
+        transfer_count = 0;
+        assert(!hw_motor_clear_faults(i, &state) && !transfer_count && !high(info->sleep));
+        assert_idle(i, false);
+        motor->initialize(i, false);
+    }
+#else
+    assert(!hw_motor_clear_faults(0, &state));
+#endif
+}
+
+static void current_limit_tests(void) {
+    hw_motor_current_limit_t value = {true, 5400}, actual;
+    assert(!hw_motor_current_limit_allowed(255, &value));
+    assert(!hw_motor_current_limit_allowed(0, NULL));
+    assert(!hw_motor_get_current_limit(255, &actual));
+#if MOTOR_CONTROL_MODEL == MOTOR_CONTROL_MODEL_ENABLE_DIRECTION
+    const hw_motor_interface_t *motor = get_motor_interface();
+    const uint16_t levels[] = {4000, 5400, 6500, 7000};
+    for (unsigned i = 0; i < NUMBER_MOTORS; ++i) {
+        const motor_info_t *info = &motor_info[i];
+        assert(hw_motor_get_current_limit(i, &actual));
+        assert(actual.enabled && actual.threshold_ma == info->hardwareCurrentLimit.thresholdMa);
+        // Keep unrelated open-load settings, all other drivers and direction unchanged.
+        control4_registers[i] |= 0x30;
+        uint8_t controls[NUMBER_MOTORS]; memcpy(controls, control4_registers, sizeof(controls));
+        for (unsigned enabled = 0; enabled <= 1; ++enabled) for (unsigned level = 0; level < 4; ++level) {
+            value = (hw_motor_current_limit_t){enabled != 0, levels[level]};
+            motor->set_speed(i, 25);
+            bool direction = high(info->direction);
+            uint32_t duty = compare(i, info->enable.timerChannel);
+            assert(hw_motor_get_current_limit(i, &actual));
+            assert(compare(i, info->enable.timerChannel) == duty); // GET does not stop or change outputs.
+            assert(hw_motor_current_limit_allowed(i, &value));
+            assert(hw_motor_set_current_limit(i, &value));
+            assert_idle(i, false); assert(high(info->sleep) && high(info->direction) == direction);
+            assert(control4_registers[i] == (0x30 | (level << 2) | (enabled ? 0 : 3)));
+            assert(hw_motor_get_current_limit(i, &actual));
+            assert(actual.enabled == value.enabled && actual.threshold_ma == value.threshold_ma);
+            for (unsigned j = 0; j < NUMBER_MOTORS; ++j) if (i != j) assert(control4_registers[j] == controls[j]);
+        }
+        value = (hw_motor_current_limit_t){true, 5000};
+        unsigned writes = spi_writes;
+        motor->set_speed(i, 25);
+        uint32_t duty = compare(i, info->enable.timerChannel);
+        assert(!hw_motor_set_current_limit(i, &value));
+        assert(spi_writes == writes && compare(i, info->enable.timerChannel) == duty);
+        value.threshold_ma = 5400;
+        for (unsigned failure = 1; failure <= 3; ++failure) {
+            transfer_count = 0; fail_transfer = failure;
+            assert(!hw_motor_set_current_limit(i, &value)); assert_idle(i, false);
+        }
+        fail_transfer = 0;
+        corrupt_control4 = true;
+        assert(!hw_motor_set_current_limit(i, &value)); assert_idle(i, false);
+        corrupt_control4 = false;
+        control4_registers[i] = 8; lock_current_control = true;
+        assert(!hw_motor_set_current_limit(i, &value)); assert_idle(i, false);
+        lock_current_control = false;
+        for (unsigned invalid = 0; invalid < 3; ++invalid) {
+            control4_registers[i] = invalid == 0 ? 0xff : invalid == 1 ? 0x40 : 8;
+            diagnostic_header = invalid == 2 ? 0 : 0xc0;
+            writes = spi_writes;
+            assert(!hw_motor_set_current_limit(i, &value) && spi_writes == writes);
+        }
+        diagnostic_header = 0xc0; control4_registers[i] = 1;
+        assert(!hw_motor_get_current_limit(i, &actual)); // Asymmetric disable cannot be represented.
+        HAL_GPIO_WritePin(info->sleep.port, info->sleep.pin, GPIO_PIN_RESET);
+        transfer_count = 0;
+        assert(!hw_motor_get_current_limit(i, &actual) && !hw_motor_set_current_limit(i, &value));
+        assert(!transfer_count && !high(info->sleep));
+        control4_registers[i] = 0;
+        motor->initialize(i, false); // Initialization reapplies board defaults after a runtime setting.
+        assert(motor->is_initialized(i) && hw_motor_get_current_limit(i, &actual));
+        assert(actual.enabled && actual.threshold_ma == 6500);
+        corrupt_control4 = true;
+        motor->initialize(i, false);
+        assert(!motor->is_initialized(i) && !high(info->sleep));
+        assert(!hw_motor_get_current_limit(i, &actual) && !hw_motor_set_current_limit(i, &value));
+        corrupt_control4 = false; motor->initialize(i, false);
+        assert(motor->is_initialized(i));
+    }
+#else
+    assert(!hw_motor_current_limit_allowed(0, &value));
+    assert(!hw_motor_get_current_limit(0, &actual) && !hw_motor_set_current_limit(0, &value));
+#endif
+}
+
 int main(int argc, char **argv) {
     if (argc > 1 && strcmp(argv[1], "apb2_div1") == 0) {
         apb2_divider = RCC_HCLK_DIV1; pclk2 = 168000000U;
@@ -139,6 +394,8 @@ int main(int argc, char **argv) {
     hw_motor_init();
     for (unsigned i = 0; i < NUMBER_MOTORS; ++i) {
         assert(!motor->is_initialized(i));
+        hw_motor_faults_t diagnostic;
+        assert(!hw_motor_clear_faults(i, &diagnostic));
         motor->set_speed(i, 100); // Uninitialized motors do not start timers.
         assert(timer_inits == 0);
 #if MOTOR_CONTROL_MODEL == MOTOR_CONTROL_MODEL_ENABLE_DIRECTION
@@ -260,6 +517,8 @@ int main(int argc, char **argv) {
         fail_spi_motor = i;
         motor->initialize(i, false);
         assert(!motor->is_initialized(i));
+        hw_motor_faults_t diagnostic;
+        assert(!hw_motor_clear_faults(i, &diagnostic));
         assert_idle(i, false);
         assert(!high(motor_info[i].sleep) && high(motor_info[i].chipSelect));
         motor->set_speed(i, 70);
@@ -318,6 +577,19 @@ int main(int argc, char **argv) {
             }
         }
     }
-    puts("Motor model, duty, reversal, coast/brake and initialization checks passed");
+    fault_reporting();
+    clear_faults();
+    current_limit_tests();
+#if MOTOR_CONTROL_MODEL == MOTOR_CONTROL_MODEL_ENABLE_DIRECTION
+    unsigned before_irq = transfer_count;
+    for (unsigned i=0; i<NUMBER_MOTORS; ++i) {
+        uint32_t sequence = hw_motor_fault_event_sequence(i);
+        HAL_GPIO_EXTI_Callback(motor_info[i].fault.pin);
+        HAL_GPIO_EXTI_Callback(motor_info[i].fault.pin);
+        assert(hw_motor_fault_event_sequence(i) == sequence + 2);
+    }
+    assert(transfer_count == before_irq); // ISR never performs SPI or changes drive state.
+#endif
+    puts("Motor model, duty, reversal, coast/brake, current-limit settings and initialization checks passed");
     return 0;
 }

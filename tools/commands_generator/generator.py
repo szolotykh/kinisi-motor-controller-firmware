@@ -21,6 +21,28 @@ type_to_size_map = {
     "integer": 4,
 }
 
+
+def validate_subscription_settings(schema):
+    commands = {c['command']: c for c in schema.get('commands', [])}
+    if 'SUBSCRIBE_CONFIGURED' not in commands:
+        if schema.get('subscription_triggers') or schema.get('subscription_deliveries'):
+            raise ValueError('Subscription settings need SUBSCRIBE_CONFIGURED')
+        return
+    for key, expected in [('subscription_triggers', [(0, 'PERIODIC'), (1, 'ON_EVENT')]),
+                          ('subscription_deliveries', [(0, 'ALL'), (1, 'ON_CHANGE')])]:
+        values = schema.get(key, [])
+        if [(v.get('id'), v.get('name')) for v in values] != expected or any(type(v.get('id')) is not int for v in values):
+            raise ValueError('Invalid ' + key + ' catalog')
+    props = commands['SUBSCRIBE_CONFIGURED'].get('properties', [])
+    expected = [('topic_id', 'uint8_t', 'telemetry_topic'), ('index', 'uint8_t', None),
+                ('poll_interval_ms', 'uint32_t', None), ('trigger', 'uint8_t', 'subscription_trigger'),
+                ('delivery', 'uint8_t', 'subscription_delivery'), ('max_silence_ms', 'uint32_t', None)]
+    if [(p['name'], p['type'], p.get('enum')) for p in props] != expected:
+        raise ValueError('Invalid SUBSCRIBE_CONFIGURED envelope')
+    for topic in schema.get('topics', []):
+        if type(topic.get('event_supported')) is not bool:
+            raise ValueError('Topic needs boolean event_supported')
+
 def file_header(version, comment_char="//"):
     """Return the generated-file banner with schema version and generation time."""
     return f"""{comment_char} ----------------------------------------------------------------------------
@@ -108,6 +130,14 @@ def retirement_notice(command):
 def validate_json(commands_data):
     """Validate error-code uniqueness and every command's fields and error references."""
     errors = validate_retirement(commands_data)
+    try:
+        validate_subscription_settings(commands_data)
+    except ValueError as error:
+        errors.append(str(error))
+    modes = commands_data.get('subscription_modes', [])
+    if any(c['command'] == 'SUBSCRIBE_WITH_MODE' for c in commands_data.get('commands', [])):
+        if [(m.get('id'), m.get('name')) for m in modes] != [(0, 'PERIODIC'), (1, 'ON_CHANGE')] or any(type(m.get('id')) is not int for m in modes):
+            errors.append('Invalid subscription mode catalog.')
     objects = {obj['name']: obj for obj in commands_data.get('objects', [])}
     topic_ids, topic_names = set(), set()
     for topic in commands_data.get('topics', []):
@@ -131,6 +161,12 @@ def validate_json(commands_data):
         for field, low, high in [('index_max', 0, 255), ('min_interval_ms', 2, 3600000)]:
             if type(topic.get(field)) is not int or not low <= topic[field] <= high:
                 errors.append(f'Topic {name} has invalid {field}.')
+    for command in commands_data.get('commands', []):
+        if command['command'] == 'SUBSCRIBE_WITH_MODE':
+            expected = [('topic_id', 'uint8_t', 'telemetry_topic'), ('index', 'uint8_t', None),
+                        ('interval_ms', 'uint32_t', None), ('mode', 'uint8_t', 'subscription_mode')]
+            if [(p['name'], p['type'], p.get('enum')) for p in command.get('properties', [])] != expected:
+                errors.append('Invalid SUBSCRIBE_WITH_MODE envelope.')
     error_names = set()
     error_numbers = set()
     for error in commands_data.get('error_codes', []):
@@ -152,7 +188,7 @@ def validate_json(commands_data):
     for command in commands_data.get("commands", []):
         errors.extend(validate_command(command))
         for prop in command.get('properties', []):
-            if 'enum' in prop and (prop['enum'] != 'telemetry_topic' or
+            if 'enum' in prop and (prop['enum'] not in ('telemetry_topic', 'subscription_mode', 'subscription_trigger', 'subscription_delivery') or
                                    prop['type'] != 'uint8_t' or not topic_ids):
                 errors.append('Topic enum fields require uint8_t and a topics catalog.')
         if 'topic_payload' in command:
@@ -211,6 +247,10 @@ def generate_md_file(commands_data):
     """Generate a navigable reference with consistent payload tables and linked errors."""
     commands = commands_data.get('commands', [])
     commands_by_name = {command['command']: command for command in commands}
+    modes = commands_data.get('subscription_modes', [])
+    if any(c['command'] == 'SUBSCRIBE_WITH_MODE' for c in commands_data.get('commands', [])):
+        if [(m.get('id'), m.get('name')) for m in modes] != [(0, 'PERIODIC'), (1, 'ON_CHANGE')] or any(type(m.get('id')) is not int for m in modes):
+            errors.append('Invalid subscription mode catalog.')
     objects = {obj['name']: obj for obj in commands_data.get('objects', [])}
     errors = {error['name']: error for error in commands_data.get('error_codes', [])}
     protocol_v2 = int(commands_data['version'].split('.')[0]) >= 2
@@ -273,6 +313,15 @@ def generate_md_file(commands_data):
     else:
         md += "Parameter tables list payload fields in wire order, excluding the message header.\n"
 
+    for key, title in [('subscription_triggers', 'Subscription triggers'), ('subscription_deliveries', 'Subscription delivery filters')]:
+        if commands_data.get(key):
+            md += f"\n## {title}\n\n| ID | Name | Behavior |\n| ---: | --- | --- |\n"
+            for entry in commands_data[key]:
+                md += f"| {entry['id']} | {entry['name']} | {entry['description']} |\n"
+    if commands_data.get('subscription_modes'):
+        md += "\n## Subscription modes\n\n| ID | Mode | Behavior |\n| ---: | --- | --- |\n"
+        for mode in commands_data['subscription_modes']:
+            md += f"| {mode['id']} | `{mode['name']}` | {markdown_cell(mode['description'])} |\n"
     md += "\n## Commands\n\n"
     if commands_data.get('topics'):
         md += ("### Telemetry topics\n\nThe selector is a uint8 enum. IDs remain stable within a protocol major.\n\n"
@@ -410,6 +459,18 @@ def generate_c_header_file(commands_data):
     result += definitions
     result += "\n"
     result += generate_objects(commands_data['objects'])
+    if commands_data.get('subscription_modes'):
+        result += "// Wire fields use uint8_t.\ntypedef enum {\n"
+        for mode in commands_data['subscription_modes']:
+            result += f"    SUBSCRIPTION_MODE_{mode['name']} = {mode['id']},\n"
+        result += "} subscription_mode_t;\n\n"
+    for key, prefix, typename in [('subscription_triggers', 'SUBSCRIPTION_TRIGGER', 'subscription_trigger_t'),
+                                   ('subscription_deliveries', 'SUBSCRIPTION_DELIVERY', 'subscription_delivery_t')]:
+        if commands_data.get(key):
+            result += 'typedef enum {\n'
+            for item in commands_data[key]:
+                result += f"    {prefix}_{item['name']} = {item['id']},\n"
+            result += f'}} {typename};\n\n'
     topics = commands_data.get('topics', [])
     if topics:
         result += "// Stable topic IDs. Wire fields use uint8_t, not native enum storage.\ntypedef enum {\n"
@@ -418,10 +479,10 @@ def generate_c_header_file(commands_data):
         result += "} telemetry_topic_t;\n\n"
         for function, field, ctype in [('telemetry_payload_size', 'payload_type', 'uint8_t'),
                                        ('telemetry_min_interval_ms', 'min_interval_ms', 'uint32_t'),
-                                       ('telemetry_index_limit', 'index_max', 'int')]:
+                                       ('telemetry_index_limit', 'index_max', 'int'), ('telemetry_event_supported', 'event_supported', 'int')]:
             result += f"static inline {ctype} {function}(uint8_t topic) {{\n    switch (topic) {{\n"
             for topic in topics:
-                value = f"sizeof({topic[field]})" if field == 'payload_type' else topic[field]
+                value = f"sizeof({topic[field]})" if field == 'payload_type' else int(topic.get(field, 0))
                 result += f"    case TOPIC_{topic['name']}: return {value};\n"
             result += "    default: return " + ('-1' if field == 'index_max' else '0') + ";\n    }\n}\n\n"
         result += "typedef union {\n"
@@ -452,13 +513,19 @@ def generate_c_header_file(commands_data):
                 checks.append(f"isfinite({value})")
             if prop['type'] == 'bool':
                 checks.append(f"{value} <= 1U")
+            if prop.get('enum') == 'subscription_mode':
+                checks.append('(' + ' || '.join(f"{value} == {m['id']}" for m in commands_data['subscription_modes']) + ')')
+            if prop.get('enum') in ('subscription_trigger', 'subscription_delivery'):
+                checks.append(f'{value} <= 1U')
             if prop.get('enum') == 'telemetry_topic':
                 checks.append(f"telemetry_payload_size({value}) != 0")
             if 'range' in prop:
                 low, high = prop['range']
                 if low != 0 or not prop['type'].startswith('uint'):
                     checks.append(f"{value} >= {low}")
-                checks.append(f"{value} <= {high}")
+                unsigned_max = (1 << (8 * type_to_size_map[prop['type']])) - 1 if prop['type'].startswith('uint') else None
+                if high != unsigned_max:
+                    checks.append(f"{value} <= {high}")
         result += f"    case {cmd['command']}: return " + (' && '.join(checks) or '1') + ";\n"
     result += "    default: return 0;\n    }\n}\n"
 

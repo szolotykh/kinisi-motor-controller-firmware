@@ -6,6 +6,7 @@
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdbool.h>
 
 static uint8_t owned, motors, encoders, controllers, platform_ready, platform_controller;
 static uint8_t reply[255], reply_size;
@@ -64,6 +65,10 @@ static void check(uint8_t command, uint8_t index, uint8_t expected)
     cmd.commandType = command; cmd.message_id = 321;
     // Each indexed command below has its index as the first payload byte.
     ((uint8_t *)&cmd)[3] = index;
+    if (command == SET_MOTOR_CURRENT_LIMIT) {
+        cmd.properties.set_motor_current_limit.enabled = true;
+        cmd.properties.set_motor_current_limit.threshold_ma = 5400;
+    }
     unsigned before = executed;
     protocol_dispatch((uint8_t *)&cmd, command_request_size(command), handler, capture);
     assert(reply[2] == 65 && reply[3] == 1);
@@ -81,6 +86,9 @@ static void check(uint8_t command, uint8_t index, uint8_t expected)
 int main(void)
 {
     check(SET_MOTOR_SPEED, 3, RESPONSE_MOTOR_NOT_INITIALIZED);
+    check(CLEAR_MOTOR_FAULTS, 3, RESPONSE_MOTOR_NOT_INITIALIZED);
+    check(SET_MOTOR_CURRENT_LIMIT, 3, RESPONSE_MOTOR_NOT_INITIALIZED);
+    check(GET_MOTOR_CURRENT_LIMIT, 3, RESPONSE_MOTOR_NOT_INITIALIZED);
     check(GET_ENCODER_VALUE, 3, RESPONSE_ENCODER_NOT_INITIALIZED);
     check(START_ENCODER_ODOMETRY, 3, RESPONSE_ENCODER_NOT_INITIALIZED);
     check(SET_MOTOR_TARGET_SPEED, 3, RESPONSE_CONTROLLER_NOT_INITIALIZED);
@@ -92,11 +100,17 @@ int main(void)
     check(SET_PLATFORM_TARGET_VELOCITY, 0, RESPONSE_CONTROLLER_NOT_INITIALIZED);
     motors = encoders = controllers = 1; // Another resource's state must not satisfy index 3.
     check(SET_MOTOR_SPEED, 3, RESPONSE_MOTOR_NOT_INITIALIZED);
+    check(CLEAR_MOTOR_FAULTS, 3, RESPONSE_MOTOR_NOT_INITIALIZED);
+    check(SET_MOTOR_CURRENT_LIMIT, 3, RESPONSE_MOTOR_NOT_INITIALIZED);
+    check(GET_MOTOR_CURRENT_LIMIT, 3, RESPONSE_MOTOR_NOT_INITIALIZED);
     check(GET_ENCODER_VALUE, 3, RESPONSE_ENCODER_NOT_INITIALIZED);
     check(SET_MOTOR_TARGET_SPEED, 3, RESPONSE_CONTROLLER_NOT_INITIALIZED);
     motors = encoders = controllers = 8;
     platform_controller = 1;
     check(SET_MOTOR_SPEED, 3, RESPONSE_OK);
+    check(CLEAR_MOTOR_FAULTS, 3, RESPONSE_OK);
+    check(SET_MOTOR_CURRENT_LIMIT, 3, RESPONSE_OK);
+    check(GET_MOTOR_CURRENT_LIMIT, 3, RESPONSE_OK);
     check(GET_ENCODER_VALUE, 3, RESPONSE_OK);
     check(START_ENCODER_ODOMETRY, 3, RESPONSE_OK);
     check(SET_MOTOR_TARGET_SPEED, 3, RESPONSE_OK);
@@ -104,6 +118,8 @@ int main(void)
     check(SET_PLATFORM_TARGET_VELOCITY, 0, RESPONSE_OK);
     owned = 8; motors = controllers = 0;
     check(SET_MOTOR_SPEED, 3, RESPONSE_MOTOR_OWNED);
+    check(CLEAR_MOTOR_FAULTS, 3, RESPONSE_MOTOR_OWNED);
+    check(SET_MOTOR_CURRENT_LIMIT, 3, RESPONSE_MOTOR_OWNED);
     check(SET_MOTOR_TARGET_SPEED, 3, RESPONSE_MOTOR_OWNED);
     check(STOP_MOTOR, 3, RESPONSE_MOTOR_OWNED);
     check(BRAKE_MOTOR, 3, RESPONSE_MOTOR_OWNED);
