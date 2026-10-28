@@ -18,13 +18,19 @@ typedef struct {
     void (*stop)(void);
     uint32_t (*calculation_period_ms)(void);
     bool (*period_allowed)(uint32_t);
+    uint32_t (*event_sequence)(uint8_t topic, uint8_t index);
 } connection_services_t;
 
 typedef struct {
     uint64_t next_us;
     uint32_t interval_ms;
-    uint8_t topic, index;
-    bool legacy;
+    uint8_t topic, index, mode;
+    // Last accepted value bytes, excluding the common timestamp/clock prefix.
+    uint8_t last_value[sizeof(telemetry_payload_t) - 10], last_length;
+    bool legacy, configured, refresh_pending;
+    uint8_t trigger;
+    uint32_t max_silence_ms, observed_sequence, sampled_sequence;
+    uint64_t last_sent_us;
     // Sensor reads are bounded by their cadence even while a transport is busy.
     uint64_t next_read_us;
     uint8_t sample[sizeof(telemetry_payload_t)], sample_length;

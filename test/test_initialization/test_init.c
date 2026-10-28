@@ -31,7 +31,7 @@ int main(void)
     init_response response = initialization_response();
     const unsigned char expected[] = {
         1, 0, KINISI_BOARD_VERSION_MINOR, KINISI_BOARD_VERSION_PATCH,
-        2, 7, 0, 0x78, 0x56, 0x34, 0x12, 0xef, 0xcd, 0xab, 0x90,
+        2, 12, 0, 0x78, 0x56, 0x34, 0x12, 0xef, 0xcd, 0xab, 0x90,
     };
     assert(sizeof(response) == sizeof(expected));
     assert(memcmp(&response, expected, sizeof(expected)) == 0);
@@ -47,7 +47,7 @@ int main(void)
     assert(initialization_validate(&command) == INIT_STATUS_INCOMPATIBLE);
     assert(response.board_minor == KINISI_BOARD_VERSION_MINOR);
     command.properties.init.protocol_major = 2;
-    command.properties.init.protocol_minor = 8;
+    command.properties.init.protocol_minor = 13;
     assert(initialization_validate(&command) == INIT_STATUS_INCOMPATIBLE);
     command.properties.init.protocol_minor = 0;
     assert(initialization_validate(&command) == INIT_STATUS_OK);
@@ -62,6 +62,10 @@ int main(void)
     command.properties.init.protocol_minor = 6; // Generic subscriptions available.
     assert(initialization_validate(&command) == INIT_STATUS_OK);
     command.properties.init.protocol_minor = 7; // Motor current sensing available.
+    assert(initialization_validate(&command) == INIT_STATUS_OK);
+    command.properties.init.protocol_minor = 8; // Motor fault reporting available.
+    assert(initialization_validate(&command) == INIT_STATUS_OK);
+    command.properties.init.protocol_minor = 12; // Independent subscription settings.
     assert(initialization_validate(&command) == INIT_STATUS_OK);
     command.properties.init.sdk_type = 255;
     assert(initialization_validate(&command) == INIT_STATUS_INVALID);

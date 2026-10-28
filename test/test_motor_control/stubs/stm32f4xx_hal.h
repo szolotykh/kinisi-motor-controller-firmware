@@ -118,3 +118,10 @@ HAL_StatusTypeDef HAL_SPI_TransmitReceive(SPI_HandleTypeDef *, uint8_t *, uint8_
 #define GPIO_PIN_13 (1u << 13)
 #define GPIO_PIN_14 (1u << 14)
 #define GPIO_PIN_15 (1u << 15)
+
+#define GPIO_MODE_IT_RISING_FALLING 3
+typedef enum { EXTI0_IRQn, EXTI1_IRQn, EXTI2_IRQn, EXTI3_IRQn, EXTI4_IRQn, EXTI9_5_IRQn, EXTI15_10_IRQn } IRQn_Type;
+static inline void HAL_NVIC_SetPriority(IRQn_Type irq, unsigned p, unsigned sub) { (void)irq; (void)p; (void)sub; }
+static inline void HAL_NVIC_EnableIRQ(IRQn_Type irq) { (void)irq; }
+void HAL_GPIO_EXTI_Callback(uint16_t pin);
+static inline void HAL_GPIO_EXTI_IRQHandler(uint16_t pin) { HAL_GPIO_EXTI_Callback(pin); }

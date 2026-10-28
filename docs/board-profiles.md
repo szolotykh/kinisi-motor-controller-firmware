@@ -12,7 +12,8 @@ The bundle has `schema_version: 1` and a `boards` array. Each profile contains:
 
 - `board`: model number and complete hardware revision.
 - `resources`: motor, encoder, GPIO and status LED counts.
-- `motor_features`: per-motor IDs and hardware current-sense/current-limit flags.
+- `motor_features`: per-motor IDs, current-sense/current-limit/fault-reporting flags,
+  and optional `current_limit_options` with discrete thresholds in milliamps and `can_disable`.
 - `sensors`: temperature sensor IDs and IMU IDs with accelerometer/gyroscope flags.
 
 IDs match the corresponding board resource IDs used by protocol commands.
@@ -22,9 +23,9 @@ and internal driver settings are firmware implementation details.
 
 Current-sense and current-limit flags describe fitted hardware. They do not claim
 that measurement or adjustable-current commands exist in a particular firmware.
-In the current v0.4 firmware, current ADC sampling and programmable current-limit
-settings remain unimplemented. Applications must also check firmware command
-availability before exposing a control.
+Current readings require protocol 2.7, fault reporting requires 2.8, and current-limit
+configuration requires 2.11. Applications must check firmware command availability
+before exposing a control. See [current-limit configuration](motor-current-limit.md).
 
 The currently generated resource counts are:
 

@@ -79,6 +79,7 @@
         },
         "hardware_current_limit": {
           "enabled": true,
+          "can_disable": true,
           "supported_thresholds_ma": [4000, 5400, 6500, 7000],
           "threshold_ma": 6500
         },
@@ -110,6 +111,7 @@
         },
         "hardware_current_limit": {
           "enabled": true,
+          "can_disable": true,
           "supported_thresholds_ma": [4000, 5400, 6500, 7000],
           "threshold_ma": 6500
         },
@@ -141,6 +143,7 @@
         },
         "hardware_current_limit": {
           "enabled": true,
+          "can_disable": true,
           "supported_thresholds_ma": [4000, 5400, 6500, 7000],
           "threshold_ma": 6500
         },
@@ -172,6 +175,7 @@
         },
         "hardware_current_limit": {
           "enabled": true,
+          "can_disable": true,
           "supported_thresholds_ma": [4000, 5400, 6500, 7000],
           "threshold_ma": 6500
         },

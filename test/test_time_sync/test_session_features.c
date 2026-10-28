@@ -9,7 +9,7 @@
 #include <string.h>
 
 static uint64_t ticks;
-static unsigned stops, motions, sent;
+static unsigned stops, motions, clears, sent;
 static bool busy, calculating;
 static uint8_t frame[255], frame_size;
 static uint32_t calculation_ms = 20;
@@ -42,6 +42,11 @@ static bool allowed(uint32_t ms)
 static uint8_t execute(controller_command_t *request, protocol_send_fn reply)
 {
     if (request->commandType == INIT) return initialization_validate(request);
+    if (request->commandType == CLEAR_MOTOR_FAULTS) {
+        ++clears;
+        motor_fault_status status = {.status_valid = true};
+        reply((uint8_t *)&status, sizeof(status));
+    }
     if (request->commandType == SET_MOTOR_SPEED) ++motions;
     if (request->commandType == SET_ODOMETRY_FREQUENCY)
         calculation_ms = 1000 / request->properties.set_odometry_frequency.frequency;
@@ -102,7 +107,39 @@ int main(void)
 {
     connection_init(&usb, execute, transmit, now);
     connection_init(&i2c, execute, transmit, now);
-    usb.services = i2c.services = (connection_services_t){stop, period, allowed};
+    usb.services = i2c.services = (connection_services_t){.stop=stop, .calculation_period_ms=period, .period_allowed=allowed};
+    controller_command_t limit_get = {.commandType = GET_MOTOR_CURRENT_LIMIT};
+    controller_command_t limit_set = {.commandType = SET_MOTOR_CURRENT_LIMIT};
+    limit_set.properties.set_motor_current_limit.enabled = true;
+    limit_set.properties.set_motor_current_limit.threshold_ma = 5400;
+    request(&usb, limit_get); error(GET_MOTOR_CURRENT_LIMIT, RESPONSE_INIT_REQUIRED);
+    request(&usb, limit_set); error(SET_MOTOR_CURRENT_LIMIT, RESPONSE_INIT_REQUIRED);
+    controller_command_t clear = {.commandType = CLEAR_MOTOR_FAULTS};
+    request(&usb, clear);
+    error(CLEAR_MOTOR_FAULTS, RESPONSE_INIT_REQUIRED);
+    assert(!clears);
+    controller_command_t setup = {.commandType = INIT};
+    setup.properties.init.protocol_major = 2;
+    request(&usb, setup);
+    assert(usb.clock.initialized && !usb.ready_announced);
+    request(&usb, limit_get); error(GET_MOTOR_CURRENT_LIMIT, RESPONSE_CLOCK_NOT_READY);
+    request(&usb, limit_set); error(SET_MOTOR_CURRENT_LIMIT, RESPONSE_CLOCK_NOT_READY);
+    request(&usb, clear);
+    error(CLEAR_MOTOR_FAULTS, RESPONSE_CLOCK_NOT_READY);
+    assert(!clears);
+    connection_poll(&usb);
+    assert(usb.ready_announced);
+    request(&i2c, clear);
+    error(CLEAR_MOTOR_FAULTS, RESPONSE_INIT_REQUIRED);
+    assert(!clears); // Readiness belongs to the requesting connection.
+    request(&usb, clear);
+    assert(clears == 1 && frame[1] == CLEAR_MOTOR_FAULTS && frame_size == 14);
+    connection_invalidate(&usb);
+    request(&usb, clear);
+    error(CLEAR_MOTOR_FAULTS, RESPONSE_INIT_REQUIRED);
+    assert(clears == 1); // A lost session cannot clear faults until reinitialized.
+    request(&usb, limit_get); error(GET_MOTOR_CURRENT_LIMIT, RESPONSE_INIT_REQUIRED);
+    request(&usb, limit_set); error(SET_MOTOR_CURRENT_LIMIT, RESPONSE_INIT_REQUIRED);
     init(&usb); init(&i2c);
     ticks = 10000000;
     connection_poll(&usb);

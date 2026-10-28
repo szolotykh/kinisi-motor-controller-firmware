@@ -83,6 +83,7 @@ typedef struct {
 typedef struct {
 	bool available;
 	bool enabled;
+	bool canDisable;
 	uint16_t thresholdMa;
 	const uint16_t* supportedThresholdsMa;
 	uint8_t supportedThresholdCount;

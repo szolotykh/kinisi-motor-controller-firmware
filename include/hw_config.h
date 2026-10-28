@@ -207,8 +207,8 @@ static const motor_info_t motor_info[NUMBER_MOTORS] = {
         .currentSense = {.available = true, .type = CURRENT_SENSE_ADC, .input = {GPIOC, GPIO_PIN_4},
             .senseResistorOhm = 330, .filterCapacitanceNf = 1000,
             .adcChannel = 14U, .referenceMillivolts = 3300, .currentMirrorRatio = 1100},
-        // IC2/IC4 settings describe the factory defaults; programming is not implemented.
-        .hardwareCurrentLimit = {.available = true, .enabled = true, .thresholdMa = 6500,
+        // Current-limit defaults are applied at motor initialization; IC2 protection retains its factory default.
+        .hardwareCurrentLimit = {.available = true, .canDisable = true, .enabled = true, .thresholdMa = 6500,
             .supportedThresholdsMa = motor_0_current_limit_thresholds_ma, .supportedThresholdCount = 4},
         .overcurrentProtection = {.available = true, .mode = OVERCURRENT_PROTECTION_LATCHED_SHUTDOWN,
             .supportedModes = motor_0_overcurrent_modes, .supportedModeCount = 4},
@@ -224,8 +224,8 @@ static const motor_info_t motor_info[NUMBER_MOTORS] = {
         .currentSense = {.available = true, .type = CURRENT_SENSE_ADC, .input = {GPIOC, GPIO_PIN_5},
             .senseResistorOhm = 330, .filterCapacitanceNf = 1000,
             .adcChannel = 15U, .referenceMillivolts = 3300, .currentMirrorRatio = 1100},
-        // IC2/IC4 settings describe the factory defaults; programming is not implemented.
-        .hardwareCurrentLimit = {.available = true, .enabled = true, .thresholdMa = 6500,
+        // Current-limit defaults are applied at motor initialization; IC2 protection retains its factory default.
+        .hardwareCurrentLimit = {.available = true, .canDisable = true, .enabled = true, .thresholdMa = 6500,
             .supportedThresholdsMa = motor_1_current_limit_thresholds_ma, .supportedThresholdCount = 4},
         .overcurrentProtection = {.available = true, .mode = OVERCURRENT_PROTECTION_LATCHED_SHUTDOWN,
             .supportedModes = motor_1_overcurrent_modes, .supportedModeCount = 4},
@@ -241,8 +241,8 @@ static const motor_info_t motor_info[NUMBER_MOTORS] = {
         .currentSense = {.available = true, .type = CURRENT_SENSE_ADC, .input = {GPIOC, GPIO_PIN_0},
             .senseResistorOhm = 330, .filterCapacitanceNf = 1000,
             .adcChannel = 10U, .referenceMillivolts = 3300, .currentMirrorRatio = 1100},
-        // IC2/IC4 settings describe the factory defaults; programming is not implemented.
-        .hardwareCurrentLimit = {.available = true, .enabled = true, .thresholdMa = 6500,
+        // Current-limit defaults are applied at motor initialization; IC2 protection retains its factory default.
+        .hardwareCurrentLimit = {.available = true, .canDisable = true, .enabled = true, .thresholdMa = 6500,
             .supportedThresholdsMa = motor_2_current_limit_thresholds_ma, .supportedThresholdCount = 4},
         .overcurrentProtection = {.available = true, .mode = OVERCURRENT_PROTECTION_LATCHED_SHUTDOWN,
             .supportedModes = motor_2_overcurrent_modes, .supportedModeCount = 4},
@@ -258,8 +258,8 @@ static const motor_info_t motor_info[NUMBER_MOTORS] = {
         .currentSense = {.available = true, .type = CURRENT_SENSE_ADC, .input = {GPIOC, GPIO_PIN_1},
             .senseResistorOhm = 330, .filterCapacitanceNf = 1000,
             .adcChannel = 11U, .referenceMillivolts = 3300, .currentMirrorRatio = 1100},
-        // IC2/IC4 settings describe the factory defaults; programming is not implemented.
-        .hardwareCurrentLimit = {.available = true, .enabled = true, .thresholdMa = 6500,
+        // Current-limit defaults are applied at motor initialization; IC2 protection retains its factory default.
+        .hardwareCurrentLimit = {.available = true, .canDisable = true, .enabled = true, .thresholdMa = 6500,
             .supportedThresholdsMa = motor_3_current_limit_thresholds_ma, .supportedThresholdCount = 4},
         .overcurrentProtection = {.available = true, .mode = OVERCURRENT_PROTECTION_LATCHED_SHUTDOWN,
             .supportedModes = motor_3_overcurrent_modes, .supportedModeCount = 4},
