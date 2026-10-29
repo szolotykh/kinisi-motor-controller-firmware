@@ -147,9 +147,14 @@ def validate(board):
         used_buses.add(sensor["bus"])
 
     motors = board["motors"]
-    fields(motors, ("control_model", "pwm_frequency_hz", "channels"), ("driver",), at="motors")
+    fields(motors, ("control_model", "pwm_frequency_hz", "supported_pwm_frequencies_hz", "channels"), ("driver",), at="motors")
     require(motors["control_model"] in ("pwm", "enable_direction"), "motors.control_model: unsupported model")
-    integer(motors["pwm_frequency_hz"], 100000, 100000, "motors.pwm_frequency_hz")
+    frequencies = motors["supported_pwm_frequencies_hz"]
+    require(isinstance(frequencies, list) and bool(frequencies) and
+            all(type(v) is int and v in (10000, 20000, 25000, 50000, 100000) for v in frequencies) and
+            frequencies == sorted(set(frequencies)), "motors: invalid supported PWM frequencies")
+    require(type(motors["pwm_frequency_hz"]) is int and motors["pwm_frequency_hz"] in frequencies,
+            "motors.pwm_frequency_hz: default must be supported")
     enable_direction = motors["control_model"] == "enable_direction"
     if enable_direction:
         require("driver" in motors, "motors.driver: required for enable_direction")
@@ -307,6 +312,8 @@ def client_profile(board):
             "motors": len(board["motors"]["channels"]), "encoders": len(board["encoders"]),
             "gpio": len(board["gpio"]), "status_leds": len(board["status_leds"]),
         },
+        "pwm_frequency": {"default_hz": board["motors"]["pwm_frequency_hz"],
+                          "supported_hz": board["motors"]["supported_pwm_frequencies_hz"]},
         "motor_features": [{
             "id": motor["id"],
             "current_sense": "current_sense" in motor,
@@ -344,7 +351,9 @@ def render(boards):
         motors = board["motors"]
         model = motors["control_model"].upper()
         hardware += [selection, f"#define MOTOR_CONTROL_MODEL MOTOR_CONTROL_MODEL_{model}",
-                     f"#define MOTOR_PWM_FREQUENCY_HZ {motors['pwm_frequency_hz']}U"]
+                     f"#define MOTOR_PWM_FREQUENCY_HZ {motors['pwm_frequency_hz']}U",
+                     "static const uint32_t motor_pwm_frequencies_hz[] = {" +
+                     ", ".join(str(v) + "U" for v in motors['supported_pwm_frequencies_hz']) + "};"]
         for count, items in (("MOTORS", motors["channels"]), ("ENCODERS", board["encoders"]),
                              ("CURRENT_SENSORS", [m for m in motors["channels"] if "current_sense" in m]),
                              ("GPIO_PINS", board["gpio"]), ("STATUS_LEDS", board["status_leds"]),

@@ -73,6 +73,14 @@ class BoardConfigTests(unittest.TestCase):
             self.assertEqual(profile["sensors"], {"temperature": [], "imu": []})
             self.assertTrue(all(not m["current_sense"] and not m["current_limit"] for m in profile["motor_features"]))
 
+    def test_pwm_options(self):
+        for board in g.load_boards(ROOT / "boards"):
+            self.assertEqual(g.client_profile(board)["pwm_frequency"],
+                             {"default_hz": 100000, "supported_hz": [10000, 20000, 25000, 50000, 100000]})
+        for values in ([], [True], [12345], [25000, 25000], [100000, 25000]):
+            self.v4["motors"]["supported_pwm_frequencies_hz"] = values
+            self.reject(self.v4, "PWM frequencies")
+
     def test_profile_changes_are_checked_with_headers(self):
         with tempfile.TemporaryDirectory() as tmp:
             g.generate(output_dir=tmp)
@@ -110,7 +118,7 @@ class BoardConfigTests(unittest.TestCase):
         self.v4["gpio"][1]["id"] = 0
         self.reject(self.v4, "IDs must be")
         self.v4 = copy.deepcopy(self.boards[3])
-        self.v4["motors"]["pwm_frequency_hz"] = 20000
+        self.v4["motors"]["pwm_frequency_hz"] = 12345
         self.reject(self.v4, "pwm_frequency_hz")
 
     def test_motor_mode_specific_fields(self):

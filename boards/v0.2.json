@@ -12,6 +12,7 @@
   "motors": {
     "control_model": "pwm",
     "pwm_frequency_hz": 100000,
+    "supported_pwm_frequencies_hz": [10000, 20000, 25000, 50000, 100000],
     "channels": [
       {
         "id": 0,

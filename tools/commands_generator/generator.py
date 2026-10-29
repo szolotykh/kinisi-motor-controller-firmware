@@ -22,6 +22,22 @@ type_to_size_map = {
 }
 
 
+
+def validate_pwm_frequency(schema):
+    values = schema.get('pwm_frequencies', [])
+    expected = [(v, 'KHZ_' + str(v // 1000)) for v in (10000, 20000, 25000, 50000, 100000)]
+    if [(v.get('id'), v.get('name')) for v in values] != expected or any(type(v.get('id')) is not int for v in values):
+        raise ValueError('Invalid PWM frequency catalog')
+    commands = {c['command']: c for c in schema.get('commands', [])}
+    for name in ('GET_PWM_FREQUENCY', 'SET_PWM_FREQUENCY'):
+        command = commands.get(name, {})
+        properties = [(p['name'], p['type'], p.get('enum')) for p in command.get('properties', [])]
+        expected_props = [] if name.startswith('GET') else [('frequency_hz', 'uint32_t', 'pwm_frequency')]
+        if (not command or command.get('direction') != 'client_to_controller' or properties != expected_props or
+                command.get('response', {}).get('type') != 'uint32_t'):
+            raise ValueError('Invalid ' + name + ' envelope')
+
+
 def validate_subscription_settings(schema):
     commands = {c['command']: c for c in schema.get('commands', [])}
     if 'SUBSCRIBE_CONFIGURED' not in commands:
@@ -184,10 +200,18 @@ def validate_json(commands_data):
         if not error.get('description'):
             errors.append(f'Error {name} needs a description.')
 
+    try:
+        validate_pwm_frequency(commands_data)
+    except ValueError as error:
+        errors.append(str(error))
+
     # Validate each command in the JSON
     for command in commands_data.get("commands", []):
         errors.extend(validate_command(command))
         for prop in command.get('properties', []):
+            if prop.get('enum') == 'pwm_frequency':
+                if prop['type'] != 'uint32_t': errors.append('PWM frequency requires uint32_t')
+                continue
             if 'enum' in prop and (prop['enum'] not in ('telemetry_topic', 'subscription_mode', 'subscription_trigger', 'subscription_delivery') or
                                    prop['type'] != 'uint8_t' or not topic_ids):
                 errors.append('Topic enum fields require uint8_t and a topics catalog.')
@@ -313,7 +337,7 @@ def generate_md_file(commands_data):
     else:
         md += "Parameter tables list payload fields in wire order, excluding the message header.\n"
 
-    for key, title in [('subscription_triggers', 'Subscription triggers'), ('subscription_deliveries', 'Subscription delivery filters')]:
+    for key, title in [('subscription_triggers', 'Subscription triggers'), ('subscription_deliveries', 'Subscription delivery filters'), ('pwm_frequencies', 'PWM frequencies (Hz)')]:
         if commands_data.get(key):
             md += f"\n## {title}\n\n| ID | Name | Behavior |\n| ---: | --- | --- |\n"
             for entry in commands_data[key]:
@@ -465,7 +489,8 @@ def generate_c_header_file(commands_data):
             result += f"    SUBSCRIPTION_MODE_{mode['name']} = {mode['id']},\n"
         result += "} subscription_mode_t;\n\n"
     for key, prefix, typename in [('subscription_triggers', 'SUBSCRIPTION_TRIGGER', 'subscription_trigger_t'),
-                                   ('subscription_deliveries', 'SUBSCRIPTION_DELIVERY', 'subscription_delivery_t')]:
+                                   ('subscription_deliveries', 'SUBSCRIPTION_DELIVERY', 'subscription_delivery_t'),
+                                   ('pwm_frequencies', 'PWM_FREQUENCY', 'pwm_frequency_t')]:
         if commands_data.get(key):
             result += 'typedef enum {\n'
             for item in commands_data[key]:
@@ -513,6 +538,8 @@ def generate_c_header_file(commands_data):
                 checks.append(f"isfinite({value})")
             if prop['type'] == 'bool':
                 checks.append(f"{value} <= 1U")
+            if prop.get('enum') == 'pwm_frequency':
+                checks.append('(' + ' || '.join(f"{value} == {m['id']}U" for m in commands_data['pwm_frequencies']) + ')')
             if prop.get('enum') == 'subscription_mode':
                 checks.append('(' + ' || '.join(f"{value} == {m['id']}" for m in commands_data['subscription_modes']) + ')')
             if prop.get('enum') in ('subscription_trigger', 'subscription_delivery'):
