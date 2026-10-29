@@ -50,6 +50,7 @@
   "motors": {
     "control_model": "enable_direction",
     "pwm_frequency_hz": 100000,
+    "supported_pwm_frequencies_hz": [10000, 20000, 25000, 50000, 100000],
     "driver": {
       "type": "DRV8873S",
       "bus": "motor_spi",

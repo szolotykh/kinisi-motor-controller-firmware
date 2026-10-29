@@ -64,9 +64,11 @@ HAL_StatusTypeDef HAL_TIM_Base_Init(TIM_HandleTypeDef *timer) {
     uint32_t divider = apb2 ? apb2_divider : apb1_divider;
     if (divider != RCC_HCLK_DIV1) timer_clock *= 2U;
     uint32_t frequency = timer_clock / (timer->Init.Prescaler + 1) / (timer->Init.Period + 1);
-    assert(frequency == 100000U);
+    assert(frequency == hw_motor_get_pwm_frequency());
+    timer->Instance->PSC = timer->Init.Prescaler;
+    timer->Instance->CR1 = TIM_CR1_CEN;
     // At 100 kHz, a 25% physical drive duty is a 2.5 us pulse.
-    assert((uint64_t)(timer->Init.Prescaler + 1) * 210 * 1000000000ULL / timer_clock == 2500U);
+    assert((uint64_t)(timer->Init.Prescaler + 1) * 210 * 1000000000ULL / timer_clock == 250000000U / frequency);
     return HAL_OK;
 }
 HAL_StatusTypeDef HAL_TIM_ConfigClockSource(TIM_HandleTypeDef *timer, TIM_ClockConfigTypeDef *clock) {
@@ -392,6 +394,10 @@ int main(int argc, char **argv) {
     for (unsigned i = 0; i < 5; ++i) test_ports[i].IDR = 0xffff;
     for (unsigned i = 0; i < NUMBER_MOTORS; ++i) registers[i] = 0x51; // IC1 reset value.
     hw_motor_init();
+    assert(hw_motor_get_pwm_frequency() == 100000);
+    assert(hw_motor_set_pwm_frequency(25000) && hw_motor_get_pwm_frequency() == 25000);
+    assert(timer_inits == 0); // Configuration does not initialize any motor.
+    if (argc < 2 || strcmp(argv[1], "deferred") != 0) assert(hw_motor_set_pwm_frequency(100000));
     for (unsigned i = 0; i < NUMBER_MOTORS; ++i) {
         assert(!motor->is_initialized(i));
         hw_motor_faults_t diagnostic;
@@ -590,6 +596,37 @@ int main(int argc, char **argv) {
     }
     assert(transfer_count == before_irq); // ISR never performs SPI or changes drive state.
 #endif
+    for (unsigned n = 0; n < sizeof(motor_pwm_frequencies_hz)/sizeof(motor_pwm_frequencies_hz[0]); ++n) {
+        uint32_t frequency = motor_pwm_frequencies_hz[n];
+        for (unsigned i = 0; i < NUMBER_MOTORS; ++i) motor->set_speed(i, 50);
+        assert(!hw_motor_set_pwm_frequency(0) && !hw_motor_set_pwm_frequency(12345));
+        assert(!hw_motor_set_pwm_frequency(UINT32_MAX));
+        uint32_t old_frequency = hw_motor_get_pwm_frequency();
+        uint32_t saved_clock = pclk1, saved_clock2 = pclk2;
+        pclk1 = pclk2 = 12345678;
+        assert(!hw_motor_set_pwm_frequency(frequency));
+        assert(hw_motor_get_pwm_frequency() == old_frequency);
+        pclk1 = saved_clock; pclk2 = saved_clock2;
+        assert(hw_motor_set_pwm_frequency(frequency));
+        for (unsigned i = 0; i < NUMBER_MOTORS; ++i) {
+            assert_idle(i, false);
+            TIM_HandleTypeDef *timer = get_timer_handeler(motor_info[i].timer);
+            bool apb2 = timer->Instance == TIM1 || timer->Instance == TIM8;
+            uint32_t clock = apb2 ? pclk2 : pclk1;
+            if ((apb2 ? apb2_divider : apb1_divider) != RCC_HCLK_DIV1) clock *= 2;
+            assert(clock / (timer->Instance->PSC + 1) / MOTOR_MAX_SPEED == frequency);
+            assert(timer->Instance->EGR == TIM_EGR_UG && (timer->Instance->CR1 & TIM_CR1_CEN));
+            motor->initialize(i, false);
+            assert(hw_motor_get_pwm_frequency() == frequency);
+            motor->set_speed(i, 25);
+#if MOTOR_CONTROL_MODEL == MOTOR_CONTROL_MODEL_ENABLE_DIRECTION
+            assert(compare(i, motor_info[i].enable.timerChannel) == 210);
+#else
+            assert(compare(i, motor_info[i].pwmChannel1.timerChannel) == 630);
+#endif
+            motor->stop(i);
+        }
+    }
     puts("Motor model, duty, reversal, coast/brake, current-limit settings and initialization checks passed");
     return 0;
 }

@@ -1,6 +1,6 @@
 # Kinisi motor controller commands
 
-**Protocol 2.12.0** · Generated from [commands.json](commands.json)
+**Protocol 2.13.0** · Generated from [commands.json](commands.json)
 
 [Command index](#command-index) · [Wire format](#wire-format) · [Error codes](#error-codes)
 
@@ -85,6 +85,8 @@
 | [`GET_MOTOR_CURRENT_LIMIT`](#get_motor_current_limit-0x55) | `0x55` | Client → controller | `motor_current_limit` |
 | [`SET_MOTOR_CURRENT_LIMIT`](#set_motor_current_limit-0x56) | `0x56` | Client → controller | `motor_current_limit` |
 | [`SUBSCRIBE_CONFIGURED`](#subscribe_configured-0x84) | `0x84` | Client → controller | ACK |
+| [`GET_PWM_FREQUENCY`](#get_pwm_frequency-0x57) | `0x57` | Client → controller | `uint32_t` |
+| [`SET_PWM_FREQUENCY`](#set_pwm_frequency-0x58) | `0x58` | Client → controller | `uint32_t` |
 
 ## Command lifecycle
 
@@ -118,6 +120,16 @@ See [response framing](docs/responses.md) and [time synchronization](docs/time-s
 | ---: | --- | --- |
 | 0 | ALL | Send each triggered update. |
 | 1 | ON_CHANGE | Send changed values and optional maximum-silence refreshes. |
+
+## PWM frequencies (Hz)
+
+| ID | Name | Behavior |
+| ---: | --- | --- |
+| 10000 | KHZ_10 | 10 kHz |
+| 20000 | KHZ_20 | 20 kHz |
+| 25000 | KHZ_25 | 25 kHz |
+| 50000 | KHZ_50 | 50 kHz |
+| 100000 | KHZ_100 | 100 kHz |
 
 ## Subscription modes
 
@@ -2255,6 +2267,64 @@ Create or replace a subscription with independent trigger and delivery settings.
 #### Errors
 
 [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`ODOMETRY_NOT_INITIALIZED`](#error-odometry-not-initialized) (9) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`SUBSCRIPTION_LIMIT`](#error-subscription-limit) (17) · [`SAMPLE_OUT_OF_RANGE`](#error-sample-out-of-range) (18)
+
+[Back to command index](#command-index)
+
+---
+
+### GET_PWM_FREQUENCY (0x57)
+
+**Client → controller** · **Payload:** 0 bytes
+
+Read the board-wide motor PWM frequency in hertz. Does not initialize motors or change outputs.
+
+#### Parameters
+
+No payload parameters.
+
+#### Response
+
+**Controller → client** · `uint32_t` · **Payload:** 4 bytes
+
+Applied board-wide PWM frequency in hertz.
+
+| Parameter | Type | Bytes | Description |
+| --- | --- | ---: | --- |
+| `frequency_hz` | `uint32_t` | 4 | Applied board-wide PWM frequency in hertz. |
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`INTERNAL_ERROR`](#error-internal-error) (6)
+
+[Back to command index](#command-index)
+
+---
+
+### SET_PWM_FREQUENCY (0x58)
+
+**Client → controller** · **Payload:** 4 bytes
+
+Stop all motors and motor/platform controllers, then set the board-wide PWM frequency. All motors remain stopped. The setting survives motor initialization and connection changes; reboot restores the board default.
+
+#### Parameters
+
+| Parameter | Type | Bytes | Description |
+| --- | --- | ---: | --- |
+| `frequency_hz` | `uint32_t` | 4 | PWM frequency selected from the board-supported enum values. |
+
+#### Response
+
+**Controller → client** · `uint32_t` · **Payload:** 4 bytes
+
+Applied board-wide PWM frequency in hertz.
+
+| Parameter | Type | Bytes | Description |
+| --- | --- | ---: | --- |
+| `frequency_hz` | `uint32_t` | 4 | Applied board-wide PWM frequency in hertz. |
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`INTERNAL_ERROR`](#error-internal-error) (6)
 
 [Back to command index](#command-index)
 

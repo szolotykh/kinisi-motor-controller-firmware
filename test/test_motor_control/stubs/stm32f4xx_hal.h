@@ -4,7 +4,7 @@
 typedef enum { HAL_OK, HAL_ERROR } HAL_StatusTypeDef;
 typedef enum { GPIO_PIN_RESET, GPIO_PIN_SET } GPIO_PinState;
 typedef struct { uint32_t ODR, IDR; } GPIO_TypeDef;
-typedef struct { uint32_t compare[4]; } TIM_TypeDef;
+typedef struct { uint32_t compare[4], PSC, EGR, CR1; } TIM_TypeDef;
 typedef struct { uint32_t unused; } SPI_TypeDef;
 typedef struct { uint32_t unused; } I2C_TypeDef;
 #define I2C3 ((I2C_TypeDef *)3)
@@ -125,3 +125,6 @@ static inline void HAL_NVIC_SetPriority(IRQn_Type irq, unsigned p, unsigned sub)
 static inline void HAL_NVIC_EnableIRQ(IRQn_Type irq) { (void)irq; }
 void HAL_GPIO_EXTI_Callback(uint16_t pin);
 static inline void HAL_GPIO_EXTI_IRQHandler(uint16_t pin) { HAL_GPIO_EXTI_Callback(pin); }
+
+#define TIM_CR1_CEN 1U
+#define TIM_EGR_UG 1U

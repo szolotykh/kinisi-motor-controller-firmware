@@ -46,3 +46,9 @@ void hw_motor_set_interface(const hw_motor_interface_t* interface);
 
 // Initialize motor interface
 void hw_motor_init(void);
+
+// One frequency for all motor timers. Selection is volatile and survives motor initialization.
+uint32_t hw_motor_get_pwm_frequency(void);
+bool hw_motor_pwm_frequency_allowed(uint32_t frequency_hz);
+// Caller must first stop all software controllers. Leaves every motor stopped.
+bool hw_motor_set_pwm_frequency(uint32_t frequency_hz);

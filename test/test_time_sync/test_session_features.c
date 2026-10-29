@@ -108,6 +108,14 @@ int main(void)
     connection_init(&usb, execute, transmit, now);
     connection_init(&i2c, execute, transmit, now);
     usb.services = i2c.services = (connection_services_t){.stop=stop, .calculation_period_ms=period, .period_allowed=allowed};
+    controller_command_t pwm_get = {.commandType = GET_PWM_FREQUENCY};
+    controller_command_t pwm_set = {.commandType = SET_PWM_FREQUENCY};
+    pwm_set.properties.set_pwm_frequency.frequency_hz = PWM_FREQUENCY_KHZ_25;
+    request(&usb, pwm_get); error(GET_PWM_FREQUENCY, RESPONSE_INIT_REQUIRED);
+    request(&usb, pwm_set); error(SET_PWM_FREQUENCY, RESPONSE_INIT_REQUIRED);
+    pwm_set.properties.set_pwm_frequency.frequency_hz = 12345;
+    request(&usb, pwm_set); error(SET_PWM_FREQUENCY, RESPONSE_INVALID_ARGUMENT);
+    pwm_set.properties.set_pwm_frequency.frequency_hz = PWM_FREQUENCY_KHZ_25;
     controller_command_t limit_get = {.commandType = GET_MOTOR_CURRENT_LIMIT};
     controller_command_t limit_set = {.commandType = SET_MOTOR_CURRENT_LIMIT};
     limit_set.properties.set_motor_current_limit.enabled = true;
@@ -122,6 +130,8 @@ int main(void)
     setup.properties.init.protocol_major = 2;
     request(&usb, setup);
     assert(usb.clock.initialized && !usb.ready_announced);
+    request(&usb, pwm_get); error(GET_PWM_FREQUENCY, RESPONSE_CLOCK_NOT_READY);
+    request(&usb, pwm_set); error(SET_PWM_FREQUENCY, RESPONSE_CLOCK_NOT_READY);
     request(&usb, limit_get); error(GET_MOTOR_CURRENT_LIMIT, RESPONSE_CLOCK_NOT_READY);
     request(&usb, limit_set); error(SET_MOTOR_CURRENT_LIMIT, RESPONSE_CLOCK_NOT_READY);
     request(&usb, clear);
@@ -135,6 +145,8 @@ int main(void)
     request(&usb, clear);
     assert(clears == 1 && frame[1] == CLEAR_MOTOR_FAULTS && frame_size == 14);
     connection_invalidate(&usb);
+    request(&usb, pwm_get); error(GET_PWM_FREQUENCY, RESPONSE_INIT_REQUIRED);
+    request(&usb, pwm_set); error(SET_PWM_FREQUENCY, RESPONSE_INIT_REQUIRED);
     request(&usb, clear);
     error(CLEAR_MOTOR_FAULTS, RESPONSE_INIT_REQUIRED);
     assert(clears == 1); // A lost session cannot clear faults until reinitialized.

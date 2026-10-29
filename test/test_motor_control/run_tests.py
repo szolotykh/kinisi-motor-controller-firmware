@@ -21,6 +21,6 @@ with tempfile.TemporaryDirectory() as folder:
         ], cwd=root, check=True)
         print(revision, flush=True)
         subprocess.run([str(binary)], check=True, timeout=10)
-        for clock in ("apb2_div1", "apb2_div4", "apb1_div1"):
+        for clock in ("apb2_div1", "apb2_div4", "apb1_div1", "deferred"):
             subprocess.run([str(binary), clock], check=True, timeout=10)
-        print(revision + ": all motor timers verified at 100 kHz across divided/undivided APB clocks")
+        print(revision + ": all motor timers verified at supported PWM frequencies across divided/undivided APB clocks")

@@ -525,6 +525,21 @@ uint8_t command_handler(controller_command_t* cmd, void (*command_callback)(uint
             command_callback((uint8_t *)&response, sizeof(response));
             return RESPONSE_OK;
         }
+        case SET_PWM_FREQUENCY: {
+            uint32_t frequency = cmd->properties.set_pwm_frequency.frequency_hz;
+            if (!hw_motor_pwm_frequency_allowed(frequency)) return RESPONSE_INVALID_ARGUMENT;
+            platform_stop_velocity_controller();
+            for (uint8_t i = 0; i < NUMBER_MOTORS; ++i) controllers_manager_stop_controller(i);
+            if (!hw_motor_set_pwm_frequency(frequency)) return RESPONSE_INTERNAL_ERROR;
+            uint32_t applied = hw_motor_get_pwm_frequency();
+            command_callback((uint8_t *)&applied, sizeof(applied));
+            return RESPONSE_OK;
+        }
+        case GET_PWM_FREQUENCY: {
+            uint32_t frequency = hw_motor_get_pwm_frequency();
+            command_callback((uint8_t *)&frequency, sizeof(frequency));
+            return RESPONSE_OK;
+        }
         case GET_MOTOR_CURRENT_LIMIT:
         case SET_MOTOR_CURRENT_LIMIT: {
 #if MOTOR_CONTROL_MODEL == MOTOR_CONTROL_MODEL_ENABLE_DIRECTION

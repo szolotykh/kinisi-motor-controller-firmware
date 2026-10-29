@@ -81,3 +81,6 @@ stores the tables in flash on AVR and selects an exact profile after `begin()`.
 `supportsSensor(KinisiSensor::TEMPERATURE/IMU, index)` combines hardware,
 protocol and Wire capacity. Temperature and IMU replies need 12 and 52 bytes
 respectively; a default 32-byte AVR Wire buffer supports temperature only.
+
+Board-wide `pwm_frequency` exposes `default_hz` and `supported_hz`. See
+[motor PWM frequency](motor-pwm-frequency.md) for command behavior and lifetime.
