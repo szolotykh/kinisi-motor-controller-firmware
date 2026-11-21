@@ -5,6 +5,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <stdbool.h>
 
 #define ENCODER0 0
 #define ENCODER1 1
@@ -37,3 +38,8 @@ void hw_encoder_set_interface(const hw_encoder_interface_t* interface);
 
 // Initialize encoder interface
 void hw_encoder_init(void);
+
+// Configured counting direction, independent of the encoder's instantaneous motion.
+uint8_t hw_encoder_is_reversed(encoder_index_t index);
+bool hw_encoder_try_initialize(encoder_index_t index, double resolution, uint8_t reversed);
+void hw_encoder_discard_restored_setup(void);

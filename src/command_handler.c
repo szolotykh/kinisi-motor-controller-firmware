@@ -6,13 +6,10 @@
 #include "controllers_manager.h"
 #include "odometry_manager.h"
 #include <pid_controller.h>
-#include <cmsis_os.h>
-#include <message_queue.h>
-#include <usbd_cdc_if.h>
 #include <hw_gpio.h>
 #include "platform.h"
 #include "commands_handler.h"
-#include "hardware_i2c.h"
+#include "controller_configuration.h"
 #include "hw_temperature.h"
 #include "hw_imu.h"
 #include "hw_current_sense.h"
@@ -28,6 +25,19 @@
 #if MOTOR_CONTROL_MODEL == MOTOR_CONTROL_MODEL_ENABLE_DIRECTION
 #include "hw_drv8873.h"
 #endif
+
+// A platform can run open-loop without encoders. Feedback operations need
+// a live counter and a usable scale for every wheel that the platform owns.
+static bool platform_feedback_ready(const hw_encoder_interface_t *encoder)
+{
+    for (uint8_t i = 0; i < NUMBER_MOTORS; ++i) {
+        if (!platform_owns_motor(i)) continue;
+        if (i >= NUMBER_ENCODERS || !encoder->is_initialized(i)) return false;
+        double resolution = encoder->get_resolution(i);
+        if (!isfinite(resolution) || resolution <= 0) return false;
+    }
+    return true;
+}
 
 /**
  * @brief Execute a validated command after checking its resource prerequisites.
@@ -370,6 +380,7 @@ uint8_t command_handler(controller_command_t* cmd, void (*command_callback)(uint
         case START_PLATFORM_CONTROLLER:
             if (!pid_controller_settings_valid(cmd->properties.start_platform_controller.kp, cmd->properties.start_platform_controller.ki, cmd->properties.start_platform_controller.kd, cmd->properties.start_platform_controller.integral_limit))
                 return RESPONSE_INVALID_ARGUMENT;
+            if (!platform_feedback_ready(encoder)) return RESPONSE_ENCODER_NOT_INITIALIZED;
             {
             plaform_controller_settings_t plaform_controller_settings = {
                 .kp = cmd->properties.start_platform_controller.kp,
@@ -413,6 +424,7 @@ uint8_t command_handler(controller_command_t* cmd, void (*command_callback)(uint
         
         case START_PLATFORM_ODOMETRY:
         {
+            if (!platform_feedback_ready(encoder)) return RESPONSE_ENCODER_NOT_INITIALIZED;
             platform_position_cancel();
             platform_start_odometry();
         }
@@ -524,6 +536,15 @@ uint8_t command_handler(controller_command_t* cmd, void (*command_callback)(uint
             };
             command_callback((uint8_t *)&response, sizeof(response));
             return RESPONSE_OK;
+        }
+        case SAVE_CONFIGURATION:
+            return controller_configuration_save();
+        case GET_CONFIGURATION_FIELD: {
+            double value;
+            uint8_t error = controller_configuration_read(cmd->properties.get_configuration_field.field,
+                cmd->properties.get_configuration_field.index, &value);
+            if (error == RESPONSE_OK) command_callback((uint8_t *)&value, sizeof(value));
+            return error;
         }
         case SET_PWM_FREQUENCY: {
             uint32_t frequency = cmd->properties.set_pwm_frequency.frequency_hz;

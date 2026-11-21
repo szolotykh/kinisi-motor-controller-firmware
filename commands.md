@@ -1,6 +1,6 @@
 # Kinisi motor controller commands
 
-**Protocol 2.13.0** · Generated from [commands.json](commands.json)
+**Protocol 2.14.0** · Generated from [commands.json](commands.json)
 
 [Command index](#command-index) · [Wire format](#wire-format) · [Error codes](#error-codes)
 
@@ -87,6 +87,8 @@
 | [`SUBSCRIBE_CONFIGURED`](#subscribe_configured-0x84) | `0x84` | Client → controller | ACK |
 | [`GET_PWM_FREQUENCY`](#get_pwm_frequency-0x57) | `0x57` | Client → controller | `uint32_t` |
 | [`SET_PWM_FREQUENCY`](#set_pwm_frequency-0x58) | `0x58` | Client → controller | `uint32_t` |
+| [`SAVE_CONFIGURATION`](#save_configuration-0x59) | `0x59` | Client → controller | ACK |
+| [`GET_CONFIGURATION_FIELD`](#get_configuration_field-0x5a) | `0x5A` | Client → controller | `double` |
 
 ## Command lifecycle
 
@@ -1077,8 +1079,8 @@ This command initializes an omni (3-wheel) platform and prepares it for use. It 
 | `is_encoder_reversed_0` | `bool` | 1 | Reverses encoder 0 counting direction, independently of motor 0's is_reversed_0. Set so the closed-loop feedback is negative (flip if the wheel runs away when given a target speed). |
 | `is_encoder_reversed_1` | `bool` | 1 | Reverses encoder 1 counting direction, independently of motor 1's is_reversed_1. Set so the closed-loop feedback is negative (flip if the wheel runs away when given a target speed). |
 | `is_encoder_reversed_2` | `bool` | 1 | Reverses encoder 2 counting direction, independently of motor 2's is_reversed_2. Set so the closed-loop feedback is negative (flip if the wheel runs away when given a target speed). |
-| `wheels_diameter` | `double` | 8 | Diameter of the robot wheels in millimeters. |
-| `robot_radius` | `double` | 8 | Distance berween the center of the robot and the center of the wheels in millimeters. |
+| `wheels_diameter` | `double` | 8 | Diameter of the robot wheels in meters. |
+| `robot_radius` | `double` | 8 | Distance from the robot center to each wheel center in meters. |
 | `encoder_resolution` | `double` | 8 | Encoder resolution in ticks per revolution. The value can not be negative. If platform does not have encoders, the value should be set to zero. |
 
 #### Response
@@ -1170,7 +1172,7 @@ This command sets the controller for the platform. Firmware 2.3.1 uses direct P+
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`PLATFORM_NOT_INITIALIZED`](#error-platform-not-initialized) (12) · [`INIT_REQUIRED`](#error-init-required) (15)
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`ENCODER_NOT_INITIALIZED`](#error-encoder-not-initialized) (11) · [`PLATFORM_NOT_INITIALIZED`](#error-platform-not-initialized) (12) · [`INIT_REQUIRED`](#error-init-required) (15)
 
 [Back to command index](#command-index)
 
@@ -1270,7 +1272,7 @@ No payload parameters.
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`PLATFORM_NOT_INITIALIZED`](#error-platform-not-initialized) (12)
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`ENCODER_NOT_INITIALIZED`](#error-encoder-not-initialized) (11) · [`PLATFORM_NOT_INITIALIZED`](#error-platform-not-initialized) (12)
 
 [Back to command index](#command-index)
 
@@ -2304,7 +2306,7 @@ Applied board-wide PWM frequency in hertz.
 
 **Client → controller** · **Payload:** 4 bytes
 
-Stop all motors and motor/platform controllers, then set the board-wide PWM frequency. All motors remain stopped. The setting survives motor initialization and connection changes; reboot restores the board default.
+Stop all motors and motor/platform controllers, then set the board-wide PWM frequency. All motors remain stopped. The setting survives motor initialization and connection changes. At boot the board uses its default unless it restores an explicitly saved v0.4 configuration.
 
 #### Parameters
 
@@ -2325,6 +2327,59 @@ Applied board-wide PWM frequency in hertz.
 #### Errors
 
 [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`INTERNAL_ERROR`](#error-internal-error) (6)
+
+[Back to command index](#command-index)
+
+---
+
+### SAVE_CONFIGURATION (0x59)
+
+**Client → controller** · **Payload:** 0 bytes
+
+Save the complete running platform setup and motor PWM frequency to onboard FRAM. Available on v0.4 with protocol 2.14 or later. ACK confirms a durable save. A subsequent boot restores the setup with outputs stopped.
+
+#### Parameters
+
+No payload parameters.
+
+#### Response
+
+**ACK** — empty payload; echoes the command and message ID.
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`PLATFORM_NOT_INITIALIZED`](#error-platform-not-initialized) (12) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6)
+
+[Back to command index](#command-index)
+
+---
+
+### GET_CONFIGURATION_FIELD (0x5A)
+
+**Client → controller** · **Payload:** 2 bytes
+
+Read one field of the running v0.4 configuration. Use GET_PWM_FREQUENCY to read the board-wide switching frequency.
+
+#### Parameters
+
+| Parameter | Type | Bytes | Description |
+| --- | --- | ---: | --- |
+| `field` | `uint8_t` | 1 | 0 platform type (0 unconfigured, 1 differential, 2 omni, 3 mecanum), 1 wheel diameter, 2 track or length, 3 width or radius, 4 encoder resolution, 5 encoder reversed, 6 motor reversed. |
+| `index` | `uint8_t` | 1 | Zero for platform fields. For fields 4 through 6, use the zero-based channel index. |
+
+#### Response
+
+**Controller → client** · `double` · **Payload:** 8 bytes
+
+Current field value in the units of the corresponding initialization command. Boolean flags are returned as zero or one.
+
+| Parameter | Type | Bytes | Description |
+| --- | --- | ---: | --- |
+| `value` | `double` | 8 | Current field value in the units of the corresponding initialization command. Boolean flags are returned as zero or one. |
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`PLATFORM_NOT_INITIALIZED`](#error-platform-not-initialized) (12)
 
 [Back to command index](#command-index)
 

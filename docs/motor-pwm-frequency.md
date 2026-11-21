@@ -34,7 +34,9 @@ update event loads the prescaler and zero-duty compares together. The period rem
 Uninitialized motors use the selected frequency when initialized later.
 
 The selected frequency survives motor initialization, INIT, and disconnect/reconnect.
-Reboot restores the board default (100 kHz in the supplied definitions). The motors
+At boot, v0.4 with protocol 2.14 or newer restores the frequency from a valid
+explicitly saved platform setup. All boards otherwise use their boot default
+(100 kHz in the supplied definitions). The motors
 remain stopped after an update until explicitly commanded. Driver configuration,
 current regulation, encoder timers, and PID calculation frequency are unchanged.
 This setting controls motor PWM switching; `SET_CONTROLLER_FREQUENCY` independently

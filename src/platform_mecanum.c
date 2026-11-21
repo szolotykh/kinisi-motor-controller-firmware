@@ -194,6 +194,9 @@ void initialize_mecanum_platform(
     platform.initialize_platform_odometry = mecanum_platform_start_odometry;
     platform.update_platform_odometry = mecanum_platform_update_odometry;
     platform.motor_mask = BMOTOR0 | BMOTOR1 | BMOTOR2 | BMOTOR3;
+    platform.type = PLATFORM_MECANUM;
+    platform.encoder_reverse_mask = isEncoderReversed0 | (isEncoderReversed1 << 1) |
+        (isEncoderReversed2 << 2) | (isEncoderReversed3 << 3);
     platform.properties.mecanum.wheel_diameter = wheel_diameter;
     platform.properties.mecanum.length = length;
     platform.properties.mecanum.width = width;
