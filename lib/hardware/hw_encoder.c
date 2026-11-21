@@ -8,6 +8,8 @@
 #include "hw_config.h"
 #include "stm32f4xx_hal.h"
 
+extern void Error_Handler(void);
+
 // Default implementations
 static void initialize_encoder(encoder_index_t index, double encoder_resolution, uint8_t is_reversed);
 static uint16_t get_encoder_value(encoder_index_t index);
@@ -152,7 +154,7 @@ static bool initialize_encoder_timer(TIM_HandleTypeDef *htim, TIM_TypeDef *typeD
 	return true;
 }
 
-encoder_info_t get_encoder_info(TIM_TypeDef* timTypeDef)
+static encoder_info_t get_encoder_info(TIM_TypeDef* timTypeDef)
 {
 	for(int i = 0; i < NUMBER_ENCODERS; i++ ){
 		if(timTypeDef == encoder_info[i].timer){
@@ -160,14 +162,13 @@ encoder_info_t get_encoder_info(TIM_TypeDef* timTypeDef)
 		}
 	}
 
-	// TODO: Add assert here.
-	encoder_info_t encoder_configuration;
-	return encoder_configuration;
+	return (encoder_info_t){0};
 }
 
 void HAL_TIM_Encoder_MspInit(TIM_HandleTypeDef* htim_encoder)
 {
 	encoder_info_t encoder_configuration = get_encoder_info(htim_encoder->Instance);
+	if (!encoder_configuration.timer) return;
 
 	GPIO_InitTypeDef GPIO_InitStruct = {0};
 
@@ -198,10 +199,16 @@ void HAL_TIM_Encoder_MspDeInit(TIM_HandleTypeDef* htim_encoder)
 {
     encoder_info_t encoder_configuration = get_encoder_info(htim_encoder->Instance);
     
-    if(htim_encoder->Instance == encoder_configuration.timer)
+    if (encoder_configuration.timer)
     {
-        // Disable the peripheral clock
-        rcc_tim_clk_disable(encoder_configuration.timer);
+        // STM32F405 timers with a quadrature encoder interface.
+        TIM_TypeDef *timer = encoder_configuration.timer;
+        if (timer == TIM1) __HAL_RCC_TIM1_CLK_DISABLE();
+        else if (timer == TIM2) __HAL_RCC_TIM2_CLK_DISABLE();
+        else if (timer == TIM3) __HAL_RCC_TIM3_CLK_DISABLE();
+        else if (timer == TIM4) __HAL_RCC_TIM4_CLK_DISABLE();
+        else if (timer == TIM5) __HAL_RCC_TIM5_CLK_DISABLE();
+        else if (timer == TIM8) __HAL_RCC_TIM8_CLK_DISABLE();
 
         // DeInit GPIO for Channel A and B
         HAL_GPIO_DeInit(encoder_configuration.portA, encoder_configuration.pinA);
