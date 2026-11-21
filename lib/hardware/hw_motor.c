@@ -260,6 +260,15 @@ uint32_t hw_motor_fault_event_sequence(uint8_t index) {
 
 uint32_t hw_motor_get_pwm_frequency(void) { return pwm_frequency_hz; }
 
+void hw_motor_discard_restored_setup(void) {
+    (void)hw_motor_set_pwm_frequency(MOTOR_PWM_FREQUENCY_HZ);
+    for (unsigned i = 0; i < NUMBER_MOTORS; ++i) {
+        stop_motor(i);
+        motor_status[i].isInitialized = false;
+        motor_status[i].isReversed = false;
+    }
+}
+
 bool hw_motor_pwm_frequency_allowed(uint32_t frequency) {
     bool supported = false;
     for (unsigned i = 0; i < sizeof(motor_pwm_frequencies_hz) / sizeof(motor_pwm_frequencies_hz[0]); ++i)

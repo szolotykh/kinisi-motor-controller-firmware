@@ -8,6 +8,7 @@
 #define I2C_GENERALCALL_DISABLE 0
 #define I2C_NOSTRETCH_DISABLE 0
 #define I2C_MEMADD_SIZE_8BIT 1
+#define I2C_MEMADD_SIZE_16BIT 2
 void test_i2c_clock_enable(void);
 #define __HAL_RCC_I2C3_CLK_ENABLE() test_i2c_clock_enable()
 typedef struct {

@@ -8,6 +8,8 @@
 #include "hw_config.h"
 #include "stm32f4xx_hal.h"
 
+extern void Error_Handler(void);
+
 // Default implementations
 static void initialize_encoder(encoder_index_t index, double encoder_resolution, uint8_t is_reversed);
 static uint16_t get_encoder_value(encoder_index_t index);
@@ -47,15 +49,22 @@ typedef struct
 
 static encoder_status_t encoder_status[NUMBER_ENCODERS] = {0};
 
-static void initialize_encoder_timer(TIM_HandleTypeDef *htim, TIM_TypeDef *typeDef);
+uint8_t hw_encoder_is_reversed(encoder_index_t index) {
+    return index < NUMBER_ENCODERS && encoder_status[index].is_reversed;
+}
 
-static void initialize_encoder(encoder_index_t index, double encoder_resolution, uint8_t is_reversed) {
+static bool initialize_encoder_timer(TIM_HandleTypeDef *htim, TIM_TypeDef *typeDef);
+
+bool hw_encoder_try_initialize(encoder_index_t index, double encoder_resolution, uint8_t is_reversed) {
+	if (index >= NUMBER_ENCODERS) return false;
 	// Only the hardware timer setup is one-time.
-	if(!encoder_status[index].is_initialized){
+	if (!encoder_status[index].is_initialized) {
 		TIM_HandleTypeDef *htim = get_timer_handeler(encoder_info[index].timer);
-		initialize_encoder_timer(htim, encoder_info[index].timer);
-		HAL_TIM_Encoder_Start(htim, TIM_CHANNEL_ALL);
-		encoder_status[index].is_initialized = true;
+		if (!initialize_encoder_timer(htim, encoder_info[index].timer) ||
+		    HAL_TIM_Encoder_Start(htim, TIM_CHANNEL_ALL) != HAL_OK) {
+			(void)HAL_TIM_Encoder_DeInit(htim);
+			return false;
+		}
 	}
 	// Always apply resolution and reverse so a re-init with new settings takes
 	// effect (matches initialize_motor, which always sets isReversed). Guarding
@@ -64,6 +73,24 @@ static void initialize_encoder(encoder_index_t index, double encoder_resolution,
 	// inverted the PID feedback and caused closed-loop runaway.
 	encoder_status[index].resolution = encoder_resolution;
 	encoder_status[index].is_reversed = is_reversed;
+	encoder_status[index].is_initialized = true;
+	return true;
+}
+
+static void initialize_encoder(encoder_index_t index, double resolution, uint8_t reversed) {
+	if (index >= NUMBER_ENCODERS) return;
+	if (!hw_encoder_try_initialize(index, resolution, reversed)) Error_Handler();
+}
+
+void hw_encoder_discard_restored_setup(void) {
+	for (unsigned i = 0; i < NUMBER_ENCODERS; ++i) {
+		if (encoder_status[i].is_initialized) {
+			TIM_HandleTypeDef *htim = get_timer_handeler(encoder_info[i].timer);
+			(void)HAL_TIM_Encoder_Stop(htim, TIM_CHANNEL_ALL);
+			(void)HAL_TIM_Encoder_DeInit(htim);
+		}
+		encoder_status[i] = (encoder_status_t){0};
+	}
 }
 
 static uint8_t encoder_is_initialized(encoder_index_t index){
@@ -90,10 +117,10 @@ static uint8_t get_encoder_direction(encoder_index_t index){
 	return 0;
 }
 
-static void initialize_encoder_timer(TIM_HandleTypeDef *htim, TIM_TypeDef *typeDef)
+static bool initialize_encoder_timer(TIM_HandleTypeDef *htim, TIM_TypeDef *typeDef)
 {
 	if(HAL_TIM_Base_GetState(htim) == HAL_TIM_STATE_READY){
-		return;
+		return true;
 	}
 
 	TIM_Encoder_InitTypeDef sConfig = {0};
@@ -116,17 +143,18 @@ static void initialize_encoder_timer(TIM_HandleTypeDef *htim, TIM_TypeDef *typeD
 	sConfig.IC2Filter = 0;
 	if (HAL_TIM_Encoder_Init(htim, &sConfig) != HAL_OK)
 	{
-		Error_Handler();
+		return false;
 	}
 	sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
 	sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
 	if (HAL_TIMEx_MasterConfigSynchronization(htim, &sMasterConfig) != HAL_OK)
 	{
-		Error_Handler();
+		return false;
 	}
+	return true;
 }
 
-encoder_info_t get_encoder_info(TIM_TypeDef* timTypeDef)
+static encoder_info_t get_encoder_info(TIM_TypeDef* timTypeDef)
 {
 	for(int i = 0; i < NUMBER_ENCODERS; i++ ){
 		if(timTypeDef == encoder_info[i].timer){
@@ -134,14 +162,13 @@ encoder_info_t get_encoder_info(TIM_TypeDef* timTypeDef)
 		}
 	}
 
-	// TODO: Add assert here.
-	encoder_info_t encoder_configuration;
-	return encoder_configuration;
+	return (encoder_info_t){0};
 }
 
 void HAL_TIM_Encoder_MspInit(TIM_HandleTypeDef* htim_encoder)
 {
 	encoder_info_t encoder_configuration = get_encoder_info(htim_encoder->Instance);
+	if (!encoder_configuration.timer) return;
 
 	GPIO_InitTypeDef GPIO_InitStruct = {0};
 
@@ -172,10 +199,16 @@ void HAL_TIM_Encoder_MspDeInit(TIM_HandleTypeDef* htim_encoder)
 {
     encoder_info_t encoder_configuration = get_encoder_info(htim_encoder->Instance);
     
-    if(htim_encoder->Instance == encoder_configuration.timer)
+    if (encoder_configuration.timer)
     {
-        // Disable the peripheral clock
-        rcc_tim_clk_disable(encoder_configuration.timer);
+        // STM32F405 timers with a quadrature encoder interface.
+        TIM_TypeDef *timer = encoder_configuration.timer;
+        if (timer == TIM1) __HAL_RCC_TIM1_CLK_DISABLE();
+        else if (timer == TIM2) __HAL_RCC_TIM2_CLK_DISABLE();
+        else if (timer == TIM3) __HAL_RCC_TIM3_CLK_DISABLE();
+        else if (timer == TIM4) __HAL_RCC_TIM4_CLK_DISABLE();
+        else if (timer == TIM5) __HAL_RCC_TIM5_CLK_DISABLE();
+        else if (timer == TIM8) __HAL_RCC_TIM8_CLK_DISABLE();
 
         // DeInit GPIO for Channel A and B
         HAL_GPIO_DeInit(encoder_configuration.portA, encoder_configuration.pinA);

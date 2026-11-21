@@ -1,4 +1,5 @@
 #include "hw_temperature.h"
+#include "hw_fram.h"
 #include "hw_config.h"
 
 #if NUMBER_TEMPERATURE_SENSORS > 0
@@ -113,6 +114,34 @@ static uint16_t address(uint8_t index)
     // STM32 HAL expects the 7-bit address shifted left by one.
     return (uint16_t)temperature_sensor_info[index].address << 1;
 }
+
+#if defined(MP_V4)
+// The FM24CL64B and TMP102 share one HAL handle and bus-recovery state.
+// U603 has A0..A2 low. Its 8 KiB array uses a two-byte memory address.
+static bool fram_transfer(uint16_t offset, uint8_t *bytes, uint16_t length, bool write)
+{
+    if (!bytes || !length || (uint32_t)offset + length > 8192U || !prepare_bus())
+        return false;
+    const uint16_t device = 0x50U << 1;
+    HAL_StatusTypeDef status;
+    if (write)
+        status = HAL_I2C_Mem_Write(&sensor_i2c, device, offset, I2C_MEMADD_SIZE_16BIT, bytes, length, 50);
+    else
+        status = HAL_I2C_Mem_Read(&sensor_i2c, device, offset, I2C_MEMADD_SIZE_16BIT, bytes, length, 50);
+    if (status != HAL_OK) invalidate_bus();
+    return status == HAL_OK;
+}
+
+bool hw_fram_read(uint16_t offset, void *data, uint16_t length)
+{
+    return fram_transfer(offset, data, length, false);
+}
+
+bool hw_fram_write(uint16_t offset, const void *data, uint16_t length)
+{
+    return fram_transfer(offset, (uint8_t *)data, length, true);
+}
+#endif
 
 static bool prepare_sensor(uint8_t index)
 {

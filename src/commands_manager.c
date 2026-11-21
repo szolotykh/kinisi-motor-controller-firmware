@@ -4,6 +4,7 @@
 //------------------------------------------------------------
 #include "commands_manager.h"
 #include "commands_handler.h"
+#include "controller_configuration.h"
 #include "message_queue.h"
 #include "hardware_i2c.h"
 #include "os_interface.h"
@@ -127,6 +128,7 @@ void CommandHandlerTask(void *argument)
     init_queue(&I2CCommandQueue);
 
     // Initialize USB and I2C interfaces
+    controller_configuration_restore();
     MX_USB_DEVICE_Init();
     initialize_external_i2c();
 

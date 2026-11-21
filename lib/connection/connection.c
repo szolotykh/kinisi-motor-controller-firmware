@@ -196,6 +196,8 @@ static uint8_t handle(controller_command_t *cmd, protocol_send_fn reply)
     // protocol_dispatch already checked the command, fields and message ID.
     active->last_activity_us = active->now();
     switch (cmd->commandType) {
+    case SAVE_CONFIGURATION:
+    case GET_CONFIGURATION_FIELD:
     case GET_PWM_FREQUENCY:
     case SET_PWM_FREQUENCY:
     case GET_MOTOR_CURRENT_LIMIT:

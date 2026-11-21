@@ -3,6 +3,7 @@
 #include <string.h>
 #include "hw_config.h"
 #include "hw_temperature.h"
+#include "hw_fram.h"
 
 GPIO_TypeDef test_ports[5];
 TIM_TypeDef test_timers[12];
@@ -13,6 +14,7 @@ static unsigned init_calls, deinit_calls, writes, reads, gpio_calls, clock_calls
 static bool fail_init, fail_write, fail_read;
 static uint16_t config_readback = 0x60A0;
 static uint16_t temperature = 0x1910; // 25.0625 C
+static uint8_t fram[8192];
 
 uint32_t HAL_GetTick(void) { return tick; }
 void HAL_Delay(uint32_t ms) { tick += ms + 1; }
@@ -63,6 +65,13 @@ static void check_transfer(I2C_HandleTypeDef *bus, uint16_t address,
 HAL_StatusTypeDef HAL_I2C_Mem_Write(I2C_HandleTypeDef *bus, uint16_t address,
         uint16_t reg, uint16_t size, uint8_t *data, uint16_t length, uint32_t timeout)
 {
+    if (address == 0xa0) {
+        assert(bus->Instance == I2C3 && size == I2C_MEMADD_SIZE_16BIT && timeout == 50);
+        assert((size_t)reg + length <= sizeof(fram));
+        if (fail_write) return HAL_ERROR;
+        memcpy(fram + reg, data, length);
+        return HAL_OK;
+    }
     check_transfer(bus, address, size, length, timeout);
     assert(reg == 1 && data[0] == 0x60 && data[1] == 0x80);
     ++writes;
@@ -71,6 +80,13 @@ HAL_StatusTypeDef HAL_I2C_Mem_Write(I2C_HandleTypeDef *bus, uint16_t address,
 HAL_StatusTypeDef HAL_I2C_Mem_Read(I2C_HandleTypeDef *bus, uint16_t address,
         uint16_t reg, uint16_t size, uint8_t *data, uint16_t length, uint32_t timeout)
 {
+    if (address == 0xa0) {
+        assert(bus->Instance == I2C3 && size == I2C_MEMADD_SIZE_16BIT && timeout == 50);
+        assert((size_t)reg + length <= sizeof(fram));
+        if (fail_read) return HAL_ERROR;
+        memcpy(data, fram + reg, length);
+        return HAL_OK;
+    }
     check_transfer(bus, address, size, length, timeout);
     assert(reg == 0 || reg == 1);
     ++reads;
@@ -101,6 +117,20 @@ int main(int argc, char **argv)
     if (!strcmp(scenario, "status_bits")) config_readback = 0xE080; // OS/AL are not settings.
 
     hw_temperature_init();
+    if (!strcmp(scenario, "fram")) {
+        const uint8_t data[] = {0x7f, 0x12, 0x56};
+        uint8_t readback[sizeof(data)] = {0};
+        assert(hw_fram_write(0x101, data, sizeof(data)));
+        assert(hw_fram_read(0x101, readback, sizeof(readback)));
+        assert(!memcmp(data, readback, sizeof(data)));
+        assert(!hw_fram_write(8190, data, sizeof(data)));
+        fail_read = true;
+        assert(!hw_fram_read(0x101, readback, 1));
+        fail_read = false;
+        expect_status(HW_TEMPERATURE_NOT_READY);
+        assert(init_calls == 2 && deinit_calls == 1);
+        return 0;
+    }
     const bool recovering = fail_init || fail_write || fail_read || config_readback == 0x61B0;
     if (recovering) {
         expect_status(HW_TEMPERATURE_IO_ERROR);
