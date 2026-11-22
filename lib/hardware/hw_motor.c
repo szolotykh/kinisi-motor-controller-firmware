@@ -489,3 +489,17 @@ bool hw_motor_set_pwm_frequency(uint32_t frequency) {
     pwm_frequency_hz = frequency;
     return true;
 }
+
+bool hw_motor_outputs_stopped(void)
+{
+#if MOTOR_CONTROL_MODEL == MOTOR_CONTROL_MODEL_ENABLE_DIRECTION
+    for (uint8_t i = 0; i < NUMBER_MOTORS; ++i) {
+        if (motor_status[i].isInitialized &&
+            HAL_GPIO_ReadPin(motor_info[i].disable.port, motor_info[i].disable.pin) != GPIO_PIN_SET)
+            return false;
+    }
+    return true;
+#else
+    return false;
+#endif
+}

@@ -49,7 +49,7 @@ void platform_start_velocity_controller(plaform_controller_settings_t plaform_co
 /**
  * @brief Set platform velocity targets when platform closed-loop control is running.
  */
-void platform_set_target_velocity(platform_velocity_t platform_target_velocity);
+uint8_t platform_set_target_velocity(platform_velocity_t platform_target_velocity);
 
 // Stop velocity controller for current platform
 /**

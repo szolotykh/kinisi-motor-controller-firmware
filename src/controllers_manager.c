@@ -14,6 +14,7 @@
 #include <hw_motor.h>
 #include <hw_encoder.h>
 #include "platform_position.h"
+#include "platform_fusion.h"
 #include "protocol.h"
 
 // Update interval for PID controller in milliseconds
@@ -28,6 +29,7 @@ typedef struct controller_info_t
     motorIndex mIndex;
     encoder_index_t eIndex;
     pid_controller_t controller;
+    bool feedback_hold;
     uint8_t position_initialized;
     uint8_t position_active;
     position_settings_t position_settings;
@@ -99,7 +101,7 @@ void StartControllerTask(void *argument)
                 controller_info_t* controller_info = &controllers_manager_state->Controller_info[index];
 
                 // Check if controller is running
-                if(controller_info->state == RUN)
+                if(controller_info->state == RUN && !controller_info->feedback_hold)
                 {
                     pid_controller_t* controller = &controller_info->controller;
 
@@ -147,7 +149,8 @@ void StartControllerTask(void *argument)
             // Set motor speed
             for (int index = 0; index < NUMBER_MOTORS; index++)
             {
-                if( controllers_manager_state->Controller_info[index].state == RUN )
+                if (controllers_manager_state->Controller_info[index].state == RUN &&
+                    !controllers_manager_state->Controller_info[index].feedback_hold)
                 {
                 // Set motor speed
                 motor->set_speed(
@@ -283,6 +286,10 @@ void controllers_manager_initialize_controller_multiple(uint8_t motor_selection,
                 // Building controller info
                 controller_info_t controller_info = {0};
                 controller_info.state = RUN;
+#if BOARD_HAS_FUSION_EXPERIMENT
+                controller_info.feedback_hold = platform_fusion_epoch() != 0;
+                if (controller_info.feedback_hold) motor->stop(motor_index);
+#endif
                 controller_info.controller = controller;
                 controller_info.mIndex = motor_index;
                 controller_info.eIndex = motor_index;
@@ -654,3 +661,43 @@ uint8_t controllers_manager_get_position(uint8_t index, double *radians)
     xSemaphoreGive(controllers_manager.state.controller_state_mutex);
     return error;
 }
+
+#if BOARD_HAS_FUSION_EXPERIMENT
+static void set_feedback_hold_locked(uint8_t mask, bool hold)
+{
+    for (uint8_t i = 0; i < NUMBER_MOTORS; ++i) {
+        controller_info_t *c = &controllers_manager.state.Controller_info[i];
+        if (!(mask & (1U << i)) || c->state != RUN || c->feedback_hold == hold) continue;
+        c->feedback_hold = hold;
+        c->position_active = 0;
+        controllers_manager.state.target_motor_speed[i] = 0;
+        pid_controller_reset(&c->controller);
+        controllers_manager.state.previousEncoderValue[i] = encoder->get_value(c->eIndex);
+        if (hold) motor->stop(c->mIndex);
+    }
+}
+
+bool controllers_manager_hold_if_stopped(uint8_t mask)
+{
+    SemaphoreHandle_t mutex = controllers_manager.state.controller_state_mutex;
+    if (!mutex) return hw_motor_outputs_stopped();
+    if (!xSemaphoreTake(mutex, portMAX_DELAY)) return false;
+    bool stopped = hw_motor_outputs_stopped();
+    for (uint8_t i = 0; stopped && i < NUMBER_MOTORS; ++i) {
+        controller_info_t *c = &controllers_manager.state.Controller_info[i];
+        if (c->state == RUN && (controllers_manager.state.target_motor_speed[i] ||
+                               c->controller.motorPWM || c->position_active)) stopped = false;
+    }
+    if (stopped) set_feedback_hold_locked(mask, true);
+    xSemaphoreGive(mutex);
+    return stopped;
+}
+
+void controllers_manager_feedback_hold(uint8_t mask, bool hold)
+{
+    SemaphoreHandle_t mutex = controllers_manager.state.controller_state_mutex;
+    if (!mutex || !xSemaphoreTake(mutex, portMAX_DELAY)) return;
+    set_feedback_hold_locked(mask, hold);
+    xSemaphoreGive(mutex);
+}
+#endif

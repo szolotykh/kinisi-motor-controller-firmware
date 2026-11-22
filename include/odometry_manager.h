@@ -4,6 +4,7 @@
 //------------------------------------------------------------
 
 #pragma once
+#include <stdbool.h>
 
 #include <stdint.h>
 #include <platform.h>
@@ -105,3 +106,6 @@ uint16_t odometry_manager_get_frequency();
 
 /** @brief Return the actual calculation period in milliseconds, including tick quantization. */
 uint32_t odometry_manager_get_period_ms(void);
+
+// True if a configured wheel was observed moving within the last 100 ms.
+bool odometry_manager_recent_motion(uint64_t now);

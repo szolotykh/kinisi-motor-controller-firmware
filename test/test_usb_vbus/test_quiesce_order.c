@@ -2,6 +2,10 @@
 // private session state. Hardware/RTOS boundaries are host fakes.
 #include "../../src/commands_manager.c"
 
+#if BOARD_HAS_FUSION_EXPERIMENT
+void platform_fusion_install_ingress_fence(void (*fence)(uint32_t *)) { (void)fence; }
+void platform_fusion_dequeued(void) {}
+#endif
 message_queue_t CommandQueue, I2CCommandQueue;
 unsigned losses;
 static uint32_t global_mask;
@@ -47,7 +51,29 @@ const hw_motor_interface_t *get_motor_interface(void) {
     static const hw_motor_interface_t motor = {.is_initialized=initialized, .stop=coast};
     return &motor;
 }
+#if BOARD_HAS_FUSION_EXPERIMENT
+static void check_recovery_fence(void)
+{
+    char frame[] = {3, SET_PLATFORM_POSITION, 1, 0}, output_frame[256];
+    unsigned generation = 0;
+    uint8_t barriers;
+    int length;
+    init_queue(&CommandQueue); init_queue(&I2CCommandQueue);
+    assert(enqueue_multi(&CommandQueue, frame, 2) && enqueue(&I2CCommandQueue, frame));
+    fence_feedback_targets(&generation);
+    assert(generation == 1 && enqueue_multi(&CommandQueue, frame + 2, 2));
+    assert(take_command(&CommandQueue, output_frame, &length, &barriers) &&
+           barriers == BEFORE_FEEDBACK_READY);
+    assert(take_command(&I2CCommandQueue, output_frame, &length, &barriers) &&
+           barriers == BEFORE_FEEDBACK_READY);
+    assert(enqueue(&I2CCommandQueue, frame) &&
+           take_command(&I2CCommandQueue, output_frame, &length, &barriers) && barriers == 0);
+}
+#endif
 void test_prepare_running(void) {
+#if BOARD_HAS_FUSION_EXPERIMENT
+    check_recovery_fence();
+#endif
     init_queue(&CommandQueue); init_queue(&I2CCommandQueue);
     char frame[] = {1, 17};
     assert(enqueue(&CommandQueue, frame) && enqueue(&I2CCommandQueue, frame));

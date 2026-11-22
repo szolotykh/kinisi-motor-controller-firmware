@@ -14,6 +14,7 @@
 #include <loop_frequency.h>
 #include <hw_clock.h>
 #include <protocol.h>
+#include "platform_fusion.h"
 
 // Default odometry-task period in ms. 20 ms = 50 Hz: fast enough for good pose
 // integration while driving+turning and to match a typical ROS EKF/Nav2 odom
@@ -39,6 +40,22 @@ typedef struct
     // Platform odometry
     platform_odometry_t platform_odometry;
 } odometry_manager_state_t;
+
+#if BOARD_HAS_FUSION_EXPERIMENT
+typedef struct { uint64_t seen, quiet_since, moved; uint16_t count; } rest_sample_t;
+static rest_sample_t rest[NUMBER_ENCODERS];
+
+static bool record_count(uint8_t i, uint16_t count, uint64_t at)
+{
+    rest_sample_t *r = &rest[i];
+    bool moved = r->seen && count != r->count;
+    if (moved) r->moved = at;
+    if (moved || !r->seen || at <= r->seen || at - r->seen > 60000) r->quiet_since = at;
+    r->count = count;
+    r->seen = at;
+    return moved;
+}
+#endif
 
 static odometry_manager_state_t odometry_manager_state = {
     .is_initialized = {0},
@@ -70,12 +87,27 @@ void odometry_manager_task(void *argument)
         {
             // Timestamp the encoder acquisition batch, before integration.
             uint64_t sample_us = hw_clock_microseconds();
+#if BOARD_HAS_FUSION_EXPERIMENT
+            const uint32_t epoch = platform_fusion_epoch();
+            bool valid = platform_is_odometry_enabled();
+            bool stationary = true, moved = false;
+            platform_odometry_t delta = {0};
+            uint64_t previous = state->platform_sample_us;
+#endif
             // Update odometry for each encoder
             for(int i = 0; i < NUMBER_ENCODERS; i++)
             {
+#if BOARD_HAS_FUSION_EXPERIMENT
+                if (epoch && platform_owns_motor(i) && (!state->is_initialized[i] ||
+                    !encoder->is_initialized(i) || !isfinite(encoder->get_resolution(i)) ||
+                    encoder->get_resolution(i) <= 0)) valid = false;
+#endif
                 if(state->is_initialized[i])
                 {
                     uint16_t encoder_value = encoder->get_value(i);
+#if BOARD_HAS_FUSION_EXPERIMENT
+                    moved |= record_count(i, encoder_value, sample_us);
+#endif
                     state->odometry_change[i] = odometry_integrator_wheel_delta(
                         state->encoder_previous_value[i], encoder_value, encoder->get_resolution(i));
                     state->odometry[i] = state->odometry[i] + state->odometry_change[i];
@@ -83,6 +115,12 @@ void odometry_manager_task(void *argument)
                     state->encoder_previous_value[i] = encoder_value;
                     state->encoder_sample_us[i] = sample_us;
                 }
+#if BOARD_HAS_FUSION_EXPERIMENT
+                else if (epoch && encoder->is_initialized(i))
+                    moved |= record_count(i, encoder->get_value(i), sample_us);
+                else rest[i] = (rest_sample_t){0};
+                if (rest[i].seen && sample_us - rest[i].quiet_since < 100000) stationary = false;
+#endif
             }
 
             // Update odometry for the platform if it is initialized
@@ -106,8 +144,17 @@ void odometry_manager_task(void *argument)
                 state->platform_odometry = odometry_integrator_accumulate(
                     state->platform_odometry, odometry_change);
                 state->platform_sample_us = sample_us;
+#if BOARD_HAS_FUSION_EXPERIMENT
+                delta = odometry_change;
+#endif
             }
+#if BOARD_HAS_FUSION_EXPERIMENT
+            platform_odometry_t pose = state->platform_odometry;
+#endif
             xSemaphoreGive(state->odometry_mutex);
+#if BOARD_HAS_FUSION_EXPERIMENT
+            if (epoch) platform_fusion_observe(epoch, previous, sample_us, delta, pose, valid, stationary, moved);
+#endif
         }
     }
 }
@@ -135,7 +182,11 @@ void odometry_manager_initialize()
 
         const osThreadAttr_t CommandsTask_attributes = {
             .name = "CommandsTask",
+#if BOARD_HAS_FUSION_EXPERIMENT
+            .stack_size = 3072, // BMI088 acquisition and software double-precision estimator.
+#else
             .stack_size = 128 * 8,
+#endif
             .priority = (osPriority_t) osPriorityNormal,
         };
         odometry_manager_state.thread_handler = osThreadNew(odometry_manager_task, &odometry_manager_state, &CommandsTask_attributes);
@@ -391,3 +442,21 @@ void odometry_manager_invalidate_platform_sample(void)
         xSemaphoreGive(odometry_manager_state.odometry_mutex);
     }
 }
+
+#if BOARD_HAS_FUSION_EXPERIMENT
+bool odometry_manager_recent_motion(uint64_t now)
+{
+    SemaphoreHandle_t mutex = odometry_manager_state.odometry_mutex;
+    if (!mutex || !xSemaphoreTake(mutex, portMAX_DELAY)) return false;
+    bool moving = false;
+    for (uint8_t i = 0; i < NUMBER_ENCODERS; ++i) {
+        if (!encoder->is_initialized(i)) continue;
+        rest_sample_t *r = &rest[i];
+        if (r->seen && now >= r->seen && now - r->seen <= 60000 &&
+            encoder->get_value(i) != r->count) moving = true;
+        if (r->moved && now >= r->moved && now - r->moved < 100000) moving = true;
+    }
+    xSemaphoreGive(mutex);
+    return moving;
+}
+#endif

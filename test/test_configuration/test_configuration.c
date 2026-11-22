@@ -16,6 +16,9 @@
 #include "cmsis_os.h"
 #include "semphr.h"
 #include <assert.h>
+#include <setjmp.h>
+#include <math.h>
+#include "platform_fusion.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -26,6 +29,9 @@ static unsigned motion_writes, tasks_started, fram_writes, fram_reads, braked_ma
 static int write_budget = -1, failed_motor = -1, failed_encoder = -1;
 static uint32_t frequency = 100000;
 static bool driver_sleep, fail_driver_transition;
+bool hw_motor_outputs_stopped(void) {
+    return !braked_mask && !output[0] && !output[1] && !output[2] && !output[3];
+}
 bool hw_motor_drivers_sleeping(void) { return driver_sleep; }
 bool hw_motor_set_driver_sleep(bool sleeping) {
     if (sleeping && !driver_sleep) {
@@ -73,7 +79,8 @@ static void brake(uint8_t i) { if (motor_enabled[i]) braked_mask |= 1u << i; }
 static void encoder_init(uint8_t i, double res, uint8_t reverse) { encoder_scale[i] = res; reversed_encoder[i] = reverse; }
 static uint8_t encoder_ready(uint8_t i) { return encoder_scale[i] != 0; }
 static double scale(uint8_t i) { return encoder_scale[i]; }
-static uint16_t count(uint8_t i) { return 0; }
+static uint16_t wheel_count[4];
+static uint16_t count(uint8_t i) { return wheel_count[i]; }
 uint8_t hw_encoder_is_reversed(uint8_t i) { return reversed_encoder[i]; }
 bool hw_encoder_try_initialize(uint8_t i, double res, uint8_t reverse)
 {
@@ -113,23 +120,58 @@ bool hw_motor_set_pwm_frequency(uint32_t value)
     return true;
 }
 uint32_t hw_motor_get_pwm_frequency(void) { return frequency; }
-uint64_t hw_clock_microseconds(void) { return 1000; }
+static uint64_t now = 1000;
+static hw_imu_sample_t injected;
+static uint64_t injected_accel, injected_gyro;
+static hw_imu_status_t injected_status = HW_IMU_UNAVAILABLE;
+static unsigned observation_calls;
+static bool motor_fault;
+uint64_t hw_clock_microseconds(void) { return now; }
 const gpio_interface_t *get_gpio_interface(void) { return NULL; }
-bool hw_drv8873_fault_active(uint8_t index) { return false; }
+bool hw_drv8873_fault_active(uint8_t index) { return motor_fault && index == 0; }
 // Unexpected motor-protection writes or sensor access must fail this fixture.
 bool hw_motor_current_limit_allowed(uint8_t i, const hw_motor_current_limit_t *s) { abort(); }
 bool hw_motor_set_current_limit(uint8_t i, const hw_motor_current_limit_t *s) { abort(); }
 bool hw_motor_get_current_limit(uint8_t i, hw_motor_current_limit_t *s) { abort(); }
 bool hw_motor_read_faults(uint8_t i, hw_motor_faults_t *f) { abort(); }
 bool hw_motor_clear_faults(uint8_t i, hw_motor_faults_t *f) { abort(); }
+hw_imu_status_t hw_imu_read_observation(uint8_t index, hw_imu_sample_t *sample,
+                                        uint64_t *accel_us, uint64_t *gyro_us) {
+    ++observation_calls;
+    assert(index == 0);
+    *sample = injected; *accel_us = injected_accel; *gyro_us = injected_gyro;
+    return injected_status;
+}
 hw_imu_status_t hw_imu_read(uint8_t i, hw_imu_sample_t *s) { abort(); }
 hw_temperature_status_t hw_temperature_read(uint8_t i, double *v) { abort(); }
 hw_current_sense_status_t hw_current_sense_read(uint8_t i, double *v) { abort(); }
 osThreadState_t osThreadGetState(osThreadId_t t) { return t ? 0 : osThreadError; }
+typedef struct { void (*fn)(void *); void *arg; } task_t;
+static task_t controller_task, odom_task, supervisor_task;
+static jmp_buf task_end;
+static bool first_delay;
 osThreadId_t osThreadNew(void (*fn)(void *), void *arg, const osThreadAttr_t *attr)
-{ static int thread; tasks_started++; return &thread; }
+{
+    task_t *task = !strcmp(attr->name, "ControllerTask") ? &controller_task :
+        !strcmp(attr->name, "FeedbackWatch") ? &supervisor_task : &odom_task;
+    *task = (task_t){fn, arg};
+    ++tasks_started;
+    return task;
+}
 TickType_t xTaskGetTickCount(void) { return 0; }
-void vTaskDelayUntil(TickType_t *last, TickType_t period) { abort(); }
+void vTaskDelayUntil(TickType_t *last, TickType_t period)
+{
+    if (!first_delay) longjmp(task_end, 1);
+    first_delay = false;
+}
+#if BOARD_HAS_FUSION_EXPERIMENT
+static void run_task(task_t task)
+{
+    assert(task.fn);
+    first_delay = true;
+    if (!setjmp(task_end)) task.fn(task.arg);
+}
+#endif
 SemaphoreHandle_t xSemaphoreCreateMutex(void) { static unsigned locks[12], n; assert(n < 12); return &locks[n++]; }
 int xSemaphoreTake(SemaphoreHandle_t m, uint32_t timeout) { assert(m && !*(unsigned *)m); *(unsigned *)m = 1; return 1; }
 void xSemaphoreGive(SemaphoreHandle_t m) { assert(m && *(unsigned *)m); *(unsigned *)m = 0; }
@@ -365,6 +407,9 @@ static void fresh_brake_commands(void)
     assert(!braked_mask && !motion_writes);
 }
 
+#if BOARD_HAS_FUSION_EXPERIMENT
+#include "fusion_scenarios.h"
+#endif
 int main(int argc, char **argv)
 {
     assert(argc == 4);
@@ -391,6 +436,9 @@ int main(int argc, char **argv)
     assert(!tasks_started && !motion_writes && !fram_writes);
     for (int i = 0; i < 4; ++i) assert(output[i] == 0);
     connect();
+#if BOARD_HAS_FUSION_EXPERIMENT
+    if (!strcmp(mode, "fusion")) { fusion_scenario(type); return 0; }
+#endif
     if (!strcmp(mode, "idle-reboot")) {
         request((controller_command_t){.commandType=GET_BOARD_IDLE}, RESPONSE_OK);
         assert(!reply[4]);
@@ -400,6 +448,8 @@ int main(int argc, char **argv)
     }
     if (!strcmp(mode, "brake-policy")) { fresh_brake_commands(); return 0; }
     if (!strcmp(mode, "unsupported")) {
+        request((controller_command_t){.commandType=GET_FUSION_STATUS}, RESPONSE_SENSOR_NOT_AVAILABLE);
+        request((controller_command_t){.commandType=SET_FUSION_EXPERIMENT}, RESPONSE_SENSOR_NOT_AVAILABLE);
         configure(type);
         if (!BOARD_HAS_BOARD_IDLE) {
             request((controller_command_t){.commandType=GET_BOARD_IDLE}, RESPONSE_SENSOR_NOT_AVAILABLE);

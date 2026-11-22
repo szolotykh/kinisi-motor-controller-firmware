@@ -20,6 +20,9 @@ The bundle has `schema_version: 1` and a `boards` array. Each profile contains:
   on the exact model 1 profile and a READY connection. The minimum 2.x minor is
   18 on original v0.3.0 and Nano v0.3.1, and 16 on v0.4.0.
   Earlier bundles may omit this field. See [board idle](board-idle.md).
+- `capabilities.fusion_experiment`: volatile encoder/IMU experiment support.
+  Requires READY, exact model 1 v0.4.0 and protocol 2.19+. Missing is false.
+  See [fusion experiment](fusion-experiment.md).
 - `motor_features`: per-motor IDs, current-sense/current-limit/fault-reporting flags,
   and optional `current_limit_options` with discrete thresholds in milliamps and `can_disable`.
 - `sensors`: temperature sensor IDs and IMU IDs with accelerometer/gyroscope flags.

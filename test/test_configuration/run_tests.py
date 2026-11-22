@@ -55,6 +55,10 @@ with tempfile.TemporaryDirectory() as folder:
         def run(mode, image, platform):
             subprocess.run([str(binary), mode, str(image), str(platform)], check=True, timeout=10)
 
+        if revision == 4:
+            for preset in (1, 2, 3):
+                run('fusion', out / 'unconfigured.fram', preset)
+            print('PASS fusion mode, source age, frame/bias, matched wheel outputs, position/velocity fail-stop and rearm on all presets')
         if revision != 4:
             run('unsupported', out / 'unused.fram', 1)
             if revision == "3_1":

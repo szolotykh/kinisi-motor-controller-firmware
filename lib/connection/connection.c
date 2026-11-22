@@ -3,6 +3,7 @@
 // Description: Sequence INIT, clock setup, READY, command replies, and periodic synchronization.
 //------------------------------------------------------------
 #include "connection.h"
+#include "board_revision.h"
 #include "driver_sleep_commands.h"
 #include "wake_barriers.h"
 #include "initialization.h"
@@ -233,13 +234,20 @@ static bool creates_subscription(uint8_t command)
 static uint8_t handle(controller_command_t *cmd, protocol_send_fn reply)
 {
     if (active->lost && !safe_after_loss(cmd->commandType)) return RESPONSE_INIT_REQUIRED;
-    if (request_wake_barriers && command_requires_awake_drivers(cmd->commandType))
+    if ((request_wake_barriers & (BEFORE_DRIVER_WAKE | BEFORE_BOARD_WAKE)) &&
+        command_requires_awake_drivers(cmd->commandType))
         return RESPONSE_DRIVERS_ASLEEP;
+    if ((request_wake_barriers & BEFORE_FEEDBACK_READY) &&
+        (cmd->commandType == SET_PLATFORM_POSITION || cmd->commandType == SET_PLATFORM_TARGET_VELOCITY))
+        return RESPONSE_SAMPLE_NOT_AVAILABLE;
     // protocol_dispatch already checked the command, fields and message ID.
     active->last_activity_us = active->now();
     bool idle = connection_board_idle();
     bool stale_board_request = (request_wake_barriers & BEFORE_BOARD_WAKE) != 0;
     bool guarded = creates_subscription(cmd->commandType) || cmd->commandType == SET_DRIVER_SLEEP;
+#if BOARD_HAS_FUSION_EXPERIMENT
+    guarded |= cmd->commandType == SET_FUSION_EXPERIMENT;
+#endif
     // A delayed board wake may ACK if already active, but cannot cancel a
     // later explicit idle request after its originating idle episode ended.
     bool stale_board_wake = stale_board_request && idle && cmd->commandType == SET_BOARD_IDLE &&
@@ -252,6 +260,8 @@ static uint8_t handle(controller_command_t *cmd, protocol_send_fn reply)
     switch (cmd->commandType) {
     case SET_BOARD_IDLE:
     case GET_BOARD_IDLE:
+    case SET_FUSION_EXPERIMENT: case GET_FUSION_STATUS:
+    case GET_FUSION_VECTOR: case GET_FUSION_CONFIGURATION:
     case SAVE_CONFIGURATION:
     case GET_DRIVER_SLEEP:
     case SET_DRIVER_SLEEP:

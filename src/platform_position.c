@@ -1,5 +1,6 @@
 #include "platform_position.h"
 #include "platform.h"
+#include "platform_fusion.h"
 #include "platform_common.h"
 #include "odometry_manager.h"
 #include "hw_clock.h"
@@ -43,9 +44,16 @@ static void zero_velocity(void)
         platform.set_platform_target_velocity((platform_velocity_t){0});
 }
 
+#if BOARD_HAS_FUSION_EXPERIMENT
+#include "platform_fusion_internal.h"
+#endif
+
 void platform_position_cancel(void)
 {
     if (!mutex || !xSemaphoreTake(mutex, portMAX_DELAY)) return;
+#if BOARD_HAS_FUSION_EXPERIMENT
+    if (experiment.mode) clear_target();
+#endif
     if (initialized) zero_velocity();
     initialized = active = 0;
     reset_pid();
@@ -68,6 +76,9 @@ uint8_t platform_position_initialize(position_settings_t linear, position_settin
         }
     if (!mutex) mutex = xSemaphoreCreateMutex();
     if (!mutex || !xSemaphoreTake(mutex, portMAX_DELAY)) return RESPONSE_INTERNAL_ERROR;
+#if BOARD_HAS_FUSION_EXPERIMENT
+    if (experiment.mode) clear_target();
+#endif
     linear_settings = linear;
     angular_settings = angular;
     reset_pid();
@@ -82,6 +93,14 @@ uint8_t platform_position_initialize(position_settings_t linear, position_settin
 
 static uint8_t feedback(platform_odometry_t *pose)
 {
+#if BOARD_HAS_FUSION_EXPERIMENT
+    if (experiment.mode) {
+        if (!usable()) return RESPONSE_SAMPLE_NOT_AVAILABLE;
+        *pose = experiment.mode == FUSION_MODE_ENCODER_CORRECTION ? experiment.pose :
+            (platform_odometry_t){experiment.estimator.x, experiment.estimator.y, experiment.estimator.yaw};
+        return RESPONSE_OK;
+    }
+#endif
     uint64_t sample;
     uint8_t error = odometry_manager_get_platform_sample(pose, &sample);
     if (error != RESPONSE_OK) return error;
@@ -103,8 +122,22 @@ uint8_t platform_position_set(platform_odometry_t target)
     platform_odometry_t pose;
     uint8_t error = !initialized || !platform.is_controller_initialized ?
         RESPONSE_CONTROLLER_NOT_INITIALIZED : feedback(&pose);
+#if BOARD_HAS_FUSION_EXPERIMENT
+    if (experiment.mode && !fresh_request()) error = RESPONSE_SAMPLE_NOT_AVAILABLE;
+#endif
     if (error == RESPONSE_OK) {
-        if (!active || target.x != target_pose.x || target.y != target_pose.y || target.t != target_pose.t) reset_pid();
+        if (!active || target.x != target_pose.x || target.y != target_pose.y || target.t != target_pose.t) {
+            reset_pid();
+#if BOARD_HAS_FUSION_EXPERIMENT
+            reset_correction();
+#endif
+        }
+#if BOARD_HAS_FUSION_EXPERIMENT
+        if (experiment.mode) {
+            controllers_manager_feedback_hold(platform.motor_mask, false);
+            experiment.target_live = true;
+        }
+#endif
         target_pose = target; active = 1;
     }
     xSemaphoreGive(mutex);
@@ -120,6 +153,9 @@ uint8_t platform_position_reset(void)
         active = 0;
         reset_pid();
         zero_velocity();
+#if BOARD_HAS_FUSION_EXPERIMENT
+        if (experiment.mode) { restart_batch(true); experiment.health = FUSION_HEALTH_WAITING; }
+#endif
         odometry_manager_reset_platform_odometry();
         target_pose = (platform_odometry_t){0};
     }
@@ -130,6 +166,15 @@ uint8_t platform_position_reset(void)
 void platform_position_update(void)
 {
     if (!mutex || !xSemaphoreTake(mutex, portMAX_DELAY)) return;
+#if BOARD_HAS_FUSION_EXPERIMENT
+    if (experiment.mode && experiment.target_live) {
+        bool running = platform.is_controller_initialized;
+        for (uint8_t i = 0; running && i < 4; ++i)
+            if (platform_owns_motor(i) && !controllers_manager_is_running(i)) running = false;
+        if (!running) reject_feedback(FUSION_FAULT_INHIBITED);
+        else if (usable() && !active) apply_correction(experiment.direct);
+    }
+#endif
     if (active) {
         platform_odometry_t pose;
         uint8_t healthy = platform.is_controller_initialized && feedback(&pose) == RESPONSE_OK;
@@ -144,9 +189,19 @@ void platform_position_update(void)
             uint64_t now = hw_clock_microseconds();
             double dt = previous_update && now > previous_update ? (now - previous_update) / 1000000.0 : 0;
             previous_update = now;
-            platform.set_platform_target_velocity(position_platform_pid_velocity(
+            platform_velocity_t velocity = position_platform_pid_velocity(
                 linear_settings, angular_settings, &pid_state, pose, target_pose,
-                platform.set_platform_target_velocity == differential_platform_set_target_velocity, dt));
+                platform.set_platform_target_velocity == differential_platform_set_target_velocity, dt);
+#if BOARD_HAS_FUSION_EXPERIMENT
+            if (experiment.mode) {
+                bool reached = !velocity.x && !velocity.y && !velocity.t;
+                controllers_manager_feedback_hold(platform.motor_mask, reached);
+                if (reached) reset_correction();
+                else apply_correction(velocity);
+            }
+            else
+#endif
+                platform.set_platform_target_velocity(velocity);
         }
     }
     xSemaphoreGive(mutex);

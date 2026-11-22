@@ -22,6 +22,7 @@
 #include "hw_clock.h"
 #include "command_requirements.h"
 #include "platform_position.h"
+#include "platform_fusion.h"
 #include "hw_config.h"
 #if MOTOR_CONTROL_MODEL == MOTOR_CONTROL_MODEL_ENABLE_DIRECTION
 #include "hw_drv8873.h"
@@ -30,12 +31,18 @@
 #if BOARD_HAS_DRIVER_SLEEP
 static uint8_t set_driver_sleep(bool sleeping)
 {
-    if (sleeping && !hw_motor_drivers_sleeping()) {
+    bool was_sleeping = hw_motor_drivers_sleeping();
+    if (sleeping && !was_sleeping) {
         // Drain both controller mutexes before changing any driver pins.
         platform_stop_velocity_controller();
         controllers_manager_stop_controller_multiple(BMOTOR0 | BMOTOR1 | BMOTOR2 | BMOTOR3);
     }
-    return hw_motor_set_driver_sleep(sleeping) ? RESPONSE_OK : RESPONSE_INTERNAL_ERROR;
+    bool confirmed = hw_motor_set_driver_sleep(sleeping);
+#if BOARD_HAS_FUSION_EXPERIMENT
+    bool now_sleeping = hw_motor_drivers_sleeping();
+    if (now_sleeping != was_sleeping) platform_fusion_driver_transition(now_sleeping);
+#endif
+    return confirmed ? RESPONSE_OK : RESPONSE_INTERNAL_ERROR;
 }
 #endif
 
@@ -453,7 +460,7 @@ uint8_t command_handler(controller_command_t* cmd, void (*command_callback)(uint
                 .y = cmd->properties.set_platform_target_velocity.y,
                 .t = cmd->properties.set_platform_target_velocity.t
             };
-            platform_set_target_velocity(platform_target_velocity);
+            return platform_set_target_velocity(platform_target_velocity);
         }
         break;
         
@@ -556,6 +563,20 @@ uint8_t command_handler(controller_command_t* cmd, void (*command_callback)(uint
                 cmd->properties.set_platform_position.x,
                 cmd->properties.set_platform_position.y,
                 cmd->properties.set_platform_position.t});
+        case SET_FUSION_EXPERIMENT:
+#if BOARD_HAS_FUSION_EXPERIMENT
+            return platform_fusion_configure(cmd->properties.set_fusion_experiment.mode,
+                                            cmd->properties.set_fusion_experiment.mounting_yaw_rad);
+#else
+            return RESPONSE_SENSOR_NOT_AVAILABLE;
+#endif
+        case GET_FUSION_STATUS: case GET_FUSION_VECTOR: case GET_FUSION_CONFIGURATION:
+#if BOARD_HAS_FUSION_EXPERIMENT
+            return platform_fusion_read(cmd->commandType, cmd->commandType == GET_FUSION_VECTOR ?
+                                        cmd->properties.get_fusion_vector.kind : 0, command_callback);
+#else
+            return RESPONSE_SENSOR_NOT_AVAILABLE;
+#endif
         case GET_IMU: {
             hw_imu_sample_t sample;
             switch (hw_imu_read(cmd->properties.get_imu.sensor_index, &sample)) {

@@ -15,6 +15,12 @@ static bool fail_init, fail_transfer, bad_id, reject_config, fail_gyro_reset, fa
 static bool accel_spi, gyro_reset, accel_reset, wrote;
 static uint16_t selected;
 static uint8_t acc_regs[128], gyro_regs[128];
+static uint32_t irq_mask;
+static bool sample_race, interleave_direct, snapshot_inside_raw;
+static uint64_t cache_at, cached_a, cached_g;
+uint32_t __get_PRIMASK(void) { return irq_mask; }
+void __disable_irq(void) { irq_mask = 1; }
+void __set_PRIMASK(uint32_t value) { irq_mask = value; }
 
 static void reset_accel(void) {
     memset(acc_regs, 0, sizeof(acc_regs));
@@ -25,6 +31,7 @@ static void reset_gyro(void) {
     memset(gyro_regs, 0, sizeof(gyro_regs));
     gyro_regs[0] = 0x0F; gyro_regs[0x10] = 0x80;
 }
+uint64_t hw_clock_microseconds(void) { return (uint64_t)tick * 1000; }
 uint32_t HAL_GetTick(void) { return tick; }
 void HAL_Delay(uint32_t ms) { tick += ms; }
 void test_spi2_clock_enable(void) { ++clocks; }
@@ -62,6 +69,14 @@ HAL_StatusTypeDef HAL_SPI_Init(SPI_HandleTypeDef *bus) {
 HAL_StatusTypeDef HAL_SPI_TransmitReceive(SPI_HandleTypeDef *bus, uint8_t *tx, uint8_t *rx,
                                          uint16_t length, uint32_t timeout) {
     assert(bus->Instance == SPI2 && selected && timeout == 10);
+    assert(!irq_mask); // Physical SPI work is always interruptible.
+    if (interleave_direct) {
+        interleave_direct = false;
+        hw_imu_poll_observations(1); // GET owns SPI; this poll must preserve cache.
+        hw_imu_sample_t sample;
+        assert(hw_imu_read_before(1, cache_at, &sample, &cached_a, &cached_g) == HW_IMU_OK);
+        snapshot_inside_raw = true;
+    }
     ++transfers;
     if (fail_transfer) return HAL_ERROR;
     bool accel = selected == GPIO_PIN_10;
@@ -76,6 +91,16 @@ HAL_StatusTypeDef HAL_SPI_TransmitReceive(SPI_HandleTypeDef *bus, uint8_t *tx, u
         assert(length > offset && reg + length - offset <= 128);
         if (accel && !accel_spi) { accel_spi = true; return HAL_OK; }
         memcpy(rx + offset, regs + reg, length - offset);
+        if (accel && reg == 0x12 && sample_race) {
+            acc_regs[0x1D] = 0x80;
+            acc_regs[0x12]++;
+            sample_race = false;
+        }
+        if (accel && reg == 0x1D) acc_regs[reg] = 0; // Read-to-clear DRDY.
+        if (!accel && reg == 0x3F) {
+            assert(gyro_regs[0x0E] > 0 && length == 7);
+            --gyro_regs[0x0E];
+        }
         if (reg == 0 && bad_id) rx[offset] = 0xFF;
     } else {
         assert(length == 2);
@@ -88,6 +113,10 @@ HAL_StatusTypeDef HAL_SPI_TransmitReceive(SPI_HandleTypeDef *bus, uint8_t *tx, u
             assert(tx[1] == 0xB6); reset_gyro(); gyro_reset = true; gyro_reset_at = tick;
             if (fail_gyro_reset) return HAL_ERROR; // Reset took effect despite a failed transfer.
         } else {
+            if (!accel && reg == 0x3E) {
+                assert(tx[1] == 0x40); // Only the documented FIFO-mode write.
+                gyro_regs[0x0E] = 0;
+            }
             if (!reject_config) regs[reg] = tx[1];
             if (!accel && reg == 0x10) regs[reg] |= 0x80; // Read-only bit 7.
         }
@@ -144,6 +173,52 @@ int main(int argc, char **argv) {
             assert(fabs(a[axis] - values[(n+axis)%7] * (58.8399/32768.0)) < 1e-12);
             assert(fabs(g[axis] - values[(n+axis+3)%7] / 65.536 * (3.141592653589793/180)) < 1e-12);
         }
+    }
+    if (!strcmp(scenario, "normal")) {
+        uint64_t a = 0, g = 0, origin = hw_clock_microseconds();
+        hw_imu_sample_t raw;
+        hw_imu_poll_observations(1);
+        assert(gyro_regs[0x3E] == 0x40 && hw_imu_read_before(1, origin, &raw, &a, &g) == HW_IMU_NOT_READY);
+        tick += 2; gyro_regs[0x0E] = 2; acc_regs[0x1D] = 0x80;
+        put_sample(gyro_regs + 0x43, 500);
+        hw_imu_poll_observations(1);
+        cache_at = hw_clock_microseconds();
+        assert(hw_imu_read_before(1, cache_at, &raw, &a, &g) == HW_IMU_OK);
+        assert(raw.angular_velocity_z > 0 && a == origin && g == origin && !gyro_regs[0x0E]);
+        assert(hw_imu_read_before(1, cache_at-1, &raw, &a, &g) == HW_IMU_NOT_READY);
+        interleave_direct = true;
+        assert(hw_imu_read(0, &raw) == HW_IMU_OK && snapshot_inside_raw && cached_a == a && cached_g == g);
+        tick += 2; hw_imu_poll_observations(1);
+        tick += 2; acc_regs[0x1D] = 0x80; sample_race = true; hw_imu_poll_observations(1);
+        assert(hw_imu_read_observation(0, &raw, &a, &g) == HW_IMU_OK && a == origin && g == origin);
+        tick += 2; hw_imu_poll_observations(1); // The racing B payload cannot be counted twice.
+        assert(hw_imu_read_observation(0, &raw, &a, &g) == HW_IMU_OK && a == origin);
+        tick += 2; acc_regs[0x1D] = 0x80; hw_imu_poll_observations(1);
+        assert(hw_imu_read_observation(0, &raw, &a, &g) == HW_IMU_OK && a > origin && g == origin);
+        uint64_t stored_a = a;
+        tick += 2; gyro_regs[0x0E] = 1; hw_imu_poll_observations(1);
+        assert(hw_imu_read_observation(0, &raw, &a, &g) == HW_IMU_OK && a == stored_a && g > a);
+        // A delayed poll cannot stamp uncertain events as simultaneous; retain only bounded history.
+        uint64_t old_g = g;
+        tick += 20; acc_regs[0x1D] = 0x80; gyro_regs[0x0E] = 1; hw_imu_poll_observations(1);
+        assert(hw_imu_read_observation(0, &raw, &a, &g) == HW_IMU_OK && a == stored_a && g == old_g);
+        tick += 2; gyro_regs[0x0E] = 1; hw_imu_poll_observations(1);
+        assert(hw_imu_read_observation(0, &raw, &a, &g) == HW_IMU_STALE); // Frozen accel, disjoint windows.
+        tick += 2; acc_regs[0x1D] = 0x80; gyro_regs[0x0E] = 1; hw_imu_poll_observations(1);
+        assert(hw_imu_read_observation(0, &raw, &a, &g) == HW_IMU_OK);
+        // Individually narrow event windows can still span >15 ms worst-case skew.
+        uint64_t epoch_start = hw_clock_microseconds();
+        hw_imu_poll_observations(2);
+        tick += 2; acc_regs[0x1D] = 0x80; gyro_regs[0x0E] = 1; hw_imu_poll_observations(2);
+        assert(hw_imu_read_before(2, hw_clock_microseconds(), &raw, &a, &g) == HW_IMU_OK);
+        while (hw_clock_microseconds() - epoch_start < 13000) { tick += 2; hw_imu_poll_observations(2); }
+        tick += 4; gyro_regs[0x0E] = 1; hw_imu_poll_observations(2);
+        assert(hw_imu_read_before(2, hw_clock_microseconds(), &raw, &a, &g) == HW_IMU_STALE);
+        fail_transfer = true; assert(hw_imu_read(0, &raw) == HW_IMU_IO_ERROR);
+        assert(hw_imu_read_observation(0, &raw, &a, &g) == HW_IMU_IO_ERROR);
+        fail_transfer = false; assert(hw_imu_read(0, &raw) == HW_IMU_NOT_READY);
+        tick += 50;
+        assert(hw_imu_read(0, &raw) == HW_IMU_OK);
     }
     unsigned old_writes = writes;
     hw_imu_init();

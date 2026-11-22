@@ -1,6 +1,6 @@
 # Kinisi motor controller commands
 
-**Protocol 2.18.0** · Generated from [commands.json](commands.json)
+**Protocol 2.19.0** · Generated from [commands.json](commands.json)
 
 [Command index](#command-index) · [Wire format](#wire-format) · [Error codes](#error-codes)
 
@@ -93,6 +93,10 @@
 | [`GET_DRIVER_SLEEP`](#get_driver_sleep-0x5c) | `0x5C` | Client → controller | `uint8_t` |
 | [`SET_BOARD_IDLE`](#set_board_idle-0x5d) | `0x5D` | Client → controller | ACK |
 | [`GET_BOARD_IDLE`](#get_board_idle-0x5e) | `0x5E` | Client → controller | `uint8_t` |
+| [`SET_FUSION_EXPERIMENT`](#set_fusion_experiment-0x5f) | `0x5f` | Client → controller | ACK |
+| [`GET_FUSION_STATUS`](#get_fusion_status-0x60) | `0x60` | Client → controller | `fusion_status` |
+| [`GET_FUSION_VECTOR`](#get_fusion_vector-0x61) | `0x61` | Client → controller | `fusion_vector` |
+| [`GET_FUSION_CONFIGURATION`](#get_fusion_configuration-0x62) | `0x62` | Client → controller | `fusion_configuration` |
 
 ## Command lifecycle
 
@@ -1186,7 +1190,7 @@ This command sets the controller for the platform. Firmware 2.3.1 uses direct P+
 
 **Client → controller** · **Payload:** 24 bytes
 
-This command set the target velocity for the platform in meters per second. Cancels platform position control; initialize it again before another pose target.
+This command set the target velocity for the platform in meters per second. Cancels platform position control; initialize it again before another pose target. With an active fusion experiment, rejects invalid or stale feedback and targets fenced by an earlier fault with SAMPLE_NOT_AVAILABLE; both experimental modes require 100 ms of observed unchanged configured counters for initial rest arming. Once armed, ordinary target updates remain accepted while moving. Wait for healthy feedback and submit a fresh target; stopped cold configuration can ACK while still WAITING.
 
 #### Parameters
 
@@ -1202,7 +1206,7 @@ This command set the target velocity for the platform in meters per second. Canc
 
 #### Errors
 
-[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`PLATFORM_NOT_INITIALIZED`](#error-platform-not-initialized) (12) · [`CONTROLLER_NOT_INITIALIZED`](#error-controller-not-initialized) (14) · [`INIT_REQUIRED`](#error-init-required) (15)
+[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`PLATFORM_NOT_INITIALIZED`](#error-platform-not-initialized) (12) · [`CONTROLLER_NOT_INITIALIZED`](#error-controller-not-initialized) (14) · [`INIT_REQUIRED`](#error-init-required) (15) · [`SAMPLE_NOT_AVAILABLE`](#error-sample-not-available) (10)
 
 [Back to command index](#command-index)
 
@@ -2488,6 +2492,129 @@ No payload parameters.
 #### Errors
 
 [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16)
+
+[Back to command index](#command-index)
+
+---
+
+### SET_FUSION_EXPERIMENT (0x5f)
+
+**Client → controller** · **Payload:** 9 bytes
+
+Configure the volatile v0.4 experiment only while motion is stopped and all commanded targets and motor outputs are zero; initialized controllers with idle zero targets are allowed. Mode 0 retains the legacy encoder path (boot default), 1 uses encoder feedback with the common chassis correction, and 2 uses fused feedback with that same correction. No IMU-only mode. For modes 1/2 the caller declares a rigid, level board with component side up, IMU at the chassis reference point, and mounting_yaw_rad as the angle of board +X expressed in chassis XY, counterclockwise about chassis +Z. Sensor-to-board axes are (-x,-y,+z); chassis axes are forward/left/up. Reject nonfinite or out-of-range yaw, any observed configured encoder movement in the preceding 100 ms, or a counter change since a fresh sample. Stopped cold setup may ACK in WAITING; ACK does not establish readiness. Both experimental modes require 100 ms of observed unchanged configured counters for initial rest arming before accepting a motion target; once armed, ordinary target updates remain accepted while moving; fused bias calibration may run within that window. Reconfiguration cancels old targets. Sources may requalify automatically after an ordinary sensor fault, but healthy inputs and a fresh target are required before control resumes. Does not save to FRAM or start motion. Requires READY, exact v0.4.0 fusion capability and protocol 2.19.
+
+#### Parameters
+
+| Parameter | Type | Bytes | Range | Description |
+| --- | --- | ---: | --- | --- |
+| `mode` | `uint8_t` | 1 | 0 to 2 | FusionMode value. |
+| `mounting_yaw_rad` | `double` | 8 | -3.141592653589793 to 3.141592653589793 | Declared level centered mounting yaw in radians. |
+
+#### Response
+
+**ACK** — empty payload; echoes the command and message ID.
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`BOARD_IDLE`](#error-board-idle) (20) · [`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`PLATFORM_NOT_INITIALIZED`](#error-platform-not-initialized) (12)
+
+[Back to command index](#command-index)
+
+---
+
+### GET_FUSION_STATUS (0x60)
+
+**Client → controller** · **Payload:** 0 bytes
+
+Read experiment mode, health, fault, flags and timestamped sample ages without setting targets or changing configuration. A read may enforce an expired feedback deadline, clear the live target and coast. Health/fault/flag values use the FusionHealth/FusionFault/FusionFlag catalogs. Timestamp uses the monotonic board clock; unavailable ages are UINT32_MAX. The physical IMU producer waits 2 ms between passes, without guaranteeing a 2 ms acquisition cadence, and pairs only acquisition windows entirely preceding the encoder timestamp: each window is at most 5 ms wide, worst-case accel/gyro skew at most 15 ms, and age at most 35 ms. These are software acceptance limits, not a physical timing qualification. ESTIMATE_VALID describes the selected experiment estimate, not physical accuracy. Requires READY, exact v0.4.0 fusion capability and protocol 2.19.
+
+#### Parameters
+
+No payload parameters.
+
+#### Response
+
+**Controller → client** · `fusion_status` · **Payload:** 28 bytes
+
+Packed little-endian diagnostic snapshot.
+
+| Parameter | Type | Bytes | Description |
+| --- | --- | ---: | --- |
+| `mode` | `uint8_t` | 1 | Selected fusion_modes value. |
+| `health` | `uint8_t` | 1 | Current fusion_health value. |
+| `fault` | `uint8_t` | 1 | Current fusion_faults reason, or NONE. |
+| `flags` | `uint8_t` | 1 | Bitmask of fusion_flags; ESTIMATE_VALID is required before using estimates. |
+| `sequence` | `uint32_t` | 4 | Snapshot sequence; compare with each vector before associating this status. |
+| `timestamp_us` | `uint64_t` | 8 | Monotonic board microseconds of this estimate snapshot; not wall time. |
+| `accel_age_us` | `uint32_t` | 4 | UINT32_MAX means unavailable. |
+| `gyro_age_us` | `uint32_t` | 4 | UINT32_MAX means unavailable. |
+| `encoder_age_us` | `uint32_t` | 4 | UINT32_MAX means unavailable. |
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6)
+
+[Back to command index](#command-index)
+
+---
+
+### GET_FUSION_VECTOR (0x61)
+
+**Client → controller** · **Payload:** 1 bytes
+
+Read one compact experiment vector: 0 encoder pose (relative x,y,yaw), 1 encoder body twist (vx,vy,yaw rate), 2 fused pose, 3 fused body twist, 4 estimated bias (ax,ay,gyro z). Units are metres, seconds and radians. On outage recovery, the last fused-from-encoder world transform is reapplied to the current encoder pose. Returns SAMPLE_NOT_AVAILABLE when the requested estimate is invalid. Match sequence with GET_FUSION_STATUS to associate timestamp/health; different sequences are different snapshots. At most 28 payload bytes so the framed reply fits Arduino Wire32. Does not reset state or start motion. Requires READY, exact v0.4.0 fusion capability and protocol 2.19.
+
+#### Parameters
+
+| Parameter | Type | Bytes | Range | Description |
+| --- | --- | ---: | --- | --- |
+| `kind` | `uint8_t` | 1 | 0 to 4 | FusionVectorKind value. |
+
+#### Response
+
+**Controller → client** · `fusion_vector` · **Payload:** 28 bytes
+
+Packed little-endian diagnostic snapshot.
+
+| Parameter | Type | Bytes | Description |
+| --- | --- | ---: | --- |
+| `sequence` | `uint32_t` | 4 | Match GET_FUSION_STATUS sequence before associating its timestamp or health. |
+| `x` | `double` | 8 | Pose X in metres, twist X in metres per second, or X accelerometer bias in metres per second squared, selected by kind. |
+| `y` | `double` | 8 | Pose Y in metres, twist Y in metres per second, or Y accelerometer bias in metres per second squared, selected by kind. |
+| `z` | `double` | 8 | Pose yaw in radians, twist yaw rate in radians per second, or Z gyro bias in radians per second, selected by kind. |
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`SAMPLE_NOT_AVAILABLE`](#error-sample-not-available) (10)
+
+[Back to command index](#command-index)
+
+---
+
+### GET_FUSION_CONFIGURATION (0x62)
+
+**Client → controller** · **Payload:** 0 bytes
+
+Read the volatile experiment mode and declared mounting yaw without changing state. Reset selects legacy encoder mode; SAVE_CONFIGURATION does not persist this experiment. Requires READY, exact v0.4.0 fusion capability and protocol 2.19.
+
+#### Parameters
+
+No payload parameters.
+
+#### Response
+
+**Controller → client** · `fusion_configuration` · **Payload:** 9 bytes
+
+Packed little-endian diagnostic snapshot.
+
+| Parameter | Type | Bytes | Description |
+| --- | --- | ---: | --- |
+| `mode` | `uint8_t` | 1 | Selected fusion_modes value; boot default is LEGACY_ENCODER. |
+| `mounting_yaw_rad` | `double` | 8 | Angle of board +X in the chassis XY plane, counterclockwise about chassis +Z; finite radians in [-pi, pi]. |
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6)
 
 [Back to command index](#command-index)
 

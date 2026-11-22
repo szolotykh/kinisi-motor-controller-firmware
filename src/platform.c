@@ -5,6 +5,8 @@
 #include <stdlib.h>
 #include "platform.h"
 #include "platform_position.h"
+#include "platform_fusion.h"
+#include "protocol.h"
 #include "platform_common.h"
 #include "hw_motor.h"
 #include "hw_encoder.h"
@@ -73,13 +75,15 @@ void set_platform_velocity(platform_velocity_t platform_velocity) {
 /**
  * @brief Set platform velocity targets when platform closed-loop control is running.
  */
-void platform_set_target_velocity(platform_velocity_t platform_target_velocity) {
+uint8_t platform_set_target_velocity(platform_velocity_t platform_target_velocity) {
+    if (!platform.is_initialized) return RESPONSE_PLATFORM_NOT_INITIALIZED;
+    if (!platform.is_controller_initialized) return RESPONSE_CONTROLLER_NOT_INITIALIZED;
+#if BOARD_HAS_FUSION_EXPERIMENT
+    if (platform_fusion_epoch()) return platform_fusion_velocity(platform_target_velocity);
+#endif
     platform_position_cancel();
-    if (!platform.is_initialized || !platform.is_controller_initialized) {
-        return;
-    }
-
     platform.set_platform_target_velocity(platform_target_velocity);
+    return RESPONSE_OK;
 }
 
 /**
@@ -112,6 +116,9 @@ void platform_stop_velocity_controller() {
  * @brief Disable platform closed-loop control and brake its owned wheel motors.
  */
 void platform_brake() {
+#if BOARD_HAS_FUSION_EXPERIMENT
+    platform_fusion_discontinuity(false);
+#endif
     platform_position_cancel();
     if (!platform.is_initialized) {
         return;
@@ -128,6 +135,9 @@ void platform_brake() {
  * @brief Disable platform closed-loop control and coast its owned wheel motors.
  */
 void platform_coast() {
+#if BOARD_HAS_FUSION_EXPERIMENT
+    platform_fusion_discontinuity(false);
+#endif
     platform_position_cancel();
     if (!platform.is_initialized) {
         return;
@@ -191,6 +201,9 @@ uint8_t platform_is_odometry_enabled() {
  * @brief Reset the accumulated platform pose and cached acquisition timestamp.
  */
 void platform_reset_odometry() {
+#if BOARD_HAS_FUSION_EXPERIMENT
+    platform_fusion_discontinuity(true);
+#endif
     platform_position_cancel();
     // Reset odometry in odometry manager
     odometry_manager_reset_platform_odometry();
@@ -200,6 +213,9 @@ void platform_reset_odometry() {
  * @brief Disable platform integration without resetting its accumulated pose.
  */
 void platform_stop_odometry() {
+#if BOARD_HAS_FUSION_EXPERIMENT
+    platform_fusion_discontinuity(true);
+#endif
     platform_position_cancel();
     platform.is_odometry_enabled = 0;
 }

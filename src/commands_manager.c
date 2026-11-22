@@ -18,6 +18,7 @@
 #include "hw_motor_faults.h"
 #include "hw_motor.h"
 #include "wake_barriers.h"
+#include "platform_fusion.h"
 #include "controllers_manager.h"
 #include "odometry_manager.h"
 
@@ -100,10 +101,27 @@ static bool take_command(message_queue_t *queue, char *buffer, int *length, uint
     uint32_t mask = __get_PRIMASK();
     __disable_irq();
     bool available = !is_queue_empty(queue);
-    if (available) *barriers = dequeue(queue, buffer, length);
+    if (available) {
+        *barriers = dequeue(queue, buffer, length);
+#if BOARD_HAS_FUSION_EXPERIMENT
+        platform_fusion_dequeued();
+#endif
+    }
     __set_PRIMASK(mask);
     return available;
 }
+
+#if BOARD_HAS_FUSION_EXPERIMENT
+static void fence_feedback_targets(uint32_t *generation)
+{
+    uint32_t mask = __get_PRIMASK();
+    __disable_irq();
+    __atomic_add_fetch(generation, 1, __ATOMIC_RELEASE);
+    mark_pending_frames(&CommandQueue, BEFORE_FEEDBACK_READY);
+    mark_pending_external_i2c_requests(BEFORE_FEEDBACK_READY);
+    __set_PRIMASK(mask);
+}
+#endif
 
 // Both ingress queues can have pending motion (including a fragmented frame)
 // while the other transport completes a wake. Reply to those stale requests
@@ -161,6 +179,9 @@ void CommandHandlerTask(void *argument)
     init_queue(&CommandQueue);
     init_queue(&I2CCommandQueue);
 
+#if BOARD_HAS_FUSION_EXPERIMENT
+    platform_fusion_install_ingress_fence(fence_feedback_targets);
+#endif
     // Initialize USB and I2C interfaces
     controller_configuration_restore();
     MX_USB_DEVICE_Init();

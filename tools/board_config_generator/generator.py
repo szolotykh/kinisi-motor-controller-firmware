@@ -63,7 +63,7 @@ def entries(value, maximum, at, minimum=1):
 
 def validate(board):
     fields(board, ("schema_version", "board", "mcu", "buses", "motors", "encoders", "gpio", "status_leds"),
-           ("shared_pins", "temperature_sensors", "imu_sensors", "power", "usb_vbus_sense"))
+           ("shared_pins", "temperature_sensors", "imu_sensors", "power", "usb_vbus_sense", "capabilities"))
     integer(board["schema_version"], 1, 1, "schema_version")
     identity = board["board"]
     fields(identity, ("model", "revision", "build_define"), at="board")
@@ -78,6 +78,11 @@ def validate(board):
     if "power" in board:
         fields(board["power"], ("board_idle",), at="power")
         boolean(board["power"]["board_idle"], "power.board_idle")
+    if "capabilities" in board:
+        fields(board["capabilities"], ("fusion_experiment",), at="capabilities")
+        boolean(board["capabilities"]["fusion_experiment"], "capabilities.fusion_experiment")
+        if board["capabilities"]["fusion_experiment"]:
+            require(identity["model"] == 1 and identity["revision"] == "0.4.0", "Fusion experiment requires exact v0.4")
     reserved = dict(FIRMWARE_RESERVED_PINS)
     if "usb_vbus_sense" in board:
         require(board["usb_vbus_sense"] == "PA9", "USB FS VBUS sensing requires PA9")
@@ -317,6 +322,7 @@ def client_profile(board):
     """Project hardware definitions into public, language-neutral feature metadata."""
     return {
         "board": {"model": board["board"]["model"], "revision": board["board"]["revision"]},
+        "capabilities": {"fusion_experiment": board.get("capabilities", {}).get("fusion_experiment", False)},
         "power": {"driver_sleep": supports_driver_sleep(board),
                   "board_idle": board.get("power", {}).get("board_idle", False)},
         "resources": {
@@ -368,6 +374,7 @@ def render(boards):
         for key, number in zip(("MAJOR", "MINOR", "PATCH"), board["board"]["revision"].split(".")):
             identity.append(f"#define KINISI_BOARD_VERSION_{key} {number}")
         identity.append(f"#define KINISI_USB_VBUS_SENSING {int('usb_vbus_sense' in board)}")
+        identity.append(f"#define BOARD_HAS_FUSION_EXPERIMENT {int(board.get('capabilities', {}).get('fusion_experiment', False))}")
         identity.append(f"#define BOARD_HAS_BOARD_IDLE {int(board.get('power', {}).get('board_idle', False))}")
         motors = board["motors"]
         model = motors["control_model"].upper()

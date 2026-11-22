@@ -148,3 +148,7 @@ Returns:
 uint16_t controllers_manager_get_frequency();
 
 
+
+// Coast and suspend selected wheel PIDs until an explicit fresh target releases them.
+void controllers_manager_feedback_hold(uint8_t mask, bool hold);
+bool controllers_manager_hold_if_stopped(uint8_t mask);
