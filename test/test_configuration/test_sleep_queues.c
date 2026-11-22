@@ -1,0 +1,121 @@
+// Drive the normal command task with independent USB/I2C ingress and delayed
+// transmit availability. Stop the task after a fresh post-wake command succeeds.
+#include "commands_manager.h"
+#include "commands_handler.h"
+#include "hw_motor.h"
+#include "os_interface.h"
+#include "protocol.h"
+#include "usb_device.h"
+#include <assert.h>
+#include <setjmp.h>
+#include <stdbool.h>
+
+message_queue_t CommandQueue, I2CCommandQueue;
+USBD_HandleTypeDef hUsbDeviceFS = {USBD_STATE_CONFIGURED, &hUsbDeviceFS};
+void MX_USB_DEVICE_Init(void) {}
+void initialize_external_i2c(void) {}
+void mark_pending_external_i2c_requests(void) { mark_pending_frames(&I2CCommandQueue); }
+uint32_t hw_motor_fault_event_sequence(uint8_t i) { (void)i; return 0; }
+static uint32_t masked;
+uint32_t __get_PRIMASK(void) { return masked; }
+void __disable_irq(void) { masked = 1; }
+void __set_PRIMASK(uint32_t value) { masked = value; }
+
+static unsigned stale_bus, phase, ticks;
+static bool blocked, attempted, ready[2];
+static uint8_t replies[20], errors[20];
+static jmp_buf finished;
+static char partial[256];
+static size_t partial_size;
+
+static bool receive(unsigned bus, const uint8_t *data, uint16_t n) {
+    if (blocked && bus == stale_bus) { attempted = true; return false; }
+    uint8_t id = data[2];
+    assert(n >= 4 && id < sizeof(replies));
+    if (data[1] == KINISI_MESSAGE_READY) ready[bus] = true;
+    else {
+        replies[id] = data[1];
+        if (data[1] == KINISI_MESSAGE_ERROR) { assert(n == 6); errors[id] = data[5]; }
+    }
+    return true;
+}
+uint8_t CDC_Transmit_FS(uint8_t *data, uint16_t n) { return receive(0, data, n) ? 0 : 1; }
+uint8_t try_send_external_i2c(uint8_t *data, uint16_t n) { return receive(1, data, n); }
+static message_queue_t *queue(unsigned bus) { return bus ? &I2CCommandQueue : &CommandQueue; }
+static size_t encode(controller_command_t cmd, char *data) {
+    size_t n = command_request_size(cmd.commandType);
+    data[0] = (char)n;
+    memcpy(data + 1, &cmd, n);
+    return n + 1;
+}
+static void issue(unsigned bus, controller_command_t cmd) {
+    char frame[256];
+    size_t size = encode(cmd, frame);
+    if (bus) assert(enqueue(queue(bus), frame));
+    else assert(enqueue_multi(queue(bus), frame, size));
+}
+static controller_command_t speed(unsigned id, double value) {
+    return (controller_command_t){.commandType=SET_MOTOR_SPEED, .message_id=id,
+        .properties.set_motor_speed={.motor_index=3, .pwm=value}};
+}
+static void next_turn(uint32_t ms) {
+    assert(!masked && ms == 1 && ++ticks < 100);
+    const unsigned other = 1 - stale_bus;
+    switch (phase) {
+    case 0:
+        for (unsigned i = 0; i < 2; ++i)
+            issue(i, (controller_command_t){.commandType=INIT, .message_id=i+1, .properties.init={.protocol_major=2}});
+        break;
+    case 1:
+        if (!ready[0] || !ready[1]) return;
+        issue(stale_bus, (controller_command_t){.commandType=INITIALIZE_MOTOR, .message_id=3,
+            .properties.initialize_motor={3, 0}});
+        break;
+    case 2:
+        if (replies[3] != INITIALIZE_MOTOR) return;
+        issue(stale_bus, speed(4, 40));
+        break;
+    case 3:
+        if (replies[4] != SET_MOTOR_SPEED) return;
+        issue(other, (controller_command_t){.commandType=SET_DRIVER_SLEEP, .message_id=5, .properties.set_driver_sleep={1}});
+        break;
+    case 4:
+        if (replies[5] != SET_DRIVER_SLEEP) return;
+        assert(hw_motor_drivers_sleeping());
+        blocked = true;
+        issue(stale_bus, (controller_command_t){.commandType=GET_DRIVER_SLEEP, .message_id=6});
+        issue(stale_bus, speed(7, 50));
+        if (!stale_bus) {
+            partial_size = encode(speed(8, 60), partial);
+            assert(enqueue_multi(queue(0), partial, 2));
+        } else issue(stale_bus, speed(8, 60));
+        break;
+    case 5:
+        if (!attempted) return;
+        issue(other, (controller_command_t){.commandType=SET_DRIVER_SLEEP, .message_id=9, .properties.set_driver_sleep={0}});
+        break;
+    case 6:
+        if (replies[9] != SET_DRIVER_SLEEP) return;
+        assert(!hw_motor_drivers_sleeping());
+        blocked = false;
+        if (!stale_bus) assert(enqueue_multi(queue(0), partial + 2, partial_size - 2));
+        issue(stale_bus, speed(10, 70));
+        break;
+    case 7:
+        if (!replies[10]) return;
+        assert(replies[6] == GET_DRIVER_SLEEP);
+        assert(errors[7] == RESPONSE_DRIVERS_ASLEEP && errors[8] == RESPONSE_DRIVERS_ASLEEP);
+        assert(replies[10] == SET_MOTOR_SPEED);
+        longjmp(finished, 1);
+    }
+    phase++;
+}
+const os_interface_t *get_os_interface(void) {
+    static const os_interface_t os = {.delay_ms=next_turn};
+    return &os;
+}
+void CommandHandlerTask(void *);
+void run_sleep_queues(unsigned blocked_bus) {
+    stale_bus = blocked_bus;
+    if (!setjmp(finished)) CommandHandlerTask(NULL);
+}

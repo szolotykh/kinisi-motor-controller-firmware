@@ -10,6 +10,7 @@
 #include "platform.h"
 #include "commands_handler.h"
 #include "controller_configuration.h"
+#include "driver_sleep_commands.h"
 #include "hw_temperature.h"
 #include "hw_imu.h"
 #include "hw_current_sense.h"
@@ -52,6 +53,10 @@ uint8_t command_handler(controller_command_t* cmd, void (*command_callback)(uint
     const hw_motor_interface_t* motor = get_motor_interface();
     const hw_encoder_interface_t* encoder = get_encoder_interface();
 
+#if BOARD_HAS_DRIVER_SLEEP
+    if (hw_motor_drivers_sleeping() && command_requires_awake_drivers(cmd->commandType))
+        return RESPONSE_DRIVERS_ASLEEP;
+#endif
     const command_resources_t resources = {
         .motor_owned = platform_owns_motor,
         .motor_initialized = motor->is_initialized,
@@ -536,6 +541,27 @@ uint8_t command_handler(controller_command_t* cmd, void (*command_callback)(uint
             };
             command_callback((uint8_t *)&response, sizeof(response));
             return RESPONSE_OK;
+        }
+        case SET_DRIVER_SLEEP:
+        case GET_DRIVER_SLEEP: {
+#if BOARD_HAS_DRIVER_SLEEP
+            if (cmd->commandType == GET_DRIVER_SLEEP) {
+                uint8_t sleeping = hw_motor_drivers_sleeping();
+                command_callback(&sleeping, sizeof(sleeping));
+                return RESPONSE_OK;
+            }
+            if (cmd->properties.set_driver_sleep.sleeping > 1) return RESPONSE_INVALID_ARGUMENT;
+            bool sleeping = cmd->properties.set_driver_sleep.sleeping != 0;
+            if (sleeping && !hw_motor_drivers_sleeping()) {
+                // Cancel position under its mutex, then drain any PID tick under
+                // the motor-controller mutex before changing any nSLEEP pins.
+                platform_stop_velocity_controller();
+                controllers_manager_stop_controller_multiple(BMOTOR0 | BMOTOR1 | BMOTOR2 | BMOTOR3);
+            }
+            return hw_motor_set_driver_sleep(sleeping) ? RESPONSE_OK : RESPONSE_INTERNAL_ERROR;
+#else
+            return RESPONSE_SENSOR_NOT_AVAILABLE;
+#endif
         }
         case SAVE_CONFIGURATION:
             return controller_configuration_save();

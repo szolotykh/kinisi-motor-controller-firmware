@@ -24,6 +24,7 @@ static uint8_t control2_registers[NUMBER_MOTORS], control3_registers[NUMBER_MOTO
 static bool corrupt_control4, lock_current_control;
 static unsigned transfer_count, fail_transfer;
 static bool persistent_fault, corrupt_control3;
+static int stuck_sleep = -1;
 static unsigned spi_reads, spi_writes;
 static uint32_t apb2_divider = RCC_HCLK_DIV2, pclk2 = 84000000U;
 static uint32_t apb1_divider = RCC_HCLK_DIV4, pclk1 = 42000000U;
@@ -46,7 +47,13 @@ void HAL_GPIO_WritePin(GPIO_TypeDef *port, uint16_t pin, GPIO_PinState state) {
     if (state) { port->ODR |= pin; port->IDR |= pin; }
     else { port->ODR &= ~pin; port->IDR &= ~pin; }
 }
-GPIO_PinState HAL_GPIO_ReadPin(GPIO_TypeDef *port, uint16_t pin) { return (port->IDR & pin) ? GPIO_PIN_SET : GPIO_PIN_RESET; }
+GPIO_PinState HAL_GPIO_ReadPin(GPIO_TypeDef *port, uint16_t pin) {
+#if BOARD_HAS_DRIVER_SLEEP
+    if (stuck_sleep >= 0 && motor_info[stuck_sleep].sleep.port == port &&
+        motor_info[stuck_sleep].sleep.pin == pin) return GPIO_PIN_SET;
+#endif
+    return (port->IDR & pin) ? GPIO_PIN_SET : GPIO_PIN_RESET;
+}
 void HAL_GPIO_Init(GPIO_TypeDef *port, GPIO_InitTypeDef *gpio) {
     assert(port && gpio->Pin);
     if (gpio->Mode == GPIO_MODE_AF_PP && gpio->Alternate == GPIO_AF6_SPI3) {
@@ -382,6 +389,64 @@ static void current_limit_tests(void) {
 #endif
 }
 
+static void driver_sleep_tests(void) {
+#if BOARD_HAS_DRIVER_SLEEP
+    const hw_motor_interface_t *motor = get_motor_interface();
+    assert(!hw_motor_drivers_sleeping());
+    assert(hw_motor_set_driver_sleep(true) && hw_motor_set_driver_sleep(false)); // empty mask
+    motor->initialize(0, true);
+    motor->initialize(2, false);
+    hw_motor_current_limit_t verified[2] = {{true, 4000}, {false, 6500}}, actual;
+    for (unsigned slot = 0; slot < 2; ++slot)
+        assert(hw_motor_set_current_limit(slot * 2, &verified[slot]));
+    assert(hw_motor_set_pwm_frequency(25000));
+    motor->set_speed(0, 25);
+    assert(hw_motor_set_driver_sleep(false)); // awake -> awake preserves live duty
+    assert(compare(0, motor_info[0].enable.timerChannel) == 210);
+    stuck_sleep = 2;
+    assert(!hw_motor_set_driver_sleep(true) && hw_motor_drivers_sleeping());
+    assert(!hw_motor_set_driver_sleep(false) && hw_motor_drivers_sleeping());
+    stuck_sleep = -1;
+    assert(hw_motor_set_driver_sleep(true));
+    unsigned slept_at = delays;
+    assert(hw_motor_set_driver_sleep(true) && delays == slept_at);
+    for (unsigned i = 0; i < NUMBER_MOTORS; ++i) {
+        motor->initialize(i, false); motor->set_speed(i, 99); motor->brake(i);
+        assert_idle(i, false);
+        assert(!high(motor_info[i].sleep) && motor->is_initialized(i) == (i == 0 || i == 2));
+    }
+    assert(motor->is_reversed(0) && !motor->is_reversed(2));
+    assert(!hw_motor_get_current_limit(0, &actual));
+    assert(!hw_motor_set_current_limit(2, &verified[0]));
+    // Model lost volatile driver registers and failure on the second active channel.
+    memset(control4_registers, 0, sizeof(control4_registers));
+    fail_spi_motor = 2;
+    assert(!hw_motor_set_driver_sleep(false) && hw_motor_drivers_sleeping());
+    for (unsigned i = 0; i < NUMBER_MOTORS; ++i) {
+        assert_idle(i, false); assert(!high(motor_info[i].sleep));
+    }
+    fail_spi_motor = -1;
+    motor_info[2].fault.port->IDR &= ~motor_info[2].fault.pin;
+    assert(!hw_motor_set_driver_sleep(false) && hw_motor_drivers_sleeping());
+    motor_info[2].fault.port->IDR |= motor_info[2].fault.pin;
+    assert(hw_motor_set_driver_sleep(false) && !hw_motor_drivers_sleeping());
+    assert(hw_motor_get_pwm_frequency() == 25000);
+    for (unsigned i = 0; i < NUMBER_MOTORS; ++i) {
+        assert_idle(i, false);
+        assert(high(motor_info[i].sleep) == (i == 0 || i == 2));
+    }
+    for (unsigned slot = 0; slot < 2; ++slot) {
+        assert(hw_motor_get_current_limit(slot * 2, &actual));
+        assert(actual.enabled == verified[slot].enabled && actual.threshold_ma == verified[slot].threshold_ma);
+    }
+    motor->set_speed(2, 25);
+    assert(compare(2, motor_info[2].enable.timerChannel) == 210);
+#else
+    assert(!hw_motor_drivers_sleeping());
+    assert(!hw_motor_set_driver_sleep(true) && !hw_motor_set_driver_sleep(false));
+#endif
+}
+
 int main(int argc, char **argv) {
     if (argc > 1 && strcmp(argv[1], "apb2_div1") == 0) {
         apb2_divider = RCC_HCLK_DIV1; pclk2 = 168000000U;
@@ -394,6 +459,11 @@ int main(int argc, char **argv) {
     for (unsigned i = 0; i < 5; ++i) test_ports[i].IDR = 0xffff;
     for (unsigned i = 0; i < NUMBER_MOTORS; ++i) registers[i] = 0x51; // IC1 reset value.
     hw_motor_init();
+    if (argc > 1 && !strcmp(argv[1], "driver_sleep")) {
+        driver_sleep_tests();
+        puts("Driver sleep capability, subset, zero duty, current-limit retention, rollback and retry passed");
+        return 0;
+    }
     assert(hw_motor_get_pwm_frequency() == 100000);
     assert(hw_motor_set_pwm_frequency(25000) && hw_motor_get_pwm_frequency() == 25000);
     assert(timer_inits == 0); // Configuration does not initialize any motor.

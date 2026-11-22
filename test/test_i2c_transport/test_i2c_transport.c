@@ -205,6 +205,24 @@ int main(void)
     test_consecutive_reads();
     test_transfer_recovery();
     test_padded_short_replies();
+    // The address phase can straddle a driver wake on USB, both before and
+    // after the length arrives. The next write on the same bus is fresh.
+    for (unsigned phase = 0; phase < 2; ++phase) {
+        init_queue(&I2CCommandQueue);
+        for (unsigned frame = 0; frame < 2; ++frame) {
+            HAL_I2C_AddrCallback(&hi2c2, 0, 0);
+            if (!frame && !phase) mark_pending_external_i2c_requests();
+            i2c_message_buffer[0] = 3;
+            HAL_I2C_SlaveRxCpltCallback(&hi2c2);
+            if (!frame && phase) mark_pending_external_i2c_requests();
+            memcpy(i2c_message_buffer + 1, "abc", 3);
+            HAL_I2C_SlaveRxCpltCallback(&hi2c2);
+        }
+        char frame[4];
+        int length;
+        assert(dequeue(&I2CCommandQueue, frame, &length) == 1 && length == 3);
+        assert(dequeue(&I2CCommandQueue, frame, &length) == 0 && length == 3);
+    }
     assert(irq_mask == 0);
     puts("I2C IRQ wiring, consecutive replies, buffer ownership and error recovery passed");
     return 0;

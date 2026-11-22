@@ -1,6 +1,6 @@
 # Kinisi motor controller commands
 
-**Protocol 2.14.0** · Generated from [commands.json](commands.json)
+**Protocol 2.15.0** · Generated from [commands.json](commands.json)
 
 [Command index](#command-index) · [Wire format](#wire-format) · [Error codes](#error-codes)
 
@@ -89,6 +89,8 @@
 | [`SET_PWM_FREQUENCY`](#set_pwm_frequency-0x58) | `0x58` | Client → controller | `uint32_t` |
 | [`SAVE_CONFIGURATION`](#save_configuration-0x59) | `0x59` | Client → controller | ACK |
 | [`GET_CONFIGURATION_FIELD`](#get_configuration_field-0x5a) | `0x5A` | Client → controller | `double` |
+| [`SET_DRIVER_SLEEP`](#set_driver_sleep-0x5b) | `0x5B` | Client → controller | ACK |
+| [`GET_DRIVER_SLEEP`](#get_driver_sleep-0x5c) | `0x5C` | Client → controller | `uint8_t` |
 
 ## Command lifecycle
 
@@ -392,7 +394,7 @@ This command initializes a motor and prepares it for use. Rejected with MOTOR_OW
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`MOTOR_OWNED`](#error-motor-owned) (5) · [`INIT_REQUIRED`](#error-init-required) (15)
+[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`MOTOR_OWNED`](#error-motor-owned) (5) · [`INIT_REQUIRED`](#error-init-required) (15)
 
 [Back to command index](#command-index)
 
@@ -417,7 +419,7 @@ This command sets the speed of the specified motor in PWM. Rejected with MOTOR_O
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`MOTOR_OWNED`](#error-motor-owned) (5) · [`MOTOR_NOT_INITIALIZED`](#error-motor-not-initialized) (13) · [`INIT_REQUIRED`](#error-init-required) (15)
+[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`MOTOR_OWNED`](#error-motor-owned) (5) · [`MOTOR_NOT_INITIALIZED`](#error-motor-not-initialized) (13) · [`INIT_REQUIRED`](#error-init-required) (15)
 
 [Back to command index](#command-index)
 
@@ -465,7 +467,7 @@ Stops the motor's velocity and position controllers and applies a short brake, c
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`MOTOR_OWNED`](#error-motor-owned) (5)
+[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`MOTOR_OWNED`](#error-motor-owned) (5)
 
 [Back to command index](#command-index)
 
@@ -497,7 +499,7 @@ This command sets the controller for the specified motor. Rejected with MOTOR_OW
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`MOTOR_OWNED`](#error-motor-owned) (5) · [`INIT_REQUIRED`](#error-init-required) (15)
+[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`MOTOR_OWNED`](#error-motor-owned) (5) · [`INIT_REQUIRED`](#error-init-required) (15)
 
 [Back to command index](#command-index)
 
@@ -522,7 +524,7 @@ This command sets the target speed for the specified motor in radians. Rejected 
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`MOTOR_OWNED`](#error-motor-owned) (5) · [`CONTROLLER_NOT_INITIALIZED`](#error-controller-not-initialized) (14) · [`INIT_REQUIRED`](#error-init-required) (15)
+[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`MOTOR_OWNED`](#error-motor-owned) (5) · [`CONTROLLER_NOT_INITIALIZED`](#error-controller-not-initialized) (14) · [`INIT_REQUIRED`](#error-init-required) (15)
 
 [Back to command index](#command-index)
 
@@ -1057,7 +1059,7 @@ This command initializes a mecanum (4-wheel) platform and prepares it for use. I
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15)
+[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15)
 
 [Back to command index](#command-index)
 
@@ -1089,7 +1091,7 @@ This command initializes an omni (3-wheel) platform and prepares it for use. It 
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15)
+[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15)
 
 [Back to command index](#command-index)
 
@@ -1119,7 +1121,7 @@ This command initializes a differential (2-wheel) platform and prepares it for u
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15)
+[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15)
 
 [Back to command index](#command-index)
 
@@ -1145,7 +1147,7 @@ This command sets the velocity for the platform in PWM. Stops platform velocity 
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`PLATFORM_NOT_INITIALIZED`](#error-platform-not-initialized) (12) · [`INIT_REQUIRED`](#error-init-required) (15)
+[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`PLATFORM_NOT_INITIALIZED`](#error-platform-not-initialized) (12) · [`INIT_REQUIRED`](#error-init-required) (15)
 
 [Back to command index](#command-index)
 
@@ -1172,7 +1174,7 @@ This command sets the controller for the platform. Firmware 2.3.1 uses direct P+
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`ENCODER_NOT_INITIALIZED`](#error-encoder-not-initialized) (11) · [`PLATFORM_NOT_INITIALIZED`](#error-platform-not-initialized) (12) · [`INIT_REQUIRED`](#error-init-required) (15)
+[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`ENCODER_NOT_INITIALIZED`](#error-encoder-not-initialized) (11) · [`PLATFORM_NOT_INITIALIZED`](#error-platform-not-initialized) (12) · [`INIT_REQUIRED`](#error-init-required) (15)
 
 [Back to command index](#command-index)
 
@@ -1198,7 +1200,7 @@ This command set the target velocity for the platform in meters per second. Canc
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`PLATFORM_NOT_INITIALIZED`](#error-platform-not-initialized) (12) · [`CONTROLLER_NOT_INITIALIZED`](#error-controller-not-initialized) (14) · [`INIT_REQUIRED`](#error-init-required) (15)
+[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`PLATFORM_NOT_INITIALIZED`](#error-platform-not-initialized) (12) · [`CONTROLLER_NOT_INITIALIZED`](#error-controller-not-initialized) (14) · [`INIT_REQUIRED`](#error-init-required) (15)
 
 [Back to command index](#command-index)
 
@@ -1371,7 +1373,7 @@ No payload parameters.
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6)
+[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6)
 
 [Back to command index](#command-index)
 
@@ -1814,7 +1816,7 @@ Initialize a bounded proportional position loop over an already running motor ve
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CONTROLLER_NOT_INITIALIZED`](#error-controller-not-initialized) (14) · [`MOTOR_OWNED`](#error-motor-owned) (5)
+[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CONTROLLER_NOT_INITIALIZED`](#error-controller-not-initialized) (14) · [`MOTOR_OWNED`](#error-motor-owned) (5)
 
 [Back to command index](#command-index)
 
@@ -1863,7 +1865,7 @@ Set an absolute multi-turn angle in radians relative to the last position initia
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CONTROLLER_NOT_INITIALIZED`](#error-controller-not-initialized) (14) · [`MOTOR_OWNED`](#error-motor-owned) (5)
+[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CONTROLLER_NOT_INITIALIZED`](#error-controller-not-initialized) (14) · [`MOTOR_OWNED`](#error-motor-owned) (5)
 
 [Back to command index](#command-index)
 
@@ -1922,7 +1924,7 @@ Initialize bounded pose control after START_PLATFORM_CONTROLLER. Starts odometry
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CONTROLLER_NOT_INITIALIZED`](#error-controller-not-initialized) (14) · [`PLATFORM_NOT_INITIALIZED`](#error-platform-not-initialized) (12) · [`ENCODER_NOT_INITIALIZED`](#error-encoder-not-initialized) (11)
+[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CONTROLLER_NOT_INITIALIZED`](#error-controller-not-initialized) (14) · [`PLATFORM_NOT_INITIALIZED`](#error-platform-not-initialized) (12) · [`ENCODER_NOT_INITIALIZED`](#error-encoder-not-initialized) (11)
 
 [Back to command index](#command-index)
 
@@ -1970,7 +1972,7 @@ Set absolute (x,y,t) in the current odometry world frame: meters, meters, radian
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CONTROLLER_NOT_INITIALIZED`](#error-controller-not-initialized) (14) · [`PLATFORM_NOT_INITIALIZED`](#error-platform-not-initialized) (12) · [`ODOMETRY_NOT_INITIALIZED`](#error-odometry-not-initialized) (9) · [`SAMPLE_NOT_AVAILABLE`](#error-sample-not-available) (10)
+[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CONTROLLER_NOT_INITIALIZED`](#error-controller-not-initialized) (14) · [`PLATFORM_NOT_INITIALIZED`](#error-platform-not-initialized) (12) · [`ODOMETRY_NOT_INITIALIZED`](#error-odometry-not-initialized) (9) · [`SAMPLE_NOT_AVAILABLE`](#error-sample-not-available) (10)
 
 [Back to command index](#command-index)
 
@@ -2000,7 +2002,7 @@ Initialize a position PID over the existing velocity controller. Initialize a bo
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CONTROLLER_NOT_INITIALIZED`](#error-controller-not-initialized) (14) · [`MOTOR_OWNED`](#error-motor-owned) (5)
+[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CONTROLLER_NOT_INITIALIZED`](#error-controller-not-initialized) (14) · [`MOTOR_OWNED`](#error-motor-owned) (5)
 
 [Back to command index](#command-index)
 
@@ -2035,7 +2037,7 @@ Initialize a position PID over the existing velocity controller. Initialize boun
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CONTROLLER_NOT_INITIALIZED`](#error-controller-not-initialized) (14) · [`PLATFORM_NOT_INITIALIZED`](#error-platform-not-initialized) (12) · [`ENCODER_NOT_INITIALIZED`](#error-encoder-not-initialized) (11)
+[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CONTROLLER_NOT_INITIALIZED`](#error-controller-not-initialized) (14) · [`PLATFORM_NOT_INITIALIZED`](#error-platform-not-initialized) (12) · [`ENCODER_NOT_INITIALIZED`](#error-encoder-not-initialized) (11)
 
 [Back to command index](#command-index)
 
@@ -2175,7 +2177,7 @@ Driver state and diagnostic flags, encoded as ten one-byte booleans.
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`MOTOR_OWNED`](#error-motor-owned) (5) · [`MOTOR_NOT_INITIALIZED`](#error-motor-not-initialized) (13) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7)
+[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`MOTOR_OWNED`](#error-motor-owned) (5) · [`MOTOR_NOT_INITIALIZED`](#error-motor-not-initialized) (13) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7)
 
 [Back to command index](#command-index)
 
@@ -2206,7 +2208,7 @@ Applied current-regulation setting.
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`MOTOR_NOT_INITIALIZED`](#error-motor-not-initialized) (13) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6)
+[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`MOTOR_NOT_INITIALIZED`](#error-motor-not-initialized) (13) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6)
 
 [Back to command index](#command-index)
 
@@ -2239,7 +2241,7 @@ Applied current-regulation setting.
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`MOTOR_NOT_INITIALIZED`](#error-motor-not-initialized) (13) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`MOTOR_OWNED`](#error-motor-owned) (5)
+[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`MOTOR_NOT_INITIALIZED`](#error-motor-not-initialized) (13) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`MOTOR_OWNED`](#error-motor-owned) (5)
 
 [Back to command index](#command-index)
 
@@ -2385,6 +2387,58 @@ Current field value in the units of the corresponding initialization command. Bo
 
 ---
 
+### SET_DRIVER_SLEEP (0x5B)
+
+**Client → controller** · **Payload:** 1 bytes
+
+Explicitly inhibit or wake the board's motor drivers. Entry stops motion and controllers across all connections. Wake verifies the retained settings for previously initialized channels and leaves outputs stopped. A failed wake keeps the inhibit set and permits retry. Repeating the current state is a no-op. Requires a ready connection, protocol 2.15 and a board profile with driver sleep.
+
+#### Parameters
+
+| Parameter | Type | Bytes | Range | Description |
+| --- | --- | ---: | --- | --- |
+| `sleeping` | `uint8_t` | 1 | 0 to 1 | 1 to request driver sleep or 0 to wake. |
+
+#### Response
+
+**ACK** — empty payload; echoes the command and message ID.
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6)
+
+[Back to command index](#command-index)
+
+---
+
+### GET_DRIVER_SLEEP (0x5C)
+
+**Client → controller** · **Payload:** 0 bytes
+
+Read the board-wide driver sleep inhibit. The value persists across connections and clears at boot. Uninitialized individual drivers may be asleep even when the inhibit is clear. Requires a ready connection, protocol 2.15 and a board profile with driver sleep.
+
+#### Parameters
+
+No payload parameters.
+
+#### Response
+
+**Controller → client** · `uint8_t` · **Payload:** 1 bytes
+
+1 when driver sleep is requested or 0 when motor commands are permitted.
+
+| Parameter | Type | Bytes | Description |
+| --- | --- | ---: | --- |
+| `sleeping` | `uint8_t` | 1 | 1 when driver sleep is requested or 0 when motor commands are permitted. |
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16)
+
+[Back to command index](#command-index)
+
+---
+
 ## Error codes
 
 Errors use the shared ERROR message. Each command above links to its possible errors below. `UNKNOWN_COMMAND` also covers unrecognized or incorrectly directed messages.
@@ -2409,3 +2463,4 @@ Errors use the shared ERROR message. Each command above links to its possible er
 | 16 | <a id="error-sensor-not-available"></a>`SENSOR_NOT_AVAILABLE` | The selected sensor is not defined on this board. |
 | 17 | <a id="error-subscription-limit"></a>`SUBSCRIPTION_LIMIT` | This connection has no free subscription slots; unsubscribe an existing source first. |
 | 18 | <a id="error-sample-out-of-range"></a>`SAMPLE_OUT_OF_RANGE` | The sensor reading is saturated; no valid measurement can be returned. |
+| 19 | <a id="error-drivers-asleep"></a>`DRIVERS_ASLEEP` | Driver sleep is active. Explicitly wake the drivers before requesting this operation. |

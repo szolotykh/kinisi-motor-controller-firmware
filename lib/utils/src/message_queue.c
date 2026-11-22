@@ -15,6 +15,13 @@ void init_queue(message_queue_t *queue) {
     queue->tail = 0;
     queue->count = 0;
     queue->incomplete_count = 0;
+    queue->marked_count = 0;
+    queue->incomplete_marked = 0;
+}
+
+void mark_pending_frames(message_queue_t *queue) {
+    queue->marked_count = queue->count;
+    queue->incomplete_marked = queue->incomplete_count != 0;
 }
 
 // Check if the queue is empty
@@ -65,6 +72,8 @@ int enqueue_multi(message_queue_t *queue, char *messages, unsigned int length) {
         const unsigned int frame_length = (unsigned char)queue->incomplete[0] + 1U;
         if (queue->incomplete_count == frame_length) {
             if (!enqueue(queue, queue->incomplete)) accepted = 0;
+            else if (queue->incomplete_marked) queue->marked_count = queue->count;
+            queue->incomplete_marked = 0;
             queue->incomplete_count = 0;
         }
     }
@@ -78,10 +87,10 @@ int enqueue_multi(message_queue_t *queue, char *messages, unsigned int length) {
  * @param message_len Receives the payload length, or zero if the queue is empty.
  * @note Caller serializes access and can check emptiness to distinguish empty frames.
  */
-void dequeue(message_queue_t *queue, char *message, int *message_len) {
+int dequeue(message_queue_t *queue, char *message, int *message_len) {
     if (is_queue_empty(queue)) {
         *message_len = 0;
-        return;
+        return 0;
     }
     char *msg = queue->messages[queue->head];
     unsigned char length = msg[0];
@@ -89,4 +98,9 @@ void dequeue(message_queue_t *queue, char *message, int *message_len) {
     *message_len = length;
     queue->head = (queue->head + 1) % MESSAGE_QUEUE_MAX_SIZE;
     queue->count--;
+    if (queue->marked_count) {
+        queue->marked_count--;
+        return 1;
+    }
+    return 0;
 }

@@ -94,6 +94,7 @@ bool connection_can_receive(const connection_t *);
  * Successful timing replies have no ACK.
  */
 void connection_receive(connection_t *, const uint8_t *, size_t);
+void connection_receive_queued(connection_t *, const uint8_t *, size_t, bool before_driver_wake);
 /**
  * @brief Service pending output, announce READY, or advance periodic synchronization.
  * @note Call frequently on the command task. Stalled replies expire; busy control

@@ -104,7 +104,22 @@ bool hw_drv8873_prepare(void) {
     return true;
 }
 
-bool hw_drv8873_initialize(motorIndex i) {
+bool hw_drv8873_sleep_all(void) {
+    // Sleep remains possible when SPI setup or driver communication fails.
+    for (unsigned i = 0; i < NUMBER_MOTORS; ++i) {
+        output(motor_info[i].disable, true);
+        output(motor_info[i].sleep, false);
+    }
+    HAL_Delay(1); // Exceeds the maximum sleep-entry time.
+    for (unsigned i = 0; i < NUMBER_MOTORS; ++i) {
+        const motor_info_t *m = &motor_info[i];
+        if (HAL_GPIO_ReadPin(m->disable.port, m->disable.pin) != GPIO_PIN_SET ||
+            HAL_GPIO_ReadPin(m->sleep.port, m->sleep.pin) != GPIO_PIN_RESET) return false;
+    }
+    return true;
+}
+
+bool hw_drv8873_wake_disabled(motorIndex i, const hw_motor_current_limit_t *setting) {
     if (i >= NUMBER_MOTORS || !hw_drv8873_prepare()) return false;
     write_pin(motor_info[i].disable, true);
     // An explicit reinitialization also clears latched faults through sleep.
@@ -131,10 +146,9 @@ bool hw_drv8873_initialize(motorIndex i) {
         write_pin(motor_info[i].sleep, false);
         return false;
     }
-    const hw_motor_current_limit_t setting = {
-        motor_info[i].hardwareCurrentLimit.enabled, motor_info[i].hardwareCurrentLimit.thresholdMa
-    };
-    if (!hw_drv8873_set_current_limit(i, &setting)) {
+    if (!hw_drv8873_set_current_limit(i, setting) ||
+        HAL_GPIO_ReadPin(motor_info[i].sleep.port, motor_info[i].sleep.pin) != GPIO_PIN_SET ||
+        HAL_GPIO_ReadPin(motor_info[i].disable.port, motor_info[i].disable.pin) != GPIO_PIN_SET) {
         write_pin(motor_info[i].sleep, false);
         return false;
     }
