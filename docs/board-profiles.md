@@ -12,6 +12,9 @@ The bundle has `schema_version: 1` and a `boards` array. Each profile contains:
 
 - `board`: model number and complete hardware revision.
 - `resources`: motor, encoder, GPIO and status LED counts.
+- `power.driver_sleep`: whether every motor driver has supported explicit sleep control.
+  Treat an absent flag as unavailable. The public commands require a ready session
+  on firmware protocol 2.15 or later in the compatible major version.
 - `motor_features`: per-motor IDs, current-sense/current-limit/fault-reporting flags,
   and optional `current_limit_options` with discrete thresholds in milliamps and `can_disable`.
 - `sensors`: temperature sensor IDs and IMU IDs with accelerometer/gyroscope flags.
@@ -84,3 +87,4 @@ respectively; a default 32-byte AVR Wire buffer supports temperature only.
 
 Board-wide `pwm_frequency` exposes `default_hz` and `supported_hz`. See
 [motor PWM frequency](motor-pwm-frequency.md) for command behavior and lifetime.
+See [motor-driver sleep](driver-sleep.md) for the board-wide inhibit and wake behavior.

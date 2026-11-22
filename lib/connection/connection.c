@@ -3,6 +3,7 @@
 // Description: Sequence INIT, clock setup, READY, command replies, and periodic synchronization.
 //------------------------------------------------------------
 #include "connection.h"
+#include "driver_sleep_commands.h"
 #include "initialization.h"
 #include <string.h>
 
@@ -190,13 +191,18 @@ static bool odometry_command(uint8_t cmd)
  * @param reply Callback that captures an unframed response payload.
  * @return RESPONSE_OK or a generated protocol error code.
  */
+static bool request_before_driver_wake;
 static uint8_t handle(controller_command_t *cmd, protocol_send_fn reply)
 {
     if (active->lost && !safe_after_loss(cmd->commandType)) return RESPONSE_INIT_REQUIRED;
+    if (request_before_driver_wake && command_requires_awake_drivers(cmd->commandType))
+        return RESPONSE_DRIVERS_ASLEEP;
     // protocol_dispatch already checked the command, fields and message ID.
     active->last_activity_us = active->now();
     switch (cmd->commandType) {
     case SAVE_CONFIGURATION:
+    case GET_DRIVER_SLEEP:
+    case SET_DRIVER_SLEEP:
     case GET_CONFIGURATION_FIELD:
     case GET_PWM_FREQUENCY:
     case SET_PWM_FREQUENCY:
@@ -388,6 +394,11 @@ const time_sync_t *connection_current_clock(void) { return active ? &active->clo
  */
 void connection_receive(connection_t *c, const uint8_t *data, size_t length)
 {
+    connection_receive_queued(c, data, length, false);
+}
+
+void connection_receive_queued(connection_t *c, const uint8_t *data, size_t length, bool before_driver_wake)
+{
     (void)check_heartbeat(c);
     if (c->output_length) return;
     c->yield_receive = false;
@@ -410,7 +421,9 @@ void connection_receive(connection_t *c, const uint8_t *data, size_t length)
         }
         // Successful timing replies are consumed, not acknowledged recursively.
     } else {
+        request_before_driver_wake = before_driver_wake;
         protocol_dispatch(data, length, handle, capture);
+        request_before_driver_wake = false;
     }
     active = NULL;
 }

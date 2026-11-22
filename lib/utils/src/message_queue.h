@@ -21,6 +21,8 @@ typedef struct {
     unsigned int count; // Number of messages in the queue
     char incomplete[MESSAGE_QUEUE_MAX_STR_LENGTH]; // Buffer to hold incomplete messages
     unsigned int incomplete_count; // Number of bytes in the incomplete message buffer
+    unsigned int marked_count; // Number of pending frames that started before the last barrier
+    int incomplete_marked;
 } message_queue_t;
 
 // Initialize the message queue
@@ -29,6 +31,8 @@ typedef struct {
  * @note Caller must exclude concurrent producers/consumers during reset.
  */
 void init_queue(message_queue_t *queue);
+// Caller excludes IRQ producers. A partly received stream frame is included.
+void mark_pending_frames(message_queue_t *queue);
 
 // Check if the queue is empty
 /**
@@ -65,6 +69,7 @@ int enqueue_multi(message_queue_t *queue, char *messages, unsigned int length);
  * @param message_len Receives the payload length, or zero if the queue is empty.
  * @note Caller serializes access and can check emptiness to distinguish empty frames.
  */
-void dequeue(message_queue_t *queue, char *message, int *message_len);
+// Returns nonzero if the removed frame predates the most recent barrier.
+int dequeue(message_queue_t *queue, char *message, int *message_len);
 
 #endif

@@ -16,6 +16,7 @@
 #include "connection.h"
 #include "hw_clock.h"
 #include "hw_motor_faults.h"
+#include "hw_motor.h"
 #include "controllers_manager.h"
 #include "odometry_manager.h"
 
@@ -86,15 +87,36 @@ static bool try_i2c(uint8_t *data, uint8_t length)
  * @brief Copy and remove one queued frame while excluding IRQ producers.
  * @return True when a frame was dequeued; length excludes its prefix.
  */
-static bool take_command(message_queue_t *queue, char *buffer, int *length)
+static bool take_command(message_queue_t *queue, char *buffer, int *length, bool *before_wake)
 {
     // IRQ producers also update queue->count; dequeue must not race their increment.
     uint32_t mask = __get_PRIMASK();
     __disable_irq();
     bool available = !is_queue_empty(queue);
-    if (available) dequeue(queue, buffer, length);
+    if (available) *before_wake = dequeue(queue, buffer, length) != 0;
     __set_PRIMASK(mask);
     return available;
+}
+
+// Both ingress queues can have pending motion (including a fragmented frame)
+// while the other transport completes a wake. Reply to those stale requests
+// with DRIVERS_ASLEEP before allowing fresh motion. Keep non-motion traffic.
+static void process_queue(connection_t *connection, message_queue_t *queue)
+{
+    if (!connection_can_receive(connection)) return;
+    char buffer[MESSAGE_QUEUE_MAX_STR_LENGTH];
+    int length;
+    bool before_wake;
+    if (!take_command(queue, buffer, &length, &before_wake)) return;
+    bool waking = length > 0 && (uint8_t)buffer[0] == SET_DRIVER_SLEEP && hw_motor_drivers_sleeping();
+    connection_receive_queued(connection, (const uint8_t *)buffer, length, before_wake);
+    if (waking && !hw_motor_drivers_sleeping()) {
+        uint32_t mask = __get_PRIMASK();
+        __disable_irq();
+        mark_pending_frames(&CommandQueue);
+        mark_pending_external_i2c_requests();
+        __set_PRIMASK(mask);
+    }
 }
 
 typedef struct commands_manager
@@ -161,22 +183,10 @@ void CommandHandlerTask(void *argument)
         connection_poll(&usb_connection);
         connection_poll(&i2c_connection);
         // Handle commands from USB interface
-        if (connection_can_receive(&usb_connection))
-        {
-            char commandBuffer[MESSAGE_QUEUE_MAX_STR_LENGTH];
-            int data_len;
-            if (take_command(&CommandQueue, commandBuffer, &data_len))
-                connection_receive(&usb_connection, (const uint8_t *)commandBuffer, data_len);
-        }
+        process_queue(&usb_connection, &CommandQueue);
 
         // Handle commands from I2C interface
-        if (connection_can_receive(&i2c_connection))
-        {
-            char commandBuffer[MESSAGE_QUEUE_MAX_STR_LENGTH];
-            int data_len;
-            if (take_command(&I2CCommandQueue, commandBuffer, &data_len))
-                connection_receive(&i2c_connection, (const uint8_t *)commandBuffer, data_len);
-        }
+        process_queue(&i2c_connection, &I2CCommandQueue);
         
         connection_poll(&usb_connection);
         connection_poll(&i2c_connection);

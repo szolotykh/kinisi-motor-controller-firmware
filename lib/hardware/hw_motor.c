@@ -23,6 +23,21 @@ typedef struct {
 } motor_status_t;
 static motor_status_t motor_status[NUMBER_MOTORS];
 static uint32_t pwm_frequency_hz = MOTOR_PWM_FREQUENCY_HZ;
+#if BOARD_HAS_DRIVER_SLEEP
+static volatile bool sleep_inhibited;
+static bool sleep_confirmed;
+// Each initialized channel has an IC4 setting verified by SPI readback. A
+// failed write never replaces this value, even if its hardware outcome is unknown.
+static hw_motor_current_limit_t verified_limit[NUMBER_MOTORS];
+#endif
+
+bool hw_motor_drivers_sleeping(void) {
+#if BOARD_HAS_DRIVER_SLEEP
+    return sleep_inhibited;
+#else
+    return false;
+#endif
+}
 
 static bool pwm_prescaler(TIM_TypeDef *instance, uint32_t frequency, uint32_t *prescaler) {
     RCC_ClkInitTypeDef clocks = {0};
@@ -42,7 +57,7 @@ static bool init_motor_timer(const motor_info_t *info);
 static void stop_motor(motorIndex index);
 
 static void initialize_motor(motorIndex index, bool reverse) {
-    if (index >= NUMBER_MOTORS) return;
+    if (index >= NUMBER_MOTORS || hw_motor_drivers_sleeping()) return;
     const motor_info_t *info = &motor_info[index];
     // Each board compiles a single model; reject a mismatched motor entry.
     if (info->controlModel != MOTOR_CONTROL_MODEL) return;
@@ -52,7 +67,13 @@ static void initialize_motor(motorIndex index, bool reverse) {
     // must revalidate the driver, with the bridge disabled and its duty cleared.
     stop_motor(index);
     motor_status[index].isInitialized = false;
-    if (!hw_drv8873_initialize(index)) return;
+    const hw_motor_current_limit_t setting = {
+        info->hardwareCurrentLimit.enabled, info->hardwareCurrentLimit.thresholdMa
+    };
+    if (!hw_drv8873_wake_disabled(index, &setting)) return;
+#if BOARD_HAS_DRIVER_SLEEP
+    verified_limit[index] = setting;
+#endif
 #else
     if (motor_status[index].isInitialized) return;
 #endif
@@ -70,7 +91,7 @@ static uint8_t motor_is_reversed(motorIndex index) {
 }
 
 static void set_motor_speed(motorIndex index, double pwm) {
-    if (!motor_is_initialized(index)) return;
+    if (hw_motor_drivers_sleeping() || !motor_is_initialized(index)) return;
     if (!isfinite(pwm)) { stop_motor(index); return; }
     if (pwm > 100.0) pwm = 100.0;
     if (pwm < -100.0) pwm = -100.0;
@@ -110,7 +131,7 @@ static void stop_motor(motorIndex index) {
 }
 
 static void brake_motor(motorIndex index) {
-    if (!motor_is_initialized(index)) return;
+    if (hw_motor_drivers_sleeping() || !motor_is_initialized(index)) return;
     const motor_info_t *info = &motor_info[index];
     TIM_HandleTypeDef *timer = get_timer_handeler(info->timer);
 #if MOTOR_CONTROL_MODEL == MOTOR_CONTROL_MODEL_ENABLE_DIRECTION
@@ -136,6 +157,41 @@ void hw_motor_init(void) {
     current_motor_interface = &default_motor_interface;
 #if MOTOR_CONTROL_MODEL == MOTOR_CONTROL_MODEL_ENABLE_DIRECTION
     hw_drv8873_prepare();
+#endif
+}
+
+bool hw_motor_set_driver_sleep(bool sleeping) {
+#if BOARD_HAS_DRIVER_SLEEP
+    if (sleeping) {
+        if (sleep_inhibited && sleep_confirmed) return true;
+        sleep_inhibited = true;
+        for (unsigned i = 0; i < NUMBER_MOTORS; ++i) {
+            if (!motor_status[i].timerInitialized) continue;
+            const motor_info_t *info = &motor_info[i];
+            HAL_GPIO_WritePin(info->disable.port, info->disable.pin, GPIO_PIN_SET);
+            __HAL_TIM_SET_COMPARE(get_timer_handeler(info->timer), info->enable.timerChannel, 0);
+        }
+        sleep_confirmed = hw_drv8873_sleep_all();
+        return sleep_confirmed;
+    }
+    if (!sleep_inhibited) return true; // Idempotent wake must not disturb motion.
+    // Reassert the safe baseline even when an earlier sleep pin failed its
+    // readback. Unconfigured channels stay asleep throughout the transition.
+    sleep_confirmed = hw_drv8873_sleep_all();
+    if (!sleep_confirmed) return false;
+    for (unsigned i = 0; i < NUMBER_MOTORS; ++i) {
+        if (!motor_status[i].isInitialized) continue;
+        if (!hw_drv8873_wake_disabled(i, &verified_limit[i]) || hw_drv8873_fault_active(i)) {
+            sleep_confirmed = hw_drv8873_sleep_all();
+            return false;
+        }
+    }
+    sleep_inhibited = false;
+    sleep_confirmed = false;
+    return true;
+#else
+    (void)sleeping;
+    return false;
 #endif
 }
 
@@ -212,7 +268,7 @@ bool hw_motor_read_faults(uint8_t index, hw_motor_faults_t *faults) {
 
 bool hw_motor_clear_faults(uint8_t index, hw_motor_faults_t *faults) {
 #if MOTOR_CONTROL_MODEL == MOTOR_CONTROL_MODEL_ENABLE_DIRECTION
-    if (index >= NUMBER_MOTORS || !faults || !motor_is_initialized(index)) return false;
+    if (hw_motor_drivers_sleeping() || index >= NUMBER_MOTORS || !faults || !motor_is_initialized(index)) return false;
     stop_motor(index);
     return hw_drv8873_clear_faults(index, faults);
 #else
@@ -232,7 +288,12 @@ bool hw_motor_current_limit_allowed(uint8_t index, const hw_motor_current_limit_
 
 bool hw_motor_get_current_limit(uint8_t index, hw_motor_current_limit_t *setting) {
 #if MOTOR_CONTROL_MODEL == MOTOR_CONTROL_MODEL_ENABLE_DIRECTION
-    return index < NUMBER_MOTORS && motor_is_initialized(index) && hw_drv8873_get_current_limit(index, setting);
+    if (hw_motor_drivers_sleeping() || index >= NUMBER_MOTORS || !motor_is_initialized(index) ||
+        !hw_drv8873_get_current_limit(index, setting)) return false;
+#if BOARD_HAS_DRIVER_SLEEP
+    verified_limit[index] = *setting;
+#endif
+    return true;
 #else
     (void)index; (void)setting;
     return false;
@@ -241,9 +302,14 @@ bool hw_motor_get_current_limit(uint8_t index, hw_motor_current_limit_t *setting
 
 bool hw_motor_set_current_limit(uint8_t index, const hw_motor_current_limit_t *setting) {
 #if MOTOR_CONTROL_MODEL == MOTOR_CONTROL_MODEL_ENABLE_DIRECTION
-    if (!hw_motor_current_limit_allowed(index, setting) || !motor_is_initialized(index)) return false;
+    if (hw_motor_drivers_sleeping() || !hw_motor_current_limit_allowed(index, setting) ||
+        !motor_is_initialized(index)) return false;
     stop_motor(index);
-    return hw_drv8873_set_current_limit(index, setting);
+    if (!hw_drv8873_set_current_limit(index, setting)) return false;
+#if BOARD_HAS_DRIVER_SLEEP
+    verified_limit[index] = *setting;
+#endif
+    return true;
 #else
     (void)index; (void)setting;
     return false;

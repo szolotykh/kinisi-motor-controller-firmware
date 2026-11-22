@@ -23,6 +23,17 @@ static double encoder_scale[4], output[4];
 static unsigned motion_writes, tasks_started, fram_writes, fram_reads;
 static int write_budget = -1, failed_motor = -1, failed_encoder = -1;
 static uint32_t frequency = 100000;
+static bool driver_sleep;
+bool hw_motor_drivers_sleeping(void) { return driver_sleep; }
+bool hw_motor_set_driver_sleep(bool sleeping) {
+    if (sleeping && !driver_sleep) {
+        for (unsigned i = 0; i < 4; ++i) assert(output[i] == 0 && !controllers_manager_is_running(i));
+        assert(!platform_is_controller_running());
+    }
+    driver_sleep = sleeping;
+    return true;
+}
+void run_sleep_queues(unsigned blocked_bus);
 
 bool hw_fram_read(uint16_t address, void *data, uint16_t length)
 {
@@ -201,11 +212,73 @@ static void verify(int type)
     check_frequency(25000);
 }
 
+static void sleep_policy(void)
+{
+    controller_command_t set_sleep = {.commandType=SET_DRIVER_SLEEP, .properties.set_driver_sleep={1}};
+    controller_command_t get_sleep = {.commandType=GET_DRIVER_SLEEP};
+    connection_init(&session, command_handler, send_frame, hw_clock_microseconds);
+    request(set_sleep, RESPONSE_INIT_REQUIRED);
+    request(get_sleep, RESPONSE_INIT_REQUIRED);
+    connect();
+    request(get_sleep, RESPONSE_OK);
+    assert(reply_len == 5 && reply[4] == 0);
+    request((controller_command_t){.commandType=SET_DRIVER_SLEEP, .properties.set_driver_sleep={2}}, RESPONSE_INVALID_ARGUMENT);
+    configure(PLATFORM_DIFFERENTIAL);
+    request((controller_command_t){.commandType=SAVE_CONFIGURATION}, RESPONSE_OK);
+    unsigned writes = fram_writes;
+    request((controller_command_t){.commandType=INITIALIZE_MOTOR_CONTROLLER,
+        .properties.initialize_motor_controller={3,1,3,1,803.5,1,0,0,10}}, RESPONSE_OK);
+    request((controller_command_t){.commandType=INITIALIZE_MOTOR_POSITION_CONTROLLER,
+        .properties.initialize_motor_position_controller={3,1,1,0.01}}, RESPONSE_OK);
+    request((controller_command_t){.commandType=SET_MOTOR_POSITION, .properties.set_motor_position={3,2}}, RESPONSE_OK);
+    request((controller_command_t){.commandType=START_PLATFORM_CONTROLLER,
+        .properties.start_platform_controller={.kp=1, .integral_limit=10}}, RESPONSE_OK);
+    request((controller_command_t){.commandType=SET_PLATFORM_TARGET_VELOCITY,
+        .properties.set_platform_target_velocity={0.1,0,0}}, RESPONSE_OK);
+    assert(controllers_manager_is_running(3) && platform_is_controller_running());
+    request(set_sleep, RESPONSE_OK);
+    assert(!platform_is_controller_running() && !controllers_manager_is_running(3) && driver_sleep);
+    connect();
+    request(get_sleep, RESPONSE_OK);
+    assert(reply[4] == 1);
+    const uint8_t blocked[] = {
+        INITIALIZE_MOTOR, SET_MOTOR_SPEED, BRAKE_MOTOR, INITIALIZE_MOTOR_CONTROLLER, SET_MOTOR_TARGET_SPEED,
+        INITIALIZE_MOTOR_POSITION_CONTROLLER, INITIALIZE_MOTOR_POSITION_PID_CONTROLLER, SET_MOTOR_POSITION,
+        INITIALIZE_DIFFERENTIAL_PLATFORM, INITIALIZE_OMNI_PLATFORM, INITIALIZE_MECANUM_PLATFORM,
+        SET_PLATFORM_VELOCITY, START_PLATFORM_CONTROLLER, BRAKE_PLATFORM, SET_PLATFORM_TARGET_VELOCITY,
+        INITIALIZE_PLATFORM_POSITION_CONTROLLER, INITIALIZE_PLATFORM_POSITION_PID_CONTROLLER, SET_PLATFORM_POSITION,
+        GET_MOTOR_CURRENT_LIMIT, SET_MOTOR_CURRENT_LIMIT, CLEAR_MOTOR_FAULTS,
+    };
+    for (unsigned i = 0; i < sizeof(blocked); ++i) {
+        controller_command_t cmd = {.commandType=blocked[i]};
+        if (cmd.commandType == SET_MOTOR_CURRENT_LIMIT) cmd.properties.set_motor_current_limit.threshold_ma = 4000;
+        request(cmd, RESPONSE_DRIVERS_ASLEEP);
+    }
+    verify(PLATFORM_DIFFERENTIAL);
+    request((controller_command_t){.commandType=COAST_PLATFORM}, RESPONSE_OK);
+    set_sleep.properties.set_driver_sleep.sleeping = 0;
+    request(set_sleep, RESPONSE_OK);
+    verify(PLATFORM_DIFFERENTIAL);
+    assert(fram_writes == writes);
+    request((controller_command_t){.commandType=GET_MOTOR_POSITION, .properties.get_motor_position={3}},
+        RESPONSE_CONTROLLER_NOT_INITIALIZED);
+    request((controller_command_t){.commandType=SET_PLATFORM_TARGET_VELOCITY}, RESPONSE_CONTROLLER_NOT_INITIALIZED);
+    request((controller_command_t){.commandType=SET_MOTOR_TARGET_SPEED, .properties.set_motor_target_speed={3,1}},
+        RESPONSE_CONTROLLER_NOT_INITIALIZED);
+    set_sleep.properties.set_driver_sleep.sleeping = 1;
+    request(set_sleep, RESPONSE_OK);
+}
+
 int main(int argc, char **argv)
 {
     assert(argc == 4);
     const char *mode = argv[1], *path = argv[2];
     int type = atoi(argv[3]);
+    if (!strcmp(mode, "sleep-queues")) {
+        run_sleep_queues(type);
+        assert(output[3] == 70 && motion_writes == 2);
+        return 0;
+    }
     FILE *file = fopen(path, "rb");
     if (file) { assert(fread(fram, 1, sizeof(fram), file) == sizeof(fram)); fclose(file); }
     if (!strcmp(mode, "driver-fault")) failed_motor = 1;
@@ -216,6 +289,8 @@ int main(int argc, char **argv)
     connect();
     if (!strcmp(mode, "unsupported")) {
         configure(type);
+        request((controller_command_t){.commandType=GET_DRIVER_SLEEP}, RESPONSE_SENSOR_NOT_AVAILABLE);
+        request((controller_command_t){.commandType=SET_DRIVER_SLEEP, .properties.set_driver_sleep={1}}, RESPONSE_SENSOR_NOT_AVAILABLE);
         request((controller_command_t){.commandType=SAVE_CONFIGURATION}, RESPONSE_SENSOR_NOT_AVAILABLE);
         request((controller_command_t){.commandType=GET_CONFIGURATION_FIELD}, RESPONSE_SENSOR_NOT_AVAILABLE);
         assert(platform_is_initialized() && !fram_writes && !fram_reads);
@@ -223,7 +298,13 @@ int main(int argc, char **argv)
         assert(encoder_scale[3] == 803.5 && reversed_motor[3]);
         return 0;
     }
-    if (!strcmp(mode, "blank") || !strcmp(mode, "driver-fault") || !strcmp(mode, "encoder-fault")) {
+    if (!strcmp(mode, "sleep-policy")) {
+        sleep_policy();
+    } else if (!strcmp(mode, "wake-boot")) {
+        request((controller_command_t){.commandType=GET_DRIVER_SLEEP}, RESPONSE_OK);
+        assert(reply[4] == 0 && !platform_is_controller_running() && !motion_writes);
+        verify(PLATFORM_DIFFERENTIAL);
+    } else if (!strcmp(mode, "blank") || !strcmp(mode, "driver-fault") || !strcmp(mode, "encoder-fault")) {
         assert(field(0,0) == 0);
         check_frequency(100000);
         request((controller_command_t){.commandType=SAVE_CONFIGURATION}, RESPONSE_PLATFORM_NOT_INITIALIZED);

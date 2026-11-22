@@ -31,7 +31,7 @@ int main(void)
     init_response response = initialization_response();
     const unsigned char expected[] = {
         1, 0, KINISI_BOARD_VERSION_MINOR, KINISI_BOARD_VERSION_PATCH,
-        2, 14, 0, 0x78, 0x56, 0x34, 0x12, 0xef, 0xcd, 0xab, 0x90,
+        2, 15, 0, 0x78, 0x56, 0x34, 0x12, 0xef, 0xcd, 0xab, 0x90,
     };
     assert(sizeof(response) == sizeof(expected));
     assert(memcmp(&response, expected, sizeof(expected)) == 0);
@@ -47,8 +47,10 @@ int main(void)
     assert(initialization_validate(&command) == INIT_STATUS_INCOMPATIBLE);
     assert(response.board_minor == KINISI_BOARD_VERSION_MINOR);
     command.properties.init.protocol_major = 2;
-    command.properties.init.protocol_minor = 15;
+    command.properties.init.protocol_minor = 16;
     assert(initialization_validate(&command) == INIT_STATUS_INCOMPATIBLE);
+    command.properties.init.protocol_minor = 15; // Explicit v0.4 driver sleep.
+    assert(initialization_validate(&command) == INIT_STATUS_OK);
     command.properties.init.protocol_minor = 14; // v0.4 configuration persistence.
     assert(initialization_validate(&command) == INIT_STATUS_OK);
     command.properties.init.protocol_minor = 13; // PWM frequency configuration available.

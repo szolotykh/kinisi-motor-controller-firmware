@@ -66,10 +66,12 @@ class BoardConfigTests(unittest.TestCase):
             self.assertFalse(keys & {"pin", "bus", "buses", "timer", "peripheral", "mcu", "address",
                                      "build_define", "control_model", "chip_select", "sense_resistor_ohm"})
         v4 = bundle["boards"][3]
+        self.assertEqual(v4["power"], {"driver_sleep": True})
         self.assertEqual(v4["sensors"], {"temperature": [{"id": 0}],
                          "imu": [{"id": 0, "accelerometer": True, "gyroscope": True}]})
         self.assertTrue(all(m["current_sense"] and m["current_limit"] for m in v4["motor_features"]))
         for profile in bundle["boards"][:3]:
+            self.assertEqual(profile["power"], {"driver_sleep": False})
             self.assertEqual(profile["sensors"], {"temperature": [], "imu": []})
             self.assertTrue(all(not m["current_sense"] and not m["current_limit"] for m in profile["motor_features"]))
 
