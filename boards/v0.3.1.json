@@ -160,5 +160,8 @@
       "active_low": false
     }
   ],
-  "usb_vbus_sense": "PA9"
+  "usb_vbus_sense": "PA9",
+  "power": {
+    "board_idle": true
+  }
 }

@@ -262,7 +262,7 @@ def validate(board):
     for value, users in pins.items():
         require(len(users) == 1 or value in declared, f"pin {value} is shared by {', '.join(users)}; declare shared_pins explicitly")
     if board.get("power", {}).get("board_idle"):
-        require(enable_direction and supports_driver_sleep(board), "power.board_idle requires explicit motor-driver sleep on an enable/direction board")
+        require(supports_driver_sleep(board), "power.board_idle requires explicit motor-driver sleep")
     return board
 
 
@@ -368,12 +368,12 @@ def render(boards):
         for key, number in zip(("MAJOR", "MINOR", "PATCH"), board["board"]["revision"].split(".")):
             identity.append(f"#define KINISI_BOARD_VERSION_{key} {number}")
         identity.append(f"#define KINISI_USB_VBUS_SENSING {int('usb_vbus_sense' in board)}")
+        identity.append(f"#define BOARD_HAS_BOARD_IDLE {int(board.get('power', {}).get('board_idle', False))}")
         motors = board["motors"]
         model = motors["control_model"].upper()
         hardware += [selection, f"#define MOTOR_CONTROL_MODEL MOTOR_CONTROL_MODEL_{model}",
                      f"#define BOARD_HAS_DRV8870_SLEEP {int(motors.get('driver', {}).get('type') == 'DRV8870')}",
                      f"#define BOARD_HAS_DRIVER_SLEEP {int(supports_driver_sleep(board))}",
-                     f"#define BOARD_HAS_BOARD_IDLE {int(board.get('power', {}).get('board_idle', False))}",
                      f"#define MOTOR_PWM_FREQUENCY_HZ {motors['pwm_frequency_hz']}U",
                      "static const uint32_t motor_pwm_frequencies_hz[] = {" +
                      ", ".join(str(v) + "U" for v in motors['supported_pwm_frequencies_hz']) + "};"]

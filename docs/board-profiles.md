@@ -17,7 +17,8 @@ The bundle has `schema_version: 1` and a `boards` array. Each profile contains:
   on protocol 2.15 or later for model 1 v0.4.0, or 2.17 or later for model 1
   v0.3.0 and Nano v0.3.1. These gates apply within protocol major 2.
 - `power.board_idle`: support for communication-preserving idle. Require a true flag
-  on the exact profile and a ready protocol 2.16 (or newer compatible 2.x) connection.
+  on the exact model 1 profile and a READY connection. The minimum 2.x minor is
+  18 on original v0.3.0 and Nano v0.3.1, and 16 on v0.4.0.
   Earlier bundles may omit this field. See [board idle](board-idle.md).
 - `motor_features`: per-motor IDs, current-sense/current-limit/fault-reporting flags,
   and optional `current_limit_options` with discrete thresholds in milliamps and `can_disable`.

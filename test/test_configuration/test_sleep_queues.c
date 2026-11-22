@@ -2,6 +2,7 @@
 // transmit availability. Stop the task after a fresh post-wake command succeeds.
 #include "commands_manager.h"
 #include "commands_handler.h"
+#include "connection.h"
 #include "hw_motor.h"
 #include "os_interface.h"
 #include "protocol.h"
@@ -11,9 +12,15 @@
 #include <stdbool.h>
 
 message_queue_t CommandQueue, I2CCommandQueue;
-USBD_HandleTypeDef hUsbDeviceFS = {USBD_STATE_CONFIGURED, &hUsbDeviceFS};
+#ifdef MP_V3_1
+extern USBD_HandleTypeDef hUsbDeviceFS;
+extern unsigned usb_starts, usb_stops;
+extern bool vbus_present;
+#else
+USBD_HandleTypeDef hUsbDeviceFS = {.dev_state=USBD_STATE_CONFIGURED, .pClassData=&hUsbDeviceFS};
 void MX_USB_DEVICE_Init(void) {}
 void MX_USB_DEVICE_Process(void) {}
+#endif
 void initialize_external_i2c(void) {}
 void mark_pending_external_i2c_requests(uint8_t barriers) { mark_pending_frames(&I2CCommandQueue, barriers); }
 uint32_t hw_motor_fault_event_sequence(uint8_t i) { (void)i; return 0; }
@@ -24,7 +31,9 @@ void __set_PRIMASK(uint32_t value) { masked = value; }
 
 static unsigned stale_bus, phase, ticks;
 static uint8_t stale_command;
-static bool blocked, attempted, ready[2], board;
+static bool blocked, attempted, ready[2], board, usb_lifecycle;
+static unsigned ready_count[2];
+static uint8_t state_byte[20];
 static uint8_t replies[20], errors[20];
 static jmp_buf finished;
 static char partial[256];
@@ -34,9 +43,10 @@ static bool receive(unsigned bus, const uint8_t *data, uint16_t n) {
     if (blocked && bus == stale_bus) { attempted = true; return false; }
     uint8_t id = data[2];
     assert(n >= 4 && id < sizeof(replies));
-    if (data[1] == KINISI_MESSAGE_READY) ready[bus] = true;
+    if (data[1] == KINISI_MESSAGE_READY) { ready[bus] = true; ++ready_count[bus]; }
     else {
         replies[id] = data[1];
+        if (n == 5) state_byte[id] = data[4];
         if (data[1] == KINISI_MESSAGE_ERROR) { assert(n == 6); errors[id] = data[5]; }
     }
     return true;
@@ -60,8 +70,81 @@ static controller_command_t speed(unsigned id, double value) {
     return (controller_command_t){.commandType=SET_MOTOR_SPEED, .message_id=id,
         .properties.set_motor_speed={.motor_index=3, .pwm=value}};
 }
+#ifdef MP_V3_1
+// Exercise real VBUS processing and both real sessions. CDC transfers model
+// host frames. The idle hook's simulated IRQ returns without changing the mode.
+void check_idle_hook(bool expected);
+static void usb_idle_turn(void)
+{
+    switch (phase) {
+    case 0:
+        assert(usb_starts == 1 && usb_stops == 0);
+        issue(0, (controller_command_t){.commandType=INIT, .message_id=1, .properties.init={.protocol_major=2}});
+        break;
+    case 1:
+        if (!ready[0]) return;
+        issue(0, (controller_command_t){.commandType=SET_BOARD_IDLE, .message_id=2, .properties.set_board_idle={1}});
+        break;
+    case 2:
+        if (!replies[2]) return;
+        assert(replies[2] == SET_BOARD_IDLE && hw_motor_drivers_sleeping());
+        check_idle_hook(true);
+        issue(0, (controller_command_t){.commandType=PING, .message_id=3});
+        issue(0, (controller_command_t){.commandType=GET_BOARD_IDLE, .message_id=4});
+        issue(0, (controller_command_t){.commandType=GET_DRIVER_SLEEP, .message_id=5});
+        break;
+    case 3:
+        if (!replies[5]) return;
+        assert(replies[3] == PING && replies[4] == GET_BOARD_IDLE && state_byte[4] == 1);
+        assert(replies[5] == GET_DRIVER_SLEEP && state_byte[5] == 1 && connection_board_idle());
+        issue(0, (controller_command_t){.commandType=SET_BOARD_IDLE, .message_id=6, .properties.set_board_idle={0}});
+        break;
+    case 4:
+        if (!replies[6]) return;
+        assert(replies[6] == SET_BOARD_IDLE && !connection_board_idle() && !hw_motor_drivers_sleeping());
+        assert(usb_starts == 1 && !usb_stops && ready_count[0] == 1 && hUsbDeviceFS.dev_address == 21);
+        issue(0, (controller_command_t){.commandType=SET_DRIVER_SLEEP, .message_id=7, .properties.set_driver_sleep={1}});
+        issue(0, (controller_command_t){.commandType=SET_BOARD_IDLE, .message_id=8, .properties.set_board_idle={1}});
+        break;
+    case 5:
+        if (!replies[8]) return;
+        assert(replies[7] == SET_DRIVER_SLEEP && replies[8] == SET_BOARD_IDLE);
+        vbus_present = false;
+        break;
+    case 6:
+        if (!usb_stops) return;
+        assert(connection_board_idle() && hw_motor_drivers_sleeping() && !hUsbDeviceFS.pClassData);
+        vbus_present = true;
+        break;
+    case 7:
+        if (usb_starts != 2) return;
+        issue(0, (controller_command_t){.commandType=SET_BOARD_IDLE, .message_id=9, .properties.set_board_idle={0}});
+        break;
+    case 8:
+        if (!replies[9]) return;
+        assert(errors[9] == RESPONSE_INIT_REQUIRED && connection_board_idle() && hw_motor_drivers_sleeping());
+        issue(0, (controller_command_t){.commandType=INIT, .message_id=10, .properties.init={.protocol_major=2}});
+        break;
+    case 9:
+        if (ready_count[0] != 2) return;
+        issue(0, (controller_command_t){.commandType=GET_BOARD_IDLE, .message_id=11});
+        issue(0, (controller_command_t){.commandType=SET_BOARD_IDLE, .message_id=12, .properties.set_board_idle={0}});
+        break;
+    case 10:
+        if (!replies[12]) return;
+        assert(replies[11] == GET_BOARD_IDLE && state_byte[11] == 1 && replies[12] == SET_BOARD_IDLE);
+        assert(!connection_board_idle() && hw_motor_drivers_sleeping());
+        assert(usb_starts == 2 && usb_stops == 1 && hUsbDeviceFS.dev_address == 22);
+        longjmp(finished, 1);
+    }
+    ++phase;
+}
+#endif
 static void next_turn(uint32_t ms) {
     assert(!masked && ms == 1 && ++ticks < 100);
+#ifdef MP_V3_1
+    if (usb_lifecycle) { usb_idle_turn(); return; }
+#endif
     const unsigned other = 1 - stale_bus;
     controller_command_t transition = {.commandType=board ? SET_BOARD_IDLE : SET_DRIVER_SLEEP};
     switch (phase) {
@@ -184,5 +267,10 @@ void run_sleep_queues(unsigned blocked_bus, bool board_idle, uint8_t command) {
     stale_command = command;
     board = board_idle;
     stale_bus = blocked_bus;
+    if (!setjmp(finished)) CommandHandlerTask(NULL);
+}
+
+void run_usb_idle_lifecycle(void) {
+    usb_lifecycle = true;
     if (!setjmp(finished)) CommandHandlerTask(NULL);
 }

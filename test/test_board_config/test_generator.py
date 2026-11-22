@@ -72,12 +72,13 @@ class BoardConfigTests(unittest.TestCase):
                          "imu": [{"id": 0, "accelerometer": True, "gyroscope": True}]})
         self.assertTrue(all(m["current_sense"] and m["current_limit"] for m in v4["motor_features"]))
         for profile in (p for p in bundle["boards"] if p != v4):
-            self.assertEqual(profile["power"], {"driver_sleep": profile["board"]["revision"] in ("0.3.0", "0.3.1"), "board_idle": False})
+            supported = profile["board"]["revision"] in ("0.3.0", "0.3.1")
+            self.assertEqual(profile["power"], {"driver_sleep": supported, "board_idle": supported})
             self.assertEqual(profile["sensors"], {"temperature": [], "imu": []})
             self.assertTrue(all(not m["current_sense"] and not m["current_limit"] for m in profile["motor_features"]))
 
     def test_idle_mode_requires_driver_sleep_and_explicit_opt_in(self):
-        legacy = copy.deepcopy(self.boards[2])
+        legacy = copy.deepcopy(g.select_build_board(self.boards, {"MP_V2"}, "stm32f405rg"))
         legacy["power"] = {"board_idle": True}
         self.reject(legacy, "requires explicit motor-driver sleep")
         self.v4["power"]["board_idle"] = 1

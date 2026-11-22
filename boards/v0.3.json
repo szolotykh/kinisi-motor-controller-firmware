@@ -159,5 +159,8 @@
       "pin": "PA2",
       "active_low": false
     }
-  ]
+  ],
+  "power": {
+    "board_idle": true
+  }
 }

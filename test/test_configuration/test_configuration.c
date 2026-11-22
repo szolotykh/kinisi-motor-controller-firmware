@@ -35,8 +35,10 @@ bool hw_motor_set_driver_sleep(bool sleeping) {
     driver_sleep = sleeping || fail_driver_transition;
     return !fail_driver_transition;
 }
+void run_usb_idle_lifecycle(void);
 void run_sleep_queues(unsigned blocked_bus, bool board_idle, uint8_t stale_command);
 void check_idle_hook(bool expected);
+void check_idle_preemption(void);
 
 bool hw_fram_read(uint16_t address, void *data, uint16_t length)
 {
@@ -239,6 +241,7 @@ static void sleep_policy(bool board)
     if (board) {
         request((controller_command_t){.commandType=SET_BOARD_IDLE, .properties.set_board_idle={2}}, RESPONSE_INVALID_ARGUMENT);
         check_idle_hook(false);
+        check_idle_preemption();
     }
     configure(PLATFORM_DIFFERENTIAL);
     request((controller_command_t){.commandType=SAVE_CONFIGURATION},
@@ -367,12 +370,17 @@ int main(int argc, char **argv)
     assert(argc == 4);
     const char *mode = argv[1], *path = argv[2];
     int type = atoi(argv[3]);
-    if (!strcmp(mode, "sleep-queues") || !strcmp(mode, "idle-queues") ||
-        !strcmp(mode, "motor-brake-queues") || !strcmp(mode, "platform-brake-queues")) {
-        uint8_t stale = !strcmp(mode, "motor-brake-queues") ? BRAKE_MOTOR :
-                        !strcmp(mode, "platform-brake-queues") ? BRAKE_PLATFORM : SET_MOTOR_SPEED;
-        run_sleep_queues(type, !strcmp(mode, "idle-queues"), stale);
-        assert(output[3] == 70 && motion_writes == (!strcmp(mode, "idle-queues") ? 2u : 3u));
+    if (!strcmp(mode, "usb-idle")) {
+        run_usb_idle_lifecycle();
+        assert(!motion_writes && !braked_mask);
+        return 0;
+    }
+    if (strstr(mode, "-queues")) {
+        bool board = strncmp(mode, "idle-", 5) == 0;
+        uint8_t stale = strstr(mode, "motor-brake-queues") ? BRAKE_MOTOR :
+                        strstr(mode, "platform-brake-queues") ? BRAKE_PLATFORM : SET_MOTOR_SPEED;
+        run_sleep_queues(type, board, stale);
+        assert(output[3] == 70 && motion_writes == (board ? 2u : 3u));
         return 0;
     }
     FILE *file = fopen(path, "rb");
@@ -383,11 +391,20 @@ int main(int argc, char **argv)
     assert(!tasks_started && !motion_writes && !fram_writes);
     for (int i = 0; i < 4; ++i) assert(output[i] == 0);
     connect();
+    if (!strcmp(mode, "idle-reboot")) {
+        request((controller_command_t){.commandType=GET_BOARD_IDLE}, RESPONSE_OK);
+        assert(!reply[4]);
+        request((controller_command_t){.commandType=GET_DRIVER_SLEEP}, RESPONSE_OK);
+        assert(!reply[4] && !motion_writes && !tasks_started);
+        return 0;
+    }
     if (!strcmp(mode, "brake-policy")) { fresh_brake_commands(); return 0; }
     if (!strcmp(mode, "unsupported")) {
         configure(type);
-        request((controller_command_t){.commandType=GET_BOARD_IDLE}, RESPONSE_SENSOR_NOT_AVAILABLE);
-        request((controller_command_t){.commandType=SET_BOARD_IDLE, .properties.set_board_idle={1}}, RESPONSE_SENSOR_NOT_AVAILABLE);
+        if (!BOARD_HAS_BOARD_IDLE) {
+            request((controller_command_t){.commandType=GET_BOARD_IDLE}, RESPONSE_SENSOR_NOT_AVAILABLE);
+            request((controller_command_t){.commandType=SET_BOARD_IDLE, .properties.set_board_idle={1}}, RESPONSE_SENSOR_NOT_AVAILABLE);
+        }
         assert(!connection_board_idle() && !driver_sleep);
         if (BOARD_HAS_DRIVER_SLEEP) {
             request((controller_command_t){.commandType=GET_DRIVER_SLEEP}, RESPONSE_OK);

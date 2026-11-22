@@ -1,6 +1,6 @@
 # Kinisi motor controller commands
 
-**Protocol 2.17.0** · Generated from [commands.json](commands.json)
+**Protocol 2.18.0** · Generated from [commands.json](commands.json)
 
 [Command index](#command-index) · [Wire format](#wire-format) · [Error codes](#error-codes)
 
@@ -2445,7 +2445,7 @@ No payload parameters.
 
 **Client → controller** · **Payload:** 1 bytes
 
-Enter communication-preserving board idle (1) or explicitly leave it (0). Entry stops control and sleeps all drivers. Existing subscriptions pause and resume with fresh samples. Heartbeat, time sync and direct reads remain available. Wake preserves an independent driver sleep request present on entry, otherwise it verifies initialized drivers and leaves outputs stopped. A failed transition keeps idle and motion inhibition active for explicit retry. Requires READY, protocol 2.16 and a board with board idle support.
+Set communication-preserving board idle. Entry (1) stops control, inhibits the drivers and permits shallow CPU sleep between tasks. USB traffic, time sync, queries and heartbeat keep using the existing session. Only explicit exit (0) clears idle. Exit preserves a prior independent driver inhibit and leaves outputs stopped. On original v0.3 and Nano both DRV8870 inputs stay low until fresh drive or brake. On v0.4, previously active drivers are verified before release. A failed transition retains idle and inhibit for explicit retry. Requires READY, an idle-capable profile and protocol 2.18 on v0.3 or Nano, or 2.16 on v0.4.
 
 #### Parameters
 
@@ -2469,7 +2469,7 @@ Enter communication-preserving board idle (1) or explicitly leave it (0). Entry 
 
 **Client → controller** · **Payload:** 0 bytes
 
-Read the shared board idle request. It survives reconnect and clears on reset. GET_DRIVER_SLEEP reports the effective motor-driver inhibit, which is also set while the board is idle. Requires READY, protocol 2.16 and a board with board idle support.
+Read the shared logical idle request without clearing it. Interrupts can resume the CPU while this request remains set. GET_DRIVER_SLEEP reports the effective driver inhibit. Idle survives reconnect and clears at reset. Requires READY and board idle support (original v0.3 and Nano since protocol 2.18, v0.4 since 2.16).
 
 #### Parameters
 

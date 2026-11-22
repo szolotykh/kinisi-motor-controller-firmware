@@ -29,14 +29,27 @@ with tempfile.TemporaryDirectory() as folder:
     out = Path(folder)
     for revision in (2, 3, "3_1", 4):
         binary = out / f'configuration_v{revision}.exe'
+        usb_objects = []
+        usb_flags = []
+        if revision == "3_1":
+            usb_flags = ['-DKINISI_CONFIGURATION_REAL_USB', '-Itest/test_usb_vbus/stubs']
+            # Link the real Nano VBUS lifecycle beside the real command task.
+            # USB has its own stack/HAL boundary; the controller fixture uses
+            # narrower motor, clock and RTOS doubles.
+            for src in ('lib/usb/usb_device.c', 'test/test_configuration/nano_usb_stack.c'):
+                obj = out / (Path(src).stem + '.o')
+                subprocess.run([compiler, '-std=c11', '-Wall', '-Wextra', '-Werror', '-DMP_V3_1',
+                                '-Itest/test_usb_vbus/stubs', '-Ilib/usb', '-Iinclude', '-Ilib/utils/src',
+                                '-c', src, '-o', str(obj)], cwd=root, check=True)
+                usb_objects.append(str(obj))
         subprocess.run([compiler, '-std=gnu11', '-Wall', '-Wextra', '-Werror',
                         '-Wno-unused-parameter', '-Wno-unused-variable', '-Wno-error=absolute-value',
                         f'-DMP_V{revision}', '-DMOTOR_CONTROL_MODEL_ENABLE_DIRECTION=2',
                         f'-DBOARD_HAS_DRIVER_SLEEP={int(revision != 2)}',
                         f'-DBOARD_HAS_DRV8870_SLEEP={int(revision in (3, "3_1"))}',
-                        f'-DBOARD_HAS_BOARD_IDLE={int(revision == 4)}',
+                        '-include', 'board_revision.h',
                         f'-DMOTOR_CONTROL_MODEL={2 if revision == 4 else 1}',
-                        *['-I' + path for path in includes], *sources, '-lm', '-o', str(binary)],
+                        *['-I' + path for path in includes], *usb_flags, *sources, *usb_objects, '-lm', '-o', str(binary)],
                        cwd=root, check=True)
 
         def run(mode, image, platform):
@@ -44,12 +57,19 @@ with tempfile.TemporaryDirectory() as folder:
 
         if revision != 4:
             run('unsupported', out / 'unused.fram', 1)
+            if revision == "3_1":
+                run('usb-idle', out / 'unused.fram', 1)
+                print('PASS Nano same-session USB idle interrupt/ping/read/wake and VBUS loss/renewed handshake')
             if revision != 2:
                 for bus in (0, 1):
-                    for mode in ('sleep-queues', 'motor-brake-queues', 'platform-brake-queues'):
+                    for mode in ('sleep-queues', 'motor-brake-queues', 'platform-brake-queues',
+                                 'idle-queues', 'idle-motor-brake-queues', 'idle-platform-brake-queues'):
                         run(mode, out / 'unconfigured.fram', bus)
                 run('brake-policy', out / 'unconfigured.fram', 1)
                 run('sleep-policy', out / 'unused.fram', 1)
+                run('idle-policy', out / 'unused.fram', 1)
+                run('idle-reboot', out / 'unused.fram', 1)
+                print(f'PASS MP_V{revision} shallow idle, independent sleep, interrupted wakes and stale drive/brake')
             print(f'PASS MP_V{revision} power capability, transport gates and no FRAM access')
             continue
         for bus in (0, 1):

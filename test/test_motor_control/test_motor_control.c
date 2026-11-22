@@ -508,6 +508,15 @@ static void drv8870_sleep_tests(void)
     assert(hw_motor_set_driver_sleep(true));
     before = delays;
     assert(hw_motor_set_driver_sleep(true) && delays == before);
+    // Board idle calls sleep(true) on entry AND exit if a prior independent
+    // request is retained. An input stuck high after a confirmed hold must
+    // fail each verification, preserve the inhibit and permit explicit retry.
+    stuck_sleep = 1;
+    assert(!hw_motor_set_driver_sleep(true) && hw_motor_drivers_sleeping());
+    assert(!hw_motor_set_driver_sleep(true) && hw_motor_drivers_sleeping());
+    stuck_sleep = -1;
+    assert(hw_motor_set_driver_sleep(true) && hw_motor_drivers_sleeping());
+    before = delays;
     assert(hw_motor_set_pwm_frequency(25000));
     for (unsigned i = 0; i < NUMBER_MOTORS; ++i) {
         motor->initialize(i, false); motor->set_speed(i, 80); motor->brake(i); motor->stop(i);
