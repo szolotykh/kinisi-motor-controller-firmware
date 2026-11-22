@@ -27,12 +27,13 @@ sources = ['test/test_configuration/test_idle_hook.c', 'test/test_configuration/
 
 with tempfile.TemporaryDirectory() as folder:
     out = Path(folder)
-    for revision in (3, 4):
+    for revision in (2, 3, "3_1", 4):
         binary = out / f'configuration_v{revision}.exe'
         subprocess.run([compiler, '-std=gnu11', '-Wall', '-Wextra', '-Werror',
                         '-Wno-unused-parameter', '-Wno-unused-variable', '-Wno-error=absolute-value',
                         f'-DMP_V{revision}', '-DMOTOR_CONTROL_MODEL_ENABLE_DIRECTION=2',
-                        f'-DBOARD_HAS_DRIVER_SLEEP={int(revision == 4)}',
+                        f'-DBOARD_HAS_DRIVER_SLEEP={int(revision != 2)}',
+                        f'-DBOARD_HAS_DRV8870_SLEEP={int(revision in (3, "3_1"))}',
                         f'-DBOARD_HAS_BOARD_IDLE={int(revision == 4)}',
                         f'-DMOTOR_CONTROL_MODEL={2 if revision == 4 else 1}',
                         *['-I' + path for path in includes], *sources, '-lm', '-o', str(binary)],
@@ -41,9 +42,15 @@ with tempfile.TemporaryDirectory() as folder:
         def run(mode, image, platform):
             subprocess.run([str(binary), mode, str(image), str(platform)], check=True, timeout=10)
 
-        if revision == 3:
+        if revision != 4:
             run('unsupported', out / 'unused.fram', 1)
-            print('PASS v0.3 explicit unsupported save preserves setup and never calls FRAM')
+            if revision != 2:
+                for bus in (0, 1):
+                    for mode in ('sleep-queues', 'motor-brake-queues', 'platform-brake-queues'):
+                        run(mode, out / 'unconfigured.fram', bus)
+                run('brake-policy', out / 'unconfigured.fram', 1)
+                run('sleep-policy', out / 'unused.fram', 1)
+            print(f'PASS MP_V{revision} power capability, transport gates and no FRAM access')
             continue
         for bus in (0, 1):
             run('sleep-queues', out / 'unconfigured.fram', bus)

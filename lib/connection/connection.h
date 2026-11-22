@@ -111,3 +111,5 @@ void connection_poll(connection_t *);
  * @return Active session clock, or null outside serialized command dispatch.
  */
 const time_sync_t *connection_current_clock(void);
+// True only during dispatch of a frame begun before a verified driver wake.
+bool connection_before_driver_wake(void);

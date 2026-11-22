@@ -22,7 +22,7 @@
 
 static uint8_t fram[8192], motor_enabled[4], reversed_motor[4], reversed_encoder[4];
 static double encoder_scale[4], output[4];
-static unsigned motion_writes, tasks_started, fram_writes, fram_reads;
+static unsigned motion_writes, tasks_started, fram_writes, fram_reads, braked_mask;
 static int write_budget = -1, failed_motor = -1, failed_encoder = -1;
 static uint32_t frequency = 100000;
 static bool driver_sleep, fail_driver_transition;
@@ -35,7 +35,7 @@ bool hw_motor_set_driver_sleep(bool sleeping) {
     driver_sleep = sleeping || fail_driver_transition;
     return !fail_driver_transition;
 }
-void run_sleep_queues(unsigned blocked_bus, bool board_idle);
+void run_sleep_queues(unsigned blocked_bus, bool board_idle, uint8_t stale_command);
 void check_idle_hook(bool expected);
 
 bool hw_fram_read(uint16_t address, void *data, uint16_t length)
@@ -66,7 +66,8 @@ static void motor_init(uint8_t i, bool reverse)
 static uint8_t motor_ready(uint8_t i) { return motor_enabled[i]; }
 static uint8_t motor_reverse(uint8_t i) { return reversed_motor[i]; }
 static void pwm(uint8_t i, double value) { output[i] = value; motion_writes += value != 0; }
-static void coast(uint8_t i) { output[i] = 0; }
+static void coast(uint8_t i) { output[i] = 0; braked_mask &= ~(1u << i); }
+static void brake(uint8_t i) { if (motor_enabled[i]) braked_mask |= 1u << i; }
 static void encoder_init(uint8_t i, double res, uint8_t reverse) { encoder_scale[i] = res; reversed_encoder[i] = reverse; }
 static uint8_t encoder_ready(uint8_t i) { return encoder_scale[i] != 0; }
 static double scale(uint8_t i) { return encoder_scale[i]; }
@@ -92,7 +93,7 @@ void hw_motor_discard_restored_setup(void)
 }
 const hw_motor_interface_t *get_motor_interface(void)
 {
-    static const hw_motor_interface_t iface = {motor_init, motor_reverse, motor_ready, pwm, coast, coast};
+    static const hw_motor_interface_t iface = {motor_init, motor_reverse, motor_ready, pwm, coast, brake};
     return &iface;
 }
 const hw_encoder_interface_t *get_encoder_interface(void)
@@ -240,7 +241,8 @@ static void sleep_policy(bool board)
         check_idle_hook(false);
     }
     configure(PLATFORM_DIFFERENTIAL);
-    request((controller_command_t){.commandType=SAVE_CONFIGURATION}, RESPONSE_OK);
+    request((controller_command_t){.commandType=SAVE_CONFIGURATION},
+        BOARD_HAS_DRV8870_SLEEP ? RESPONSE_SENSOR_NOT_AVAILABLE : RESPONSE_OK);
     unsigned writes = fram_writes;
     request((controller_command_t){.commandType=INITIALIZE_MOTOR_CONTROLLER,
         .properties.initialize_motor_controller={3,1,3,1,803.5,1,0,0,10}}, RESPONSE_OK);
@@ -285,7 +287,8 @@ static void sleep_policy(bool board)
         if (cmd.commandType == SET_MOTOR_CURRENT_LIMIT) cmd.properties.set_motor_current_limit.threshold_ma = 4000;
         request(cmd, RESPONSE_DRIVERS_ASLEEP);
     }
-    verify(PLATFORM_DIFFERENTIAL);
+    if (BOARD_HAS_DRV8870_SLEEP) check_frequency(25000);
+    else verify(PLATFORM_DIFFERENTIAL);
     request((controller_command_t){.commandType=COAST_PLATFORM}, RESPONSE_OK);
     if (board) {
         set_sleep.properties.set_board_idle.idle = 0;
@@ -298,7 +301,8 @@ static void sleep_policy(bool board)
     request(set_sleep, RESPONSE_OK);
     assert(!driver_sleep);
     if (board) check_idle_hook(false);
-    verify(PLATFORM_DIFFERENTIAL);
+    if (BOARD_HAS_DRV8870_SLEEP) check_frequency(25000);
+    else verify(PLATFORM_DIFFERENTIAL);
     assert(fram_writes == writes);
     request((controller_command_t){.commandType=GET_MOTOR_POSITION, .properties.get_motor_position={3}},
         RESPONSE_CONTROLLER_NOT_INITIALIZED);
@@ -334,14 +338,41 @@ static void sleep_policy(bool board)
     }
 }
 
+static void fresh_brake_commands(void)
+{
+    controller_command_t motor_brake = {.commandType=BRAKE_MOTOR, .properties.brake_motor={3}};
+    controller_command_t platform_brake = {.commandType=BRAKE_PLATFORM};
+    request(motor_brake, RESPONSE_OK);
+    request(platform_brake, RESPONSE_OK);
+    assert(braked_mask == 0); // Ordinary brake on uninitialized hardware is a no-op.
+    configure(PLATFORM_DIFFERENTIAL); // Owns wheels 0 and 1; both standalone motors are also ready.
+    request((controller_command_t){.commandType=SET_DRIVER_SLEEP, .properties.set_driver_sleep={1}}, RESPONSE_OK);
+    request(motor_brake, RESPONSE_DRIVERS_ASLEEP);
+    request(platform_brake, RESPONSE_DRIVERS_ASLEEP);
+    request((controller_command_t){.commandType=SET_DRIVER_SLEEP, .properties.set_driver_sleep={0}}, RESPONSE_OK);
+    assert(!motion_writes && !braked_mask);
+    request((controller_command_t){.commandType=BRAKE_MOTOR, .properties.brake_motor={0}}, RESPONSE_MOTOR_OWNED);
+    request(motor_brake, RESPONSE_OK);
+    assert(braked_mask == (1u << 3));
+    request((controller_command_t){.commandType=STOP_MOTOR, .properties.stop_motor={3}}, RESPONSE_OK);
+    assert(braked_mask == 0);
+    request(platform_brake, RESPONSE_OK);
+    assert(braked_mask == 3);
+    request((controller_command_t){.commandType=COAST_PLATFORM}, RESPONSE_OK);
+    assert(!braked_mask && !motion_writes);
+}
+
 int main(int argc, char **argv)
 {
     assert(argc == 4);
     const char *mode = argv[1], *path = argv[2];
     int type = atoi(argv[3]);
-    if (!strcmp(mode, "sleep-queues") || !strcmp(mode, "idle-queues")) {
-        run_sleep_queues(type, !strcmp(mode, "idle-queues"));
-        assert(output[3] == 70 && motion_writes == 2);
+    if (!strcmp(mode, "sleep-queues") || !strcmp(mode, "idle-queues") ||
+        !strcmp(mode, "motor-brake-queues") || !strcmp(mode, "platform-brake-queues")) {
+        uint8_t stale = !strcmp(mode, "motor-brake-queues") ? BRAKE_MOTOR :
+                        !strcmp(mode, "platform-brake-queues") ? BRAKE_PLATFORM : SET_MOTOR_SPEED;
+        run_sleep_queues(type, !strcmp(mode, "idle-queues"), stale);
+        assert(output[3] == 70 && motion_writes == (!strcmp(mode, "idle-queues") ? 2u : 3u));
         return 0;
     }
     FILE *file = fopen(path, "rb");
@@ -352,13 +383,19 @@ int main(int argc, char **argv)
     assert(!tasks_started && !motion_writes && !fram_writes);
     for (int i = 0; i < 4; ++i) assert(output[i] == 0);
     connect();
+    if (!strcmp(mode, "brake-policy")) { fresh_brake_commands(); return 0; }
     if (!strcmp(mode, "unsupported")) {
         configure(type);
         request((controller_command_t){.commandType=GET_BOARD_IDLE}, RESPONSE_SENSOR_NOT_AVAILABLE);
         request((controller_command_t){.commandType=SET_BOARD_IDLE, .properties.set_board_idle={1}}, RESPONSE_SENSOR_NOT_AVAILABLE);
         assert(!connection_board_idle() && !driver_sleep);
-        request((controller_command_t){.commandType=GET_DRIVER_SLEEP}, RESPONSE_SENSOR_NOT_AVAILABLE);
-        request((controller_command_t){.commandType=SET_DRIVER_SLEEP, .properties.set_driver_sleep={1}}, RESPONSE_SENSOR_NOT_AVAILABLE);
+        if (BOARD_HAS_DRIVER_SLEEP) {
+            request((controller_command_t){.commandType=GET_DRIVER_SLEEP}, RESPONSE_OK);
+            assert(!reply[4]);
+        } else {
+            request((controller_command_t){.commandType=GET_DRIVER_SLEEP}, RESPONSE_SENSOR_NOT_AVAILABLE);
+            request((controller_command_t){.commandType=SET_DRIVER_SLEEP, .properties.set_driver_sleep={1}}, RESPONSE_SENSOR_NOT_AVAILABLE);
+        }
         request((controller_command_t){.commandType=SAVE_CONFIGURATION}, RESPONSE_SENSOR_NOT_AVAILABLE);
         request((controller_command_t){.commandType=GET_CONFIGURATION_FIELD}, RESPONSE_SENSOR_NOT_AVAILABLE);
         assert(platform_is_initialized() && !fram_writes && !fram_reads);

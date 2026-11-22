@@ -224,6 +224,7 @@ static bool odometry_command(uint8_t cmd)
  * @return RESPONSE_OK or a generated protocol error code.
  */
 static uint8_t request_wake_barriers;
+bool connection_before_driver_wake(void) { return (request_wake_barriers & BEFORE_DRIVER_WAKE) != 0; }
 static bool creates_subscription(uint8_t command)
 {
     return command == SUBSCRIBE || command == SUBSCRIBE_WITH_MODE ||

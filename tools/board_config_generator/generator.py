@@ -14,7 +14,7 @@ FIRMWARE_RESERVED_PINS = {"PA11": "USB_OTG_FS_DM", "PA12": "USB_OTG_FS_DP"}
 # Timer routes used by supported boards. Extend deliberately when adding hardware.
 PWM_PINS = {
     ("TIM1", 1, False): {"PA8"}, ("TIM1", 2, False): {"PA9"},
-    ("TIM1", 4, False): {"PE14"}, ("TIM1", 1, True): {"PE8"},
+    ("TIM1", 3, False): {"PA10"}, ("TIM1", 4, False): {"PE14"}, ("TIM1", 1, True): {"PE8"},
     ("TIM1", 2, True): {"PE10"}, ("TIM1", 3, True): {"PE12"},
     ("TIM2", 1, False): {"PA5", "PA15"}, ("TIM2", 2, False): {"PB3"},
     ("TIM2", 3, False): {"PB10"}, ("TIM2", 4, False): {"PB11"},
@@ -63,7 +63,7 @@ def entries(value, maximum, at, minimum=1):
 
 def validate(board):
     fields(board, ("schema_version", "board", "mcu", "buses", "motors", "encoders", "gpio", "status_leds"),
-           ("shared_pins", "temperature_sensors", "imu_sensors", "power"))
+           ("shared_pins", "temperature_sensors", "imu_sensors", "power", "usb_vbus_sense"))
     integer(board["schema_version"], 1, 1, "schema_version")
     identity = board["board"]
     fields(identity, ("model", "revision", "build_define"), at="board")
@@ -71,13 +71,17 @@ def validate(board):
     require(isinstance(identity["revision"], str) and re.fullmatch(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", identity["revision"]),
             "board.revision: expected major.minor.patch")
     require(all(int(v) <= 255 for v in identity["revision"].split(".")), "board.revision: components must fit uint8")
-    require(isinstance(identity["build_define"], str) and re.fullmatch(r"MP_V[1-9][0-9]*", identity["build_define"]),
-            "board.build_define: expected MP_V<number>")
+    require(isinstance(identity["build_define"], str) and re.fullmatch(r"MP_V[1-9][0-9]*(?:_[1-9][0-9]*)?", identity["build_define"]),
+            "board.build_define: expected MP_V<number> with an optional patch suffix")
     fields(board["mcu"], ("part",), at="mcu")
     require(board["mcu"]["part"] in ("STM32F405RGT6", "STM32F405VGT6"), "mcu.part: unsupported MCU")
     if "power" in board:
         fields(board["power"], ("board_idle",), at="power")
         boolean(board["power"]["board_idle"], "power.board_idle")
+    reserved = dict(FIRMWARE_RESERVED_PINS)
+    if "usb_vbus_sense" in board:
+        require(board["usb_vbus_sense"] == "PA9", "USB FS VBUS sensing requires PA9")
+        reserved["PA9"] = "USB_OTG_FS_VBUS"
     pins, timer_channels, encoder_timers = {}, set(), set()
 
     def pin(value, user):
@@ -85,8 +89,8 @@ def validate(board):
                 f"{user}: invalid pin {value!r}")
         if board["mcu"]["part"] == "STM32F405RGT6":
             require(value[1] in "ABC" or value == "PD2", f"{user}: pin unavailable on STM32F405RGT6")
-        if value in FIRMWARE_RESERVED_PINS:
-            raise ConfigError(f"{user}: pin {value} is reserved by firmware for {FIRMWARE_RESERVED_PINS[value]}")
+        if value in reserved:
+            raise ConfigError(f"{user}: pin {value} is reserved by firmware for {reserved[value]}")
         pins.setdefault(value, []).append(user)
 
     def route(timer, channel, complementary, value, user):
@@ -169,8 +173,8 @@ def validate(board):
         require(type(driver["slew_rate_v_per_us"]) in (int, float) and driver["slew_rate_v_per_us"] in SLEW_RATES,
                 "motors.driver.slew_rate_v_per_us: unsupported DRV8873 slew rate")
         used_buses.add(driver["bus"])
-    else:
-        require("driver" not in motors, "pwm: SPI driver/buses are not supported")
+    elif "driver" in motors:
+        require(motors["driver"] == {"type": "DRV8870"}, "pwm: SPI driver/buses are not supported")
     require(set(board["buses"]) == used_buses, "buses: unused bus definition")
     for motor in entries(motors["channels"], 4, "motors.channels"):
         user = f"motors.{motor['id']}"
@@ -258,7 +262,7 @@ def validate(board):
     for value, users in pins.items():
         require(len(users) == 1 or value in declared, f"pin {value} is shared by {', '.join(users)}; declare shared_pins explicitly")
     if board.get("power", {}).get("board_idle"):
-        require(supports_driver_sleep(board), "power.board_idle requires explicit motor-driver sleep")
+        require(enable_direction and supports_driver_sleep(board), "power.board_idle requires explicit motor-driver sleep on an enable/direction board")
     return board
 
 
@@ -342,6 +346,8 @@ def client_profile(board):
 
 def supports_driver_sleep(board):
     motors = board["motors"]
+    if motors.get("driver", {}).get("type") == "DRV8870":
+        return True
     return (motors.get("driver", {}).get("type") == "DRV8873S"
             and all("sleep" in channel for channel in motors["channels"]))
 
@@ -361,9 +367,11 @@ def render(boards):
                      f'#define KINISI_MCU_PART "{board["mcu"]["part"]}"']
         for key, number in zip(("MAJOR", "MINOR", "PATCH"), board["board"]["revision"].split(".")):
             identity.append(f"#define KINISI_BOARD_VERSION_{key} {number}")
+        identity.append(f"#define KINISI_USB_VBUS_SENSING {int('usb_vbus_sense' in board)}")
         motors = board["motors"]
         model = motors["control_model"].upper()
         hardware += [selection, f"#define MOTOR_CONTROL_MODEL MOTOR_CONTROL_MODEL_{model}",
+                     f"#define BOARD_HAS_DRV8870_SLEEP {int(motors.get('driver', {}).get('type') == 'DRV8870')}",
                      f"#define BOARD_HAS_DRIVER_SLEEP {int(supports_driver_sleep(board))}",
                      f"#define BOARD_HAS_BOARD_IDLE {int(board.get('power', {}).get('board_idle', False))}",
                      f"#define MOTOR_PWM_FREQUENCY_HZ {motors['pwm_frequency_hz']}U",

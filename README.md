@@ -87,13 +87,14 @@ and `include/board_revision.h` (board identity). Both files are checked in;
 PlatformIO regenerates them before firmware builds. Use `--check` to detect
 stale output without changing files. JSON is never parsed on the MCU.
 
-Explicit build targets are `v0_1`, `v0_2`, `v0_3`, and `v0_4`:
+Build the five supported board images with the following command.
 
 ```sh
-pio run -e v0_1 -e v0_2 -e v0_3 -e v0_4
+pio run -e v0_1 -e v0_2 -e v0_3 -e genericSTM32F405RG_v0_3_1 -e v0_4
 ```
 
-The original `genericSTM32F405RG` target remains v0.3. Builds reject conflicting
+The original `genericSTM32F405RG` target builds v0.3.0. Nano uses
+`genericSTM32F405RG_v0_3_1` for its different motor 3 and USB wiring. Builds reject conflicting
 board selections and an MCU that does not match the selected JSON definition.
 
 ## Running Tests

@@ -596,7 +596,10 @@ uint8_t command_handler(controller_command_t* cmd, void (*command_callback)(uint
             }
             if (cmd->properties.set_driver_sleep.sleeping > 1) return RESPONSE_INVALID_ARGUMENT;
             if (connection_board_idle()) return RESPONSE_BOARD_IDLE;
-            return set_driver_sleep(cmd->properties.set_driver_sleep.sleeping != 0);
+            bool sleeping = cmd->properties.set_driver_sleep.sleeping != 0;
+            if (!sleeping && hw_motor_drivers_sleeping() && connection_before_driver_wake())
+                return RESPONSE_DRIVERS_ASLEEP;
+            return set_driver_sleep(sleeping);
 #else
             return RESPONSE_SENSOR_NOT_AVAILABLE;
 #endif

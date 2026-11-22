@@ -1,4 +1,5 @@
 #include "commands_manager.h"
+#include "usb_device.h"
 /* USER CODE BEGIN Header */
 /**
   ******************************************************************************
@@ -23,6 +24,7 @@
 /* Includes ------------------------------------------------------------------*/
 #include "stm32f4xx.h"
 #include "stm32f4xx_hal.h"
+#include "board_revision.h"
 #include "usbd_def.h"
 #include "usbd_core.h"
 
@@ -89,6 +91,13 @@ void HAL_PCD_MspInit(PCD_HandleTypeDef* pcdHandle)
     GPIO_InitStruct.Alternate = GPIO_AF10_OTG_FS;
     HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
+#if KINISI_USB_VBUS_SENSING
+    GPIO_InitStruct.Pin = GPIO_PIN_9;
+    GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+    GPIO_InitStruct.Pull = GPIO_NOPULL;
+    HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+#endif
+
     /* Peripheral clock enable */
     __HAL_RCC_USB_OTG_FS_CLK_ENABLE();
 
@@ -116,6 +125,9 @@ void HAL_PCD_MspDeInit(PCD_HandleTypeDef* pcdHandle)
     PA12     ------> USB_OTG_FS_DP
     */
     HAL_GPIO_DeInit(GPIOA, GPIO_PIN_11|GPIO_PIN_12);
+#if KINISI_USB_VBUS_SENSING
+    HAL_GPIO_DeInit(GPIOA, GPIO_PIN_9);
+#endif
 
     /* Peripheral interrupt Deinit*/
     HAL_NVIC_DisableIRQ(OTG_FS_IRQn);
@@ -344,6 +356,8 @@ USBD_StatusTypeDef USBD_LL_Init(USBD_HandleTypeDef *pdev)
   hpcd_USB_OTG_FS.Init.Sof_enable = DISABLE;
   hpcd_USB_OTG_FS.Init.low_power_enable = DISABLE;
   hpcd_USB_OTG_FS.Init.lpm_enable = DISABLE;
+  /* Nano's R107/R108 divider feeds a regular GPIO, not the embedded VBUS
+     comparator (ST AN4879). usb_device.c performs software attach/detach. */
   hpcd_USB_OTG_FS.Init.vbus_sensing_enable = DISABLE;
   hpcd_USB_OTG_FS.Init.use_dedicated_ep1 = DISABLE;
   if (HAL_PCD_Init(&hpcd_USB_OTG_FS) != HAL_OK)
@@ -418,6 +432,16 @@ USBD_StatusTypeDef USBD_LL_Stop(USBD_HandleTypeDef *pdev)
   USBD_StatusTypeDef usb_status = USBD_OK;
 
   hal_status = HAL_PCD_Stop(pdev->pData);
+
+#if KINISI_USB_VBUS_SENSING
+  /* HAL_PCD_Stop disconnects and disables global USB interrupts but leaves
+     endpoint status and RX data behind. Discard them before a new cable session. */
+  if (hal_status == HAL_OK) hal_status = USB_StopDevice(hpcd_USB_OTG_FS.Instance);
+  __HAL_PCD_CLEAR_FLAG(&hpcd_USB_OTG_FS, 0xFFFFFFFFU);
+  /* USBD_Stop ignores the LL return value. Preserve failure out of band so
+     the task leaves USB IRQs masked without halting I2C or the timebase. */
+  if (hal_status != HAL_OK) MX_USB_DEVICE_Fault();
+#endif
 
   usb_status =  USBD_Get_USB_Status(hal_status);
 

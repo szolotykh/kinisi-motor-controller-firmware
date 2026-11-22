@@ -22,3 +22,7 @@ void commands_manager_start(void);
  * @note IRQ-safe notification; the command task stops motors and invalidates sessions.
  */
 void commands_manager_usb_disconnected(void);
+
+/** Task-only: synchronously coast, cancel controllers and invalidate both sessions
+ * before USB teardown can block or fail. Never call from an IRQ. */
+void commands_manager_usb_quiesce(void);

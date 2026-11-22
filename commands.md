@@ -1,6 +1,6 @@
 # Kinisi motor controller commands
 
-**Protocol 2.16.0** · Generated from [commands.json](commands.json)
+**Protocol 2.17.0** · Generated from [commands.json](commands.json)
 
 [Command index](#command-index) · [Wire format](#wire-format) · [Error codes](#error-codes)
 
@@ -2393,7 +2393,7 @@ Current field value in the units of the corresponding initialization command. Bo
 
 **Client → controller** · **Payload:** 1 bytes
 
-Explicitly inhibit or wake the board's motor drivers. Entry stops motion and controllers across all connections. Wake verifies the retained settings for previously initialized channels and leaves outputs stopped. A failed wake keeps the inhibit set and permits retry. Repeating a confirmed state is a no-op. After a failed sleep entry, repeat sleep to retry pin verification. Requires a ready connection, protocol 2.15 and a board profile with driver sleep.
+Set the board-wide motor inhibit. Entry stops all controllers and blocks new motion. On v0.3 and Nano (protocol 2.17), entry holds each DRV8870 input pair low. Release keeps the inputs low until a fresh drive or explicit short brake. On v0.4 (protocol 2.15+), wake verifies retained settings for initialized drivers and leaves outputs stopped. Failed transitions retain the inhibit for explicit retry. Requires READY and a profile supporting driver sleep.
 
 #### Parameters
 
@@ -2407,7 +2407,7 @@ Explicitly inhibit or wake the board's motor drivers. Entry stops motion and con
 
 #### Errors
 
-[`BOARD_IDLE`](#error-board-idle) (20) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6)
+[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`BOARD_IDLE`](#error-board-idle) (20) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6)
 
 [Back to command index](#command-index)
 
@@ -2417,7 +2417,7 @@ Explicitly inhibit or wake the board's motor drivers. Entry stops motion and con
 
 **Client → controller** · **Payload:** 0 bytes
 
-Read the board-wide driver sleep inhibit. The value persists across connections and clears at boot. Uninitialized individual drivers may be asleep even when the inhibit is clear. Requires a ready connection, protocol 2.15 and a board profile with driver sleep.
+Read the software motor inhibit across connections. It clears at boot. A zero permits commands and does not establish that each chip is awake. Requires READY and driver sleep support (v0.4 since protocol 2.15, original v0.3 and Nano since 2.17).
 
 #### Parameters
 

@@ -14,7 +14,8 @@ The bundle has `schema_version: 1` and a `boards` array. Each profile contains:
 - `resources`: motor, encoder, GPIO and status LED counts.
 - `power.driver_sleep`: whether every motor driver has supported explicit sleep control.
   Treat an absent flag as unavailable. The public commands require a ready session
-  on firmware protocol 2.15 or later in the compatible major version.
+  on protocol 2.15 or later for model 1 v0.4.0, or 2.17 or later for model 1
+  v0.3.0 and Nano v0.3.1. These gates apply within protocol major 2.
 - `power.board_idle`: support for communication-preserving idle. Require a true flag
   on the exact profile and a ready protocol 2.16 (or newer compatible 2.x) connection.
   Earlier bundles may omit this field. See [board idle](board-idle.md).
@@ -40,6 +41,7 @@ The currently generated resource counts are:
 | 0.1.0 | 4 | 1 | 4 | 1 | 0 | 0 |
 | 0.2.0 | 4 | 4 | 4 | 1 | 0 | 0 |
 | 0.3.0 | 4 | 4 | 10 | 1 | 0 | 0 |
+| 0.3.1 (Nano) | 4 | 4 | 10 | 1 | 0 | 0 |
 | 0.4.0 | 4 | 4 | 8 | 1 | 1 | 1 |
 
 ## Library integration

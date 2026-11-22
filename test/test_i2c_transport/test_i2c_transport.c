@@ -2,6 +2,8 @@
 // File name: test_i2c_transport.c
 // Description: Exercise production I2C IRQ wiring and buffer ownership across master reads.
 //------------------------------------------------------------
+#include "connection.h"
+#include "wake_barriers.h"
 #include <assert.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -196,6 +198,55 @@ static void test_padded_short_replies(void)
     I2C2_ER_IRQHandler();
 }
 
+static unsigned brake_dispatches;
+static uint8_t last_reply[6], last_size;
+static uint64_t now(void) { return 1; }
+static bool capture_reply(uint8_t *data, uint8_t length)
+{
+    assert(length <= sizeof(last_reply));
+    memcpy(last_reply, data, length);
+    last_size = length;
+    return true;
+}
+
+static uint8_t execute_brake(controller_command_t *cmd, protocol_send_fn reply)
+{
+    assert(cmd->commandType == BRAKE_MOTOR || cmd->commandType == BRAKE_PLATFORM);
+    ++brake_dispatches;
+    return RESPONSE_OK;
+}
+
+static void fragmented_brake(uint8_t command, bool wake_after_length)
+{
+    connection_t c;
+    connection_init(&c, execute_brake, capture_reply, now);
+    c.clock.initialized = c.clock.ready = c.ready_announced = true;
+    init_queue(&I2CCommandQueue);
+    brake_dispatches = 0;
+    for (unsigned fresh = 0; fresh <= 1; ++fresh) {
+        controller_command_t cmd = {.commandType=command, .message_id=17+fresh, .properties.brake_motor={3}};
+        uint8_t length = command_request_size(command);
+        HAL_I2C_AddrCallback(&hi2c2, 0, 0);
+        if (!fresh && !wake_after_length) mark_pending_external_i2c_requests(BEFORE_DRIVER_WAKE);
+        i2c_message_buffer[0] = length;
+        HAL_I2C_SlaveRxCpltCallback(&hi2c2);
+        i2c_message_buffer[1] = command;
+        if (!fresh && wake_after_length) mark_pending_external_i2c_requests(BEFORE_DRIVER_WAKE);
+        memcpy(i2c_message_buffer + 2, (const uint8_t *)&cmd + 1, length - 1);
+        HAL_I2C_SlaveRxCpltCallback(&hi2c2);
+        char frame[8]; int received;
+        int barriers = dequeue(&I2CCommandQueue, frame, &received);
+        assert(received == length);
+        connection_receive_queued(&c, (uint8_t *)frame, received, barriers);
+        connection_poll(&c);
+        assert(last_reply[2] == cmd.message_id && last_reply[3] == 0);
+        if (!fresh) {
+            assert(last_size == 6 && last_reply[1] == KINISI_MESSAGE_ERROR);
+            assert(last_reply[4] == command && last_reply[5] == RESPONSE_DRIVERS_ASLEEP && !brake_dispatches);
+        } else assert(last_size == 4 && last_reply[1] == command && brake_dispatches == 1);
+    }
+}
+
 /** @brief Run regressions against the real transport callbacks and interrupt entry points. */
 int main(void)
 {
@@ -205,6 +256,10 @@ int main(void)
     test_consecutive_reads();
     test_transfer_recovery();
     test_padded_short_replies();
+    for (unsigned phase = 0; phase < 2; ++phase) {
+        fragmented_brake(BRAKE_MOTOR, phase != 0);
+        fragmented_brake(BRAKE_PLATFORM, phase != 0);
+    }
     // The address phase can straddle a driver wake on USB, both before and
     // after the length arrives. The next write on the same bus is fresh.
     for (unsigned phase = 0; phase < 2; ++phase) {

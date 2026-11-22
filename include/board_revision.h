@@ -2,10 +2,10 @@
 // Source: boards/*.json
 #pragma once
 
-#if !defined(MP_V1) && !defined(MP_V2) && !defined(MP_V3) && !defined(MP_V4)
+#if !defined(MP_V1) && !defined(MP_V2) && !defined(MP_V3) && !defined(MP_V3_1) && !defined(MP_V4)
 #define MP_V3
 #endif
-#if (defined(MP_V1) + defined(MP_V2) + defined(MP_V3) + defined(MP_V4)) != 1
+#if (defined(MP_V1) + defined(MP_V2) + defined(MP_V3) + defined(MP_V3_1) + defined(MP_V4)) != 1
 #error "Select exactly one supported board revision"
 #endif
 
@@ -15,22 +15,33 @@
 #define KINISI_BOARD_VERSION_MAJOR 0
 #define KINISI_BOARD_VERSION_MINOR 1
 #define KINISI_BOARD_VERSION_PATCH 0
+#define KINISI_USB_VBUS_SENSING 0
 #elif defined(MP_V2)
 #define KINISI_BOARD_MODEL 1
 #define KINISI_MCU_PART "STM32F405RGT6"
 #define KINISI_BOARD_VERSION_MAJOR 0
 #define KINISI_BOARD_VERSION_MINOR 2
 #define KINISI_BOARD_VERSION_PATCH 0
+#define KINISI_USB_VBUS_SENSING 0
 #elif defined(MP_V3)
 #define KINISI_BOARD_MODEL 1
 #define KINISI_MCU_PART "STM32F405RGT6"
 #define KINISI_BOARD_VERSION_MAJOR 0
 #define KINISI_BOARD_VERSION_MINOR 3
 #define KINISI_BOARD_VERSION_PATCH 0
+#define KINISI_USB_VBUS_SENSING 0
+#elif defined(MP_V3_1)
+#define KINISI_BOARD_MODEL 1
+#define KINISI_MCU_PART "STM32F405RGT6"
+#define KINISI_BOARD_VERSION_MAJOR 0
+#define KINISI_BOARD_VERSION_MINOR 3
+#define KINISI_BOARD_VERSION_PATCH 1
+#define KINISI_USB_VBUS_SENSING 1
 #elif defined(MP_V4)
 #define KINISI_BOARD_MODEL 1
 #define KINISI_MCU_PART "STM32F405VGT6"
 #define KINISI_BOARD_VERSION_MAJOR 0
 #define KINISI_BOARD_VERSION_MINOR 4
 #define KINISI_BOARD_VERSION_PATCH 0
+#define KINISI_USB_VBUS_SENSING 0
 #endif

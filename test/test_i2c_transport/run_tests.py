@@ -20,9 +20,11 @@ def main():
         subprocess.run([
             compiler, "-std=c11", "-Wall", "-Wextra", "-Werror",
             "-Wno-unused-parameter", "-Wno-pointer-sign",
-            "-Itest/test_i2c_transport/stubs", "-Ilib/utils/src",
+            "-Itest/test_i2c_transport/stubs", "-Ilib/utils/src", "-Iinclude",
+            "-Ilib/connection", "-Ilib/time_sync", "-Ilib/initialization", "-Ilib/protocol",
             "test/test_i2c_transport/test_i2c_transport.c",
-            "lib/utils/src/message_queue.c", "-o", str(binary)
+            "lib/utils/src/message_queue.c", "lib/connection/connection.c", "lib/time_sync/time_sync.c",
+            "lib/initialization/initialization.c", "lib/protocol/protocol.c", "-o", str(binary)
         ], cwd=root, check=True)
         subprocess.run([str(binary)], check=True)
 

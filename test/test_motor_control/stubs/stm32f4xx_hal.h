@@ -85,7 +85,16 @@ typedef struct {
     uint32_t Mode, Direction, DataSize, CLKPolarity, CLKPhase, NSS, BaudRatePrescaler, FirstBit;
 } SPI_InitTypeDef;
 typedef struct { SPI_TypeDef *Instance; SPI_InitTypeDef Init; } SPI_HandleTypeDef;
+#ifdef KINISI_TEST_PWM_ROLLOVER
+void test_set_compare(TIM_HandleTypeDef *timer, uint32_t channel, uint32_t value);
+#define __HAL_TIM_SET_COMPARE(t,c,v) test_set_compare(t,c,v)
+#else
 #define __HAL_TIM_SET_COMPARE(t,c,v) ((t)->Instance->compare[(c)/4]=(v))
+#endif
+uint32_t __get_PRIMASK(void);
+void __disable_irq(void);
+void __set_PRIMASK(uint32_t mask);
+#define TIM_CR1_UDIS 2U
 #define __HAL_TIM_DISABLE_OCxPRELOAD(t,c) ((t)->noPreload |= 1u << ((c)/4))
 void HAL_GPIO_WritePin(GPIO_TypeDef *, uint16_t, GPIO_PinState);
 GPIO_PinState HAL_GPIO_ReadPin(GPIO_TypeDef *, uint16_t);

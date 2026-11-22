@@ -8,6 +8,7 @@
 
 #if defined(MP_V1)
 #define MOTOR_CONTROL_MODEL MOTOR_CONTROL_MODEL_PWM
+#define BOARD_HAS_DRV8870_SLEEP 0
 #define BOARD_HAS_DRIVER_SLEEP 0
 #define BOARD_HAS_BOARD_IDLE 0
 #define MOTOR_PWM_FREQUENCY_HZ 100000U
@@ -56,6 +57,7 @@ static const status_led_info_t status_led_info[NUMBER_STATUS_LEDS] = {
 
 #elif defined(MP_V2)
 #define MOTOR_CONTROL_MODEL MOTOR_CONTROL_MODEL_PWM
+#define BOARD_HAS_DRV8870_SLEEP 0
 #define BOARD_HAS_DRIVER_SLEEP 0
 #define BOARD_HAS_BOARD_IDLE 0
 #define MOTOR_PWM_FREQUENCY_HZ 100000U
@@ -107,7 +109,8 @@ static const status_led_info_t status_led_info[NUMBER_STATUS_LEDS] = {
 
 #elif defined(MP_V3)
 #define MOTOR_CONTROL_MODEL MOTOR_CONTROL_MODEL_PWM
-#define BOARD_HAS_DRIVER_SLEEP 0
+#define BOARD_HAS_DRV8870_SLEEP 1
+#define BOARD_HAS_DRIVER_SLEEP 1
 #define BOARD_HAS_BOARD_IDLE 0
 #define MOTOR_PWM_FREQUENCY_HZ 100000U
 static const uint32_t motor_pwm_frequencies_hz[] = {10000U, 20000U, 25000U, 50000U, 100000U};
@@ -162,8 +165,67 @@ static const status_led_info_t status_led_info[NUMBER_STATUS_LEDS] = {
     [0] = {.gpio = {GPIOA, GPIO_PIN_2}, .activeLow = false},
 };
 
+#elif defined(MP_V3_1)
+#define MOTOR_CONTROL_MODEL MOTOR_CONTROL_MODEL_PWM
+#define BOARD_HAS_DRV8870_SLEEP 1
+#define BOARD_HAS_DRIVER_SLEEP 1
+#define BOARD_HAS_BOARD_IDLE 0
+#define MOTOR_PWM_FREQUENCY_HZ 100000U
+static const uint32_t motor_pwm_frequencies_hz[] = {10000U, 20000U, 25000U, 50000U, 100000U};
+#define NUMBER_MOTORS 4
+#define NUMBER_ENCODERS 4
+#define NUMBER_CURRENT_SENSORS 0
+#define NUMBER_GPIO_PINS 10
+#define NUMBER_STATUS_LEDS 1
+#define NUMBER_TEMPERATURE_SENSORS 0
+#define NUMBER_IMU_SENSORS 0
+static const motor_info_t motor_info[NUMBER_MOTORS] = {
+    [0] = {
+        .controlModel = MOTOR_CONTROL_PWM, .timer = TIM12,
+        .pwmChannel1 = {TIM_CHANNEL_1, GPIOB, GPIO_PIN_14, false},
+        .pwmChannel2 = {TIM_CHANNEL_2, GPIOB, GPIO_PIN_15, false},
+    },
+    [1] = {
+        .controlModel = MOTOR_CONTROL_PWM, .timer = TIM8,
+        .pwmChannel1 = {TIM_CHANNEL_1, GPIOC, GPIO_PIN_6, false},
+        .pwmChannel2 = {TIM_CHANNEL_2, GPIOC, GPIO_PIN_7, false},
+    },
+    [2] = {
+        .controlModel = MOTOR_CONTROL_PWM, .timer = TIM8,
+        .pwmChannel1 = {TIM_CHANNEL_3, GPIOC, GPIO_PIN_8, false},
+        .pwmChannel2 = {TIM_CHANNEL_4, GPIOC, GPIO_PIN_9, false},
+    },
+    [3] = {
+        .controlModel = MOTOR_CONTROL_PWM, .timer = TIM1,
+        .pwmChannel1 = {TIM_CHANNEL_1, GPIOA, GPIO_PIN_8, false},
+        .pwmChannel2 = {TIM_CHANNEL_3, GPIOA, GPIO_PIN_10, false},
+    },
+};
+static const encoder_info_t encoder_info[NUMBER_ENCODERS] = {
+    [0] = {TIM3, GPIOA, GPIO_PIN_6, GPIOA, GPIO_PIN_7},
+    [1] = {TIM5, GPIOA, GPIO_PIN_0, GPIOA, GPIO_PIN_1},
+    [2] = {TIM4, GPIOB, GPIO_PIN_6, GPIOB, GPIO_PIN_7},
+    [3] = {TIM2, GPIOA, GPIO_PIN_15, GPIOB, GPIO_PIN_3},
+};
+static const gpio_info_t gpio_info[NUMBER_GPIO_PINS] = {
+    [0] = {GPIOB, GPIO_PIN_13},
+    [1] = {GPIOB, GPIO_PIN_12},
+    [2] = {GPIOC, GPIO_PIN_10},
+    [3] = {GPIOC, GPIO_PIN_11},
+    [4] = {GPIOB, GPIO_PIN_5},
+    [5] = {GPIOB, GPIO_PIN_4},
+    [6] = {GPIOD, GPIO_PIN_2},
+    [7] = {GPIOC, GPIO_PIN_12},
+    [8] = {GPIOB, GPIO_PIN_9},
+    [9] = {GPIOB, GPIO_PIN_8},
+};
+static const status_led_info_t status_led_info[NUMBER_STATUS_LEDS] = {
+    [0] = {.gpio = {GPIOA, GPIO_PIN_2}, .activeLow = false},
+};
+
 #elif defined(MP_V4)
 #define MOTOR_CONTROL_MODEL MOTOR_CONTROL_MODEL_ENABLE_DIRECTION
+#define BOARD_HAS_DRV8870_SLEEP 0
 #define BOARD_HAS_DRIVER_SLEEP 1
 #define BOARD_HAS_BOARD_IDLE 1
 #define MOTOR_PWM_FREQUENCY_HZ 100000U

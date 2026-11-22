@@ -61,6 +61,12 @@ static bool period_allowed(uint32_t period_ms)
  * @note IRQ-safe notification; the command task stops motors and invalidates sessions.
  */
 void commands_manager_usb_disconnected(void) { usb_disconnected = 1; }
+
+void commands_manager_usb_quiesce(void)
+{
+    usb_disconnected = 1;
+    stop_on_connection_loss();
+}
 /**
  * @brief Try to copy a frame to USB while protecting against concurrent deinitialization.
  * @return True only when the USB stack accepts the transmission.
@@ -173,6 +179,7 @@ void CommandHandlerTask(void *argument)
 
     while(1)
     {
+        MX_USB_DEVICE_Process();
         // Maintain the HAL millisecond wrap extension even if both peers stop reading.
         (void)hw_clock_microseconds();
         if (usb_disconnected) {

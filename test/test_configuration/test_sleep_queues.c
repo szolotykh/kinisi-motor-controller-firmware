@@ -13,6 +13,7 @@
 message_queue_t CommandQueue, I2CCommandQueue;
 USBD_HandleTypeDef hUsbDeviceFS = {USBD_STATE_CONFIGURED, &hUsbDeviceFS};
 void MX_USB_DEVICE_Init(void) {}
+void MX_USB_DEVICE_Process(void) {}
 void initialize_external_i2c(void) {}
 void mark_pending_external_i2c_requests(uint8_t barriers) { mark_pending_frames(&I2CCommandQueue, barriers); }
 uint32_t hw_motor_fault_event_sequence(uint8_t i) { (void)i; return 0; }
@@ -22,6 +23,7 @@ void __disable_irq(void) { masked = 1; }
 void __set_PRIMASK(uint32_t value) { masked = value; }
 
 static unsigned stale_bus, phase, ticks;
+static uint8_t stale_command;
 static bool blocked, attempted, ready[2], board;
 static uint8_t replies[20], errors[20];
 static jmp_buf finished;
@@ -83,7 +85,7 @@ static void next_turn(uint32_t ms) {
         else transition.properties.set_driver_sleep.sleeping = 1;
         issue(other, transition);
         break;
-    case 4:
+    case 4: {
         if (replies[5] != transition.commandType) return;
         assert(hw_motor_drivers_sleeping());
         blocked = true;
@@ -95,11 +97,14 @@ static void next_turn(uint32_t ms) {
             issue(stale_bus, (controller_command_t){.commandType=SUBSCRIBE, .message_id=12,
                 .properties.subscribe={TOPIC_TEMPERATURE,0,250}});
         }
+        controller_command_t stale = speed(8, 60);
+        stale.commandType = stale_command;
         if (!stale_bus) {
-            partial_size = encode(speed(8, 60), partial);
+            partial_size = encode(stale, partial);
             assert(enqueue_multi(queue(0), partial, 2));
-        } else issue(stale_bus, speed(8, 60));
+        } else issue(stale_bus, stale);
         break;
+    }
     case 5:
         if (!attempted) return;
         transition.message_id = 9;
@@ -118,6 +123,54 @@ static void next_turn(uint32_t ms) {
         assert(errors[7] == RESPONSE_DRIVERS_ASLEEP && errors[8] == RESPONSE_DRIVERS_ASLEEP);
         if (board) assert(errors[11] == RESPONSE_BOARD_IDLE && errors[12] == RESPONSE_BOARD_IDLE);
         assert(replies[10] == SET_MOTOR_SPEED);
+        if (board) longjmp(finished, 1);
+        issue(other, (controller_command_t){.commandType=SET_DRIVER_SLEEP, .message_id=11,
+            .properties.set_driver_sleep={1}});
+        break;
+    case 8: {
+        if (replies[11] != SET_DRIVER_SLEEP) return;
+        blocked = true;
+        attempted = false;
+        issue(stale_bus, (controller_command_t){.commandType=GET_DRIVER_SLEEP, .message_id=12});
+        controller_command_t delayed = {.commandType=SET_DRIVER_SLEEP, .message_id=13, .properties.set_driver_sleep={0}};
+        if (stale_bus) issue(stale_bus, delayed);
+        else {
+            partial_size = encode(delayed, partial);
+            assert(enqueue_multi(queue(0), partial, 2));
+        }
+        break;
+    }
+    case 9:
+        if (!attempted) return;
+        transition.message_id = 14;
+        issue(other, transition); // Old wake still queued on the other transport.
+        break;
+    case 10:
+        if (replies[14] != SET_DRIVER_SLEEP) return;
+        assert(!hw_motor_drivers_sleeping());
+        transition.message_id = 15;
+        transition.properties.set_driver_sleep.sleeping = 1;
+        issue(other, transition);
+        break;
+    case 11:
+        if (replies[15] != SET_DRIVER_SLEEP) return;
+        assert(hw_motor_drivers_sleeping());
+        blocked = false;
+        if (!stale_bus) assert(enqueue_multi(queue(0), partial + 2, partial_size - 2));
+        break;
+    case 12:
+        if (!replies[13]) return;
+        assert(errors[13] == RESPONSE_DRIVERS_ASLEEP && hw_motor_drivers_sleeping());
+        transition.message_id = 16;
+        issue(other, transition);
+        break;
+    case 13:
+        if (replies[16] != SET_DRIVER_SLEEP) return;
+        issue(stale_bus, speed(17, 70));
+        break;
+    case 14:
+        if (!replies[17]) return;
+        assert(replies[17] == SET_MOTOR_SPEED);
         longjmp(finished, 1);
     }
     phase++;
@@ -127,7 +180,8 @@ const os_interface_t *get_os_interface(void) {
     return &os;
 }
 void CommandHandlerTask(void *);
-void run_sleep_queues(unsigned blocked_bus, bool board_idle) {
+void run_sleep_queues(unsigned blocked_bus, bool board_idle, uint8_t command) {
+    stale_command = command;
     board = board_idle;
     stale_bus = blocked_bus;
     if (!setjmp(finished)) CommandHandlerTask(NULL);

@@ -377,7 +377,7 @@ void test_calculate_velocity_correctly(void) {
 Run `python test/test_board_config/run_tests.py` with GCC or Clang on PATH, or
 set `CC` to its executable. This validates the JSON generator, deterministic
 output and `--check`, MCU/board selection, and rejection of unsafe or unsupported
-settings. It compiles all four generated C profiles and compares their mappings
+settings. It compiles all five generated C profiles and compares their mappings
 against a snapshot of the original manual header. It also tests production LED
 initialization and commands, including multiple LEDs and active-low polarity.
 The separate motor and INIT suites below check integration behavior.
