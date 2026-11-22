@@ -2446,7 +2446,7 @@
             "code": "0x5B",
             "direction": "client_to_controller",
             "category": "Motor",
-            "description": "Explicitly inhibit or wake the board's motor drivers. Entry stops motion and controllers across all connections. Wake verifies the retained settings for previously initialized channels and leaves outputs stopped. A failed wake keeps the inhibit set and permits retry. Repeating the current state is a no-op. Requires a ready connection, protocol 2.15 and a board profile with driver sleep.",
+            "description": "Explicitly inhibit or wake the board's motor drivers. Entry stops motion and controllers across all connections. Wake verifies the retained settings for previously initialized channels and leaves outputs stopped. A failed wake keeps the inhibit set and permits retry. Repeating a confirmed state is a no-op. After a failed sleep entry, repeat sleep to retry pin verification. Requires a ready connection, protocol 2.15 and a board profile with driver sleep.",
             "properties": [
                 {
                     "name": "sleeping",

@@ -2391,7 +2391,7 @@ Current field value in the units of the corresponding initialization command. Bo
 
 **Client → controller** · **Payload:** 1 bytes
 
-Explicitly inhibit or wake the board's motor drivers. Entry stops motion and controllers across all connections. Wake verifies the retained settings for previously initialized channels and leaves outputs stopped. A failed wake keeps the inhibit set and permits retry. Repeating the current state is a no-op. Requires a ready connection, protocol 2.15 and a board profile with driver sleep.
+Explicitly inhibit or wake the board's motor drivers. Entry stops motion and controllers across all connections. Wake verifies the retained settings for previously initialized channels and leaves outputs stopped. A failed wake keeps the inhibit set and permits retry. Repeating a confirmed state is a no-op. After a failed sleep entry, repeat sleep to retry pin verification. Requires a ready connection, protocol 2.15 and a board profile with driver sleep.
 
 #### Parameters
 

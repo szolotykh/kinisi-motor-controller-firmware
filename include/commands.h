@@ -274,7 +274,7 @@
 // Read one field of the running v0.4 configuration. Use GET_PWM_FREQUENCY to read the board-wide switching frequency.
 #define GET_CONFIGURATION_FIELD 0x5A
 
-// Explicitly inhibit or wake the board's motor drivers. Entry stops motion and controllers across all connections. Wake verifies the retained settings for previously initialized channels and leaves outputs stopped. A failed wake keeps the inhibit set and permits retry. Repeating the current state is a no-op. Requires a ready connection, protocol 2.15 and a board profile with driver sleep.
+// Explicitly inhibit or wake the board's motor drivers. Entry stops motion and controllers across all connections. Wake verifies the retained settings for previously initialized channels and leaves outputs stopped. A failed wake keeps the inhibit set and permits retry. Repeating a confirmed state is a no-op. After a failed sleep entry, repeat sleep to retry pin verification. Requires a ready connection, protocol 2.15 and a board profile with driver sleep.
 #define SET_DRIVER_SLEEP 0x5B
 
 // Read the board-wide driver sleep inhibit. The value persists across connections and clears at boot. Uninitialized individual drivers may be asleep even when the inhibit is clear. Requires a ready connection, protocol 2.15 and a board profile with driver sleep.
@@ -1019,7 +1019,7 @@ typedef struct
             uint8_t index; // Zero for platform fields. For fields 4 through 6, use the zero-based channel index.
         } get_configuration_field;
 
-        // SET_DRIVER_SLEEP: Explicitly inhibit or wake the board's motor drivers. Entry stops motion and controllers across all connections. Wake verifies the retained settings for previously initialized channels and leaves outputs stopped. A failed wake keeps the inhibit set and permits retry. Repeating the current state is a no-op. Requires a ready connection, protocol 2.15 and a board profile with driver sleep.
+        // SET_DRIVER_SLEEP: Explicitly inhibit or wake the board's motor drivers. Entry stops motion and controllers across all connections. Wake verifies the retained settings for previously initialized channels and leaves outputs stopped. A failed wake keeps the inhibit set and permits retry. Repeating a confirmed state is a no-op. After a failed sleep entry, repeat sleep to retry pin verification. Requires a ready connection, protocol 2.15 and a board profile with driver sleep.
         struct {
             uint8_t sleeping; // 1 to request driver sleep or 0 to wake.
         } set_driver_sleep;
