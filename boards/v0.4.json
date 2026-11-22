@@ -8,7 +8,7 @@
   "mcu": {
     "part": "STM32F405VGT6"
   },
-  "capabilities": {"fusion_experiment": true},
+  "capabilities": {"fusion_experiment": true, "imu_tracking": true},
   "power": {
     "board_idle": true
   },

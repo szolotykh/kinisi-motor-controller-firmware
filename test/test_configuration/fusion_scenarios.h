@@ -26,12 +26,70 @@ static void sample_ticks(unsigned ticks, bool fresh)
             injected_gyro = now - 9000;
         }
         run_task(odom_task);
+        if (tracking_task.fn) run_task(tracking_task);
     }
 }
 
 static void assert_coasting(void)
 {
     for (unsigned i = 0; i < 4; ++i) assert(!output[i]);
+}
+
+// Match the physical single-consumer cursor: two deliveries between reads lose
+// an inertial interval, even when the latest payload remains perfectly quiet.
+static uint32_t source_record, consumed_record;
+static void arm_shared_cursor(uint32_t tracking_epoch)
+{
+    assert(tracking_epoch && platform_fusion_imu_epoch());
+    consumed_record = source_record;
+}
+
+static hw_imu_status_t read_shared_cursor(uint64_t at, hw_imu_sample_t *sample, uint64_t *a, uint64_t *g)
+{
+    (void)at;
+    if (source_record - consumed_record > 1) return HW_IMU_STALE;
+    consumed_record = source_record;
+    return hw_imu_read_observation(0, sample, a, g);
+}
+
+static void restart_with_live_fusion(void)
+{
+    uint64_t start = now;
+    uint32_t fusion_epoch = platform_fusion_imu_epoch();
+    imu_tracking_install_producer(NULL, arm_shared_cursor, read_shared_cursor);
+    run_task(tracking_task); // Worker has already entered its inactive delay when START arrives.
+    uint64_t next_worker = now + scheduled_delay * 1000u;
+    for (unsigned ms = 1; ms <= 620; ++ms) {
+        now = start + ms * 1000u;
+        if (ms == 1) {
+            request((controller_command_t){.commandType = SET_IMU_TRACKING,
+                .properties.set_imu_tracking = {IMU_TRACKING_ACTION_START, 1, 0}}, RESPONSE_OK);
+        }
+        if (ms % 10 == 2) {
+            ++source_record;
+            injected_accel = injected_gyro = now;
+        }
+        // No diagnostic GET can service the cursor during qualification. Model
+        // the actual delay requested by the worker, then deliberately starve it.
+        if (now >= next_worker && ms <= 600) {
+            run_task(tracking_task);
+            next_worker = now + scheduled_delay * 1000u;
+        }
+        if (ms % 20 == 0) run_task(odom_task);
+        if (ms == 600) {
+            assert(source_record == consumed_record);
+            request((controller_command_t){.commandType = GET_IMU_TRACKING_STATUS}, RESPONSE_OK);
+            assert(reply[4] == IMU_TRACKING_STATE_TRACKING);
+        }
+    }
+    assert(source_record - consumed_record == 2);
+    run_task(tracking_task);
+    request((controller_command_t){.commandType = GET_IMU_TRACKING_STATUS}, RESPONSE_OK);
+    assert(reply[4] == IMU_TRACKING_STATE_FAULT && reply[5] == IMU_TRACKING_FAULT_STALE);
+    assert(platform_fusion_imu_epoch() == fusion_epoch && diagnostic().health == FUSION_HEALTH_HEALTHY);
+    request((controller_command_t){.commandType = SET_IMU_TRACKING,
+        .properties.set_imu_tracking = {IMU_TRACKING_ACTION_STOP, 0, 0}}, RESPONSE_OK);
+    imu_tracking_install_producer(NULL, NULL, NULL);
 }
 
 static void check_deadline(controller_command_t target)
@@ -215,13 +273,25 @@ static void fusion_scenario(int type)
     request(zero, RESPONSE_OK);
     injected = (hw_imu_sample_t){0.02,0.03,9.80665,0,0,0.004};
     injected_status = HW_IMU_OK;
+    request((controller_command_t){.commandType=SET_IMU_TRACKING,
+        .properties.set_imu_tracking={IMU_TRACKING_ACTION_START,1,0}}, RESPONSE_OK);
+    uint32_t live_fusion_epoch=platform_fusion_imu_epoch();
+    assert(live_fusion_epoch && imu_acquisition_epoch(live_fusion_epoch)==live_fusion_epoch);
     sample_ticks(30, true);
+    request((controller_command_t){.commandType=GET_IMU_TRACKING_STATUS}, RESPONSE_OK);
+    assert(reply[4]==IMU_TRACKING_STATE_TRACKING);
+    uint32_t held_fusion_sequence=diagnostic().sequence;
+    request((controller_command_t){.commandType=SET_IMU_TRACKING,
+        .properties.set_imu_tracking={IMU_TRACKING_ACTION_STOP,0,0}}, RESPONSE_OK);
+    assert(diagnostic().sequence==held_fusion_sequence);
+    assert(imu_acquisition_epoch(platform_fusion_imu_epoch())==live_fusion_epoch);
     s = diagnostic();
     assert(s.health == FUSION_HEALTH_HEALTHY && s.flags == 7 &&
            s.accel_age_us == 10000 && s.gyro_age_us == 9000 && s.encoder_age_us == 0);
     fusion_vector bias = vector(FUSION_VECTOR_BIAS);
     assert(bias.sequence == s.sequence && fabs(bias.x - 0.03) < 1e-9 &&
            fabs(bias.y + 0.02) < 1e-9 && fabs(bias.z - 0.004) < 1e-9);
+    restart_with_live_fusion();
     request(target, RESPONSE_OK); run_task(controller_task);
     for (unsigned i = 0; i < 4; ++i) assert(fabs(comparator[i] - output[i]) < 1e-6);
     check_rapid_inhibit(target, true);

@@ -17,6 +17,16 @@ class BoardConfigTests(unittest.TestCase):
         self.original_v4 = g.select_build_board(self.boards, {"MP_V4"}, "stm32f405vg")
         self.v4 = copy.deepcopy(self.original_v4)
 
+    def test_imu_tracking_is_optional_boolean_and_exact_v4(self):
+        self.assertTrue(self.v4['capabilities']['imu_tracking'])
+        self.v4['capabilities']['imu_tracking'] = 1
+        self.reject(self.v4, 'imu_tracking')
+        del self.v4['capabilities']['imu_tracking']
+        g.validate(self.v4)
+        v3 = copy.deepcopy(next(b for b in self.boards if b['board']['revision'] == '0.3.0'))
+        v3['capabilities'] = {'fusion_experiment': False, 'imu_tracking': True}
+        self.reject(v3, 'exact v0.4')
+
     def reject(self, board, message):
         with self.assertRaisesRegex(g.ConfigError, message):
             g.validate(board)

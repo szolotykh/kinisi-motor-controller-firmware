@@ -1,6 +1,6 @@
 # Kinisi motor controller commands
 
-**Protocol 2.19.0** · Generated from [commands.json](commands.json)
+**Protocol 2.20.0** · Generated from [commands.json](commands.json)
 
 [Command index](#command-index) · [Wire format](#wire-format) · [Error codes](#error-codes)
 
@@ -97,6 +97,10 @@
 | [`GET_FUSION_STATUS`](#get_fusion_status-0x60) | `0x60` | Client → controller | `fusion_status` |
 | [`GET_FUSION_VECTOR`](#get_fusion_vector-0x61) | `0x61` | Client → controller | `fusion_vector` |
 | [`GET_FUSION_CONFIGURATION`](#get_fusion_configuration-0x62) | `0x62` | Client → controller | `fusion_configuration` |
+| [`SET_IMU_TRACKING`](#set_imu_tracking-0x63) | `0x63` | Client → controller | ACK |
+| [`GET_IMU_TRACKING_STATUS`](#get_imu_tracking_status-0x64) | `0x64` | Client → controller | `imu_tracking_status` |
+| [`GET_IMU_TRACKING_VECTOR`](#get_imu_tracking_vector-0x65) | `0x65` | Client → controller | `imu_tracking_vector` |
+| [`GET_IMU_TRACKING_CONFIGURATION`](#get_imu_tracking_configuration-0x66) | `0x66` | Client → controller | `imu_tracking_configuration` |
 
 ## Command lifecycle
 
@@ -2611,6 +2615,130 @@ Packed little-endian diagnostic snapshot.
 | --- | --- | ---: | --- |
 | `mode` | `uint8_t` | 1 | Selected fusion_modes value; boot default is LEGACY_ENCODER. |
 | `mounting_yaw_rad` | `double` | 8 | Angle of board +X in the chassis XY plane, counterclockwise about chassis +Z; finite radians in [-pi, pi]. |
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6)
+
+[Back to command index](#command-index)
+
+---
+
+### SET_IMU_TRACKING (0x63)
+
+**Client → controller** · **Payload:** 10 bytes
+
+Control volatile IMU-only relative tracking. START=0, RESET=2 and RECALIBRATE=3 are accepted from any state with stationary_mount_confirmed=1 and finite yaw in [-pi,pi]; all discard prior bias and pose and begin full cold stationary calibration at a new relative origin. The caller confirms true zero velocity, rigid level sensor-+Z-up mounting with IMU at the chassis reference point. Yaw is the angle of sensor +X in chassis XY, counterclockwise about chassis +Z. Sensor-to-chassis transform is Rz(yaw)*(x,y,z), axes forward/left/up. IMU stationarity checks cannot establish zero constant velocity. STOP=1 requires confirmation=0 and yaw=0 and stops integration. ACK confirms the action, not a valid estimate. Fault, expiry or interruption requires deliberate restart; no automatic recovery. Not saved to FRAM. Requires READY, exact model 1 hardware 0.4.0 with imu_tracking capability and protocol 2.20+. Independent of platform, encoders and fusion; never commands motion or changes control feedback.
+
+#### Parameters
+
+| Parameter | Type | Bytes | Range | Description |
+| --- | --- | ---: | --- | --- |
+| `action` | `uint8_t` | 1 | 0 to 3 | ImuTrackingAction value. |
+| `stationary_mount_confirmed` | `uint8_t` | 1 | 0 to 1 | Explicit caller confirmation of stationary zero velocity and the supported rigid level centered mount; 0 or 1. |
+| `mounting_yaw_rad` | `double` | 8 | -3.141592653589793 to 3.141592653589793 | Angle of sensor +X in chassis XY, counterclockwise about chassis +Z; sensor +Z up. Finite radians. |
+
+#### Response
+
+**ACK** — empty payload; echoes the command and message ID.
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`BOARD_IDLE`](#error-board-idle) (20) · [`DRIVERS_ASLEEP`](#error-drivers-asleep) (19)
+
+[Back to command index](#command-index)
+
+---
+
+### GET_IMU_TRACKING_STATUS (0x64)
+
+**Client → controller** · **Payload:** 0 bytes
+
+Read IMU-only tracking state, fault, flags, sequence, last eligible joint sample-watermark timestamp, wall elapsed time since the source origin capped at window_us and separate accel/gyro ages in microseconds. UINT32_MAX age means unavailable. ESTIMATE_VALID is required for usable current estimates; timestamp and health are not physical accuracy guarantees. A delayed in-window source sample may remain readable briefly after the wall clock reaches the source end. Healthy tracking expires upon the first consumed source watermark at or beyond the end, or by the first serviced status/vector/configuration read at or after end + 50000 us. Missing, stale or invalid input may fault earlier. This is a serviced-read guarantee, not a hard real-time scheduling guarantee. Reads never start tracking. Status and vector sequences must match to combine separate reads. Requires READY, exact model 1 hardware 0.4.0 with imu_tracking capability and protocol 2.20+. Independent of platform, encoders and fusion; never commands motion or changes control feedback.
+
+#### Parameters
+
+No payload parameters.
+
+#### Response
+
+**Controller → client** · `imu_tracking_status` · **Payload:** 28 bytes
+
+Packed little-endian IMU-only tracking snapshot.
+
+| Parameter | Type | Bytes | Description |
+| --- | --- | ---: | --- |
+| `state` | `uint8_t` | 1 | ImuTrackingState value. |
+| `fault` | `uint8_t` | 1 | ImuTrackingFault value. |
+| `flags` | `uint8_t` | 1 | ImuTrackingFlag bitmask. |
+| `reserved` | `uint8_t` | 1 | Reserved; must be zero. |
+| `sequence` | `uint32_t` | 4 | Snapshot sequence; match vector reads. |
+| `timestamp_us` | `uint64_t` | 8 | Last eligible monotonic joint accel/gyro source watermark; no published watermark reaches origin + window_us. Zero before the first estimate. |
+| `elapsed_us` | `uint32_t` | 4 | Wall elapsed microseconds since the source origin, capped at window_us; distinct from the retained source watermark. Frozen on fault or expiry; STOP clears it. |
+| `accel_age_us` | `uint32_t` | 4 | Accel age in microseconds; UINT32_MAX if unavailable. |
+| `gyro_age_us` | `uint32_t` | 4 | Gyro age in microseconds; UINT32_MAX if unavailable. |
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6)
+
+[Back to command index](#command-index)
+
+---
+
+### GET_IMU_TRACKING_VECTOR (0x65)
+
+**Client → controller** · **Payload:** 1 bytes
+
+Read a compact IMU-only vector selected by kind: POSE=0 (relative metres,metres,radians), TWIST=1 (body metres/second,metres/second,radians/second), BIAS=2 (accel-X,accel-Y metres/second squared and gyro-Z radians/second). SAMPLE_NOT_AVAILABLE means the requested estimate is invalid. Match sequence with GET_IMU_TRACKING_STATUS; never combine mismatched snapshots. Relative integration drifts and has no absolute position or heading reference. Requires READY, exact model 1 hardware 0.4.0 with imu_tracking capability and protocol 2.20+. Independent of platform, encoders and fusion; never commands motion or changes control feedback.
+
+#### Parameters
+
+| Parameter | Type | Bytes | Range | Description |
+| --- | --- | ---: | --- | --- |
+| `kind` | `uint8_t` | 1 | 0 to 2 | ImuTrackingVectorKind value. |
+
+#### Response
+
+**Controller → client** · `imu_tracking_vector` · **Payload:** 28 bytes
+
+Packed little-endian IMU-only tracking snapshot.
+
+| Parameter | Type | Bytes | Description |
+| --- | --- | ---: | --- |
+| `sequence` | `uint32_t` | 4 | Match status sequence before associating health and time. |
+| `x` | `double` | 8 | Pose X, body velocity X, or acceleration bias X, selected by kind. |
+| `y` | `double` | 8 | Pose Y, body velocity Y, or acceleration bias Y, selected by kind. |
+| `z` | `double` | 8 | Pose yaw, body yaw rate, or gyro Z bias, selected by kind. |
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`SAMPLE_NOT_AVAILABLE`](#error-sample-not-available) (10)
+
+[Back to command index](#command-index)
+
+---
+
+### GET_IMU_TRACKING_CONFIGURATION (0x66)
+
+**Client → controller** · **Payload:** 0 bytes
+
+Read mounting yaw and the actual bounded tracking horizon in microseconds. This v0.4 release reports 1000000 us for a one-second motion-onset diagnostic. Always use readback for the connected board horizon. The eligible source interval is [origin, origin + window_us); at 100 Hz it contains 100 source stamps including origin and excluding the end. No estimate at or beyond the source end is published. Reset clears volatile tracking state; reconnect does not start or re-anchor tracking. Requires READY, exact model 1 hardware 0.4.0 with imu_tracking capability and protocol 2.20+. Independent of platform, encoders and fusion; never commands motion or changes control feedback.
+
+#### Parameters
+
+No payload parameters.
+
+#### Response
+
+**Controller → client** · `imu_tracking_configuration` · **Payload:** 12 bytes
+
+Packed little-endian IMU-only tracking snapshot.
+
+| Parameter | Type | Bytes | Description |
+| --- | --- | ---: | --- |
+| `mounting_yaw_rad` | `double` | 8 | Declared supported mounting yaw in radians. |
+| `window_us` | `uint32_t` | 4 | Actual source tracking horizon in microseconds; 1000000 for this v0.4 release. Eligible source times are [origin, origin + window_us). |
 
 #### Errors
 

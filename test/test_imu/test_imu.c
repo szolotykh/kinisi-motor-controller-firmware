@@ -129,6 +129,64 @@ static void expect_error(hw_imu_status_t status) {
     assert(!memcmp(&sample, &before, sizeof(sample)));
     assert(!selected); // Errors never leave either slave selected.
 }
+static void poll_events(uint32_t epoch, unsigned delay_ms, bool accel, unsigned gyro_frames)
+{
+    tick += delay_ms;
+    if (accel) acc_regs[0x1D] = 0x80;
+    gyro_regs[0x0E] = gyro_frames;
+    hw_imu_poll_observations(epoch);
+}
+
+static void check_continuity(uint32_t epoch)
+{
+    hw_imu_cursor_t cursor;
+    hw_imu_sample_t sample;
+    uint64_t a=0,g=0;
+    hw_imu_begin_tracking(&cursor,epoch);
+    tick+=2; hw_imu_poll_observations(epoch);
+    poll_events(epoch,2,true,1);
+    assert(hw_imu_read_tracking(&cursor,epoch,hw_clock_microseconds(),&sample,&a,&g)==HW_IMU_OK);
+    for (unsigned problem=0;problem<6;++problem) {
+        // Each fresh START snapshots the current cursors, including when fusion owns this FIFO.
+        hw_imu_begin_tracking(&cursor,epoch);
+        if (problem<=1) {
+            // Reader sleeps for 20ms; producer remains on schedule. An intermediate
+            // axis event may carry saturation even though the final value is ordinary.
+            for (unsigned i=0;i<10;++i) {
+                bool event = i==4 || i==9;
+                if (event) {
+                    acc_regs[0x12+1]=gyro_regs[0x3F+1]=i==4 ? 0x7f : 0;
+                }
+                poll_events(epoch,2,event && (problem==0 || i==9),event && (problem==1 || i==9));
+            }
+        } else if (problem==2) {
+            poll_events(epoch,2,true,2);  // FIFO collapse to the newest of two real samples
+        } else if (problem==3) {
+            poll_events(epoch,9,true,1);  // wider than the physical acquisition bound
+        } else if (problem==4) {
+            sample_race=true;
+            poll_events(epoch,2,true,1);  // a second accel event between DRDY and payload verification
+        } else {
+            // Real FIFO reset, then a change back to the same owner before the tracking reader ran.
+            tick+=2; hw_imu_poll_observations(epoch+1);
+            tick+=2; hw_imu_poll_observations(epoch);
+            poll_events(epoch,2,true,1);
+        }
+        assert(hw_imu_read_tracking(&cursor,epoch,hw_clock_microseconds(),&sample,&a,&g)==HW_IMU_STALE);
+        // The discontinuity remains visible after healthy newer events.
+        poll_events(epoch,2,true,1);
+        assert(hw_imu_read_tracking(&cursor,epoch,hw_clock_microseconds(),&sample,&a,&g)==HW_IMU_STALE);
+        assert(hw_imu_read_before(epoch,hw_clock_microseconds(),&sample,&a,&g)==HW_IMU_OK);
+    }
+    hw_imu_begin_tracking(&cursor,epoch);
+    poll_events(epoch,2,true,9);
+    assert(hw_imu_read_tracking(&cursor,epoch,hw_clock_microseconds(),&sample,&a,&g)==HW_IMU_IO_ERROR);
+    tick+=2; hw_imu_poll_observations(epoch); // Physical reconfigure and settle.
+    tick+=52; hw_imu_poll_observations(epoch);
+    poll_events(epoch,2,true,1);
+    assert(hw_imu_read_before(epoch,hw_clock_microseconds(),&sample,&a,&g)==HW_IMU_OK);
+    assert(hw_imu_read_tracking(&cursor,epoch,hw_clock_microseconds(),&sample,&a,&g)==HW_IMU_STALE);
+}
 static void put_sample(uint8_t *data, int16_t value) {
     data[0] = (uint8_t)value; data[1] = (uint8_t)((uint16_t)value >> 8);
 }
@@ -175,6 +233,8 @@ int main(int argc, char **argv) {
         }
     }
     if (!strcmp(scenario, "normal")) {
+        check_continuity(UINT32_C(0x80000001));
+        check_continuity(17);
         uint64_t a = 0, g = 0, origin = hw_clock_microseconds();
         hw_imu_sample_t raw;
         hw_imu_poll_observations(1);
@@ -214,6 +274,24 @@ int main(int argc, char **argv) {
         while (hw_clock_microseconds() - epoch_start < 13000) { tick += 2; hw_imu_poll_observations(2); }
         tick += 4; gyro_regs[0x0E] = 1; hw_imu_poll_observations(2);
         assert(hw_imu_read_before(2, hw_clock_microseconds(), &raw, &a, &g) == HW_IMU_STALE);
+        // Standalone tracking takes ownership after fusion stops. A long inactive
+        // interval fills the hardware FIFO and leaves an old but readable cache.
+        // Every restart has a new high-bit epoch; concurrent fused acquisition uses
+        // its own low-bit epoch and both consumers can read one event without consuming it.
+        const uint32_t owners[]={0x80000001u,0x80000002u,3u,0x80000003u};
+        for (unsigned i=0;i<sizeof(owners)/sizeof(owners[0]);++i) {
+            tick+=2000; gyro_regs[0x0E]=32; acc_regs[0x1D]=0x80;
+            uint32_t epoch=owners[i];
+            assert(hw_imu_read_before(epoch,hw_clock_microseconds(),&raw,&a,&g)==HW_IMU_NOT_READY);
+            hw_imu_poll_observations(epoch);
+            assert(!gyro_regs[0x0E] && hw_imu_read_before(epoch,hw_clock_microseconds(),&raw,&a,&g)==HW_IMU_NOT_READY);
+            tick+=2; gyro_regs[0x0E]=1; acc_regs[0x1D]=0x80;
+            hw_imu_poll_observations(epoch);
+            assert(hw_imu_read_before(epoch,hw_clock_microseconds(),&raw,&a,&g)==HW_IMU_OK);
+            uint64_t preserved_a=a,preserved_g=g;
+            assert(hw_imu_read_before(epoch,hw_clock_microseconds(),&raw,&a,&g)==HW_IMU_OK &&
+                preserved_a==a && preserved_g==g);
+        }
         fail_transfer = true; assert(hw_imu_read(0, &raw) == HW_IMU_IO_ERROR);
         assert(hw_imu_read_observation(0, &raw, &a, &g) == HW_IMU_IO_ERROR);
         fail_transfer = false; assert(hw_imu_read(0, &raw) == HW_IMU_NOT_READY);

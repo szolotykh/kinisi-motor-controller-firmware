@@ -24,6 +24,9 @@
 #include "platform_position.h"
 #include "platform_fusion.h"
 #include "hw_config.h"
+#if BOARD_HAS_IMU_TRACKING
+#include "imu_tracking_internal.h"
+#endif
 #if MOTOR_CONTROL_MODEL == MOTOR_CONTROL_MODEL_ENABLE_DIRECTION
 #include "hw_drv8873.h"
 #endif
@@ -38,6 +41,9 @@ static uint8_t set_driver_sleep(bool sleeping)
         controllers_manager_stop_controller_multiple(BMOTOR0 | BMOTOR1 | BMOTOR2 | BMOTOR3);
     }
     bool confirmed = hw_motor_set_driver_sleep(sleeping);
+#if BOARD_HAS_IMU_TRACKING
+    if (!was_sleeping && hw_motor_drivers_sleeping()) imu_tracking_inhibit();
+#endif
 #if BOARD_HAS_FUSION_EXPERIMENT
     bool now_sleeping = hw_motor_drivers_sleeping();
     if (now_sleeping != was_sleeping) platform_fusion_driver_transition(now_sleeping);
@@ -563,6 +569,25 @@ uint8_t command_handler(controller_command_t* cmd, void (*command_callback)(uint
                 cmd->properties.set_platform_position.x,
                 cmd->properties.set_platform_position.y,
                 cmd->properties.set_platform_position.t});
+        case SET_IMU_TRACKING:
+#if BOARD_HAS_IMU_TRACKING
+        {
+            uint8_t power_error = connection_board_idle() ? RESPONSE_BOARD_IDLE :
+                (hw_motor_drivers_sleeping() || connection_before_driver_wake()) ? RESPONSE_DRIVERS_ASLEEP : RESPONSE_OK;
+            return tracking_configure(cmd->properties.set_imu_tracking.action,
+                cmd->properties.set_imu_tracking.stationary_mount_confirmed,
+                cmd->properties.set_imu_tracking.mounting_yaw_rad, power_error);
+        }
+#else
+            return RESPONSE_SENSOR_NOT_AVAILABLE;
+#endif
+        case GET_IMU_TRACKING_STATUS: case GET_IMU_TRACKING_VECTOR: case GET_IMU_TRACKING_CONFIGURATION:
+#if BOARD_HAS_IMU_TRACKING
+            return tracking_read(cmd->commandType,cmd->commandType==GET_IMU_TRACKING_VECTOR ?
+                cmd->properties.get_imu_tracking_vector.kind : 0,command_callback);
+#else
+            return RESPONSE_SENSOR_NOT_AVAILABLE;
+#endif
         case SET_FUSION_EXPERIMENT:
 #if BOARD_HAS_FUSION_EXPERIMENT
             return platform_fusion_configure(cmd->properties.set_fusion_experiment.mode,

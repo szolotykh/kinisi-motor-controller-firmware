@@ -32,6 +32,21 @@ FUSION_CATALOGS = [
     ('fusion_vectors', 'FusionVectorKind', 'FUSION_VECTOR', ['ENCODER_POSE', 'ENCODER_TWIST', 'FUSED_POSE', 'FUSED_TWIST', 'BIAS']),
 ]
 
+IMU_TRACKING_CATALOGS = [('imu_tracking_actions', 'ImuTrackingAction', 'IMU_TRACKING_ACTION', ['START', 'STOP', 'RESET', 'RECALIBRATE']), ('imu_tracking_states', 'ImuTrackingState', 'IMU_TRACKING_STATE', ['STOPPED', 'CALIBRATING', 'TRACKING', 'FAULT', 'EXPIRED']), ('imu_tracking_faults', 'ImuTrackingFault', 'IMU_TRACKING_FAULT', ['NONE', 'NOT_STATIONARY', 'IMU_UNAVAILABLE', 'STALE', 'TIMESTAMP', 'SATURATION', 'BIAS_NOT_READY', 'WINDOW_EXPIRED', 'INHIBITED', 'MOUNT_INVALID']), ('imu_tracking_flags', 'ImuTrackingFlag', 'IMU_TRACKING_FLAG', ['ESTIMATE_VALID', 'BIAS_READY', 'RESTART_REQUIRED', 'MOUNT_CONFIRMED']), ('imu_tracking_vectors', 'ImuTrackingVectorKind', 'IMU_TRACKING_VECTOR', ['POSE', 'TWIST', 'BIAS'])]
+
+def validate_imu_tracking(schema):
+    commands = {c["command"] for c in schema.get("commands", [])}
+    required = {"SET_IMU_TRACKING", "GET_IMU_TRACKING_STATUS", "GET_IMU_TRACKING_VECTOR", "GET_IMU_TRACKING_CONFIGURATION"}
+    if not commands & required and not any(key in schema for key, *_ in IMU_TRACKING_CATALOGS):
+        return
+    if not required <= commands:
+        raise ValueError("Incomplete IMU tracking command family")
+    for key, _, _, names in IMU_TRACKING_CATALOGS:
+        ids = [1, 2, 4, 8] if key.endswith("_flags") else list(range(len(names)))
+        values = schema.get(key, [])
+        if [(v.get("id"), v.get("name")) for v in values] != list(zip(ids, names)) or any(type(v.get("id")) is not int for v in values):
+            raise ValueError("Invalid " + key + " catalog")
+
 def validate_fusion(schema):
     commands = {c['command'] for c in schema.get('commands', [])}
     required = {'SET_FUSION_EXPERIMENT', 'GET_FUSION_STATUS', 'GET_FUSION_VECTOR', 'GET_FUSION_CONFIGURATION'}
@@ -47,6 +62,7 @@ def validate_fusion(schema):
 
 def validate_pwm_frequency(schema):
     validate_fusion(schema)
+    validate_imu_tracking(schema)
     values = schema.get('pwm_frequencies', [])
     expected = [(v, 'KHZ_' + str(v // 1000)) for v in (10000, 20000, 25000, 50000, 100000)]
     if [(v.get('id'), v.get('name')) for v in values] != expected or any(type(v.get('id')) is not int for v in values):
@@ -519,7 +535,7 @@ def generate_c_header_file(commands_data):
             for item in commands_data[key]:
                 result += f"    {prefix}_{item['name']} = {item['id']},\n"
             result += f'}} {typename};\n\n'
-    for key, _, prefix, _ in FUSION_CATALOGS:
+    for key, _, prefix, _ in FUSION_CATALOGS + IMU_TRACKING_CATALOGS:
         for item in commands_data.get(key, []):
             result += f"#define {prefix}_{item['name']} {item['id']}U\n"
     topics = commands_data.get('topics', [])

@@ -8,14 +8,48 @@
 #include "hw_temperature.h"
 #include "hw_imu.h"
 #include "platform_fusion.h"
-#if BOARD_HAS_FUSION_EXPERIMENT
+#include "imu_tracking.h"
+#if BOARD_HAS_FUSION_EXPERIMENT || BOARD_HAS_IMU_TRACKING
 #include "cmsis_os.h"
+
+static uint32_t fusion_acquisition_epoch(void)
+{
+#if BOARD_HAS_FUSION_EXPERIMENT
+    return platform_fusion_imu_epoch();
+#else
+    return 0;
+#endif
+}
+
+static uint32_t acquisition_epoch(void)
+{
+#if BOARD_HAS_IMU_TRACKING
+    return imu_acquisition_epoch(fusion_acquisition_epoch());
+#else
+    return fusion_acquisition_epoch();
+#endif
+}
+
+#if BOARD_HAS_IMU_TRACKING
+static hw_imu_cursor_t tracking_cursor;
+
+static void begin_tracking(uint32_t tracking_epoch)
+{
+    uint32_t fusion_epoch = fusion_acquisition_epoch();
+    hw_imu_begin_tracking(&tracking_cursor, fusion_epoch ? fusion_epoch : tracking_epoch);
+}
+
+static hw_imu_status_t read_tracking(uint64_t now,hw_imu_sample_t *raw,uint64_t *a,uint64_t *g)
+{
+    return hw_imu_read_tracking(&tracking_cursor,acquisition_epoch(),now,raw,a,g);
+}
+#endif
 
 static void imu_acquire(void *unused)
 {
     (void)unused;
     for (;;) {
-        uint32_t epoch = platform_fusion_imu_epoch();
+        uint32_t epoch = acquisition_epoch();
         if (epoch && !hw_motor_drivers_sleeping()) {
             hw_imu_poll_observations(epoch);
             osDelay(2);
@@ -61,6 +95,9 @@ int main(void)
     os->kernel_init();
 #if BOARD_HAS_FUSION_EXPERIMENT
     platform_fusion_install_imu(hw_imu_read_before, start_imu_acquisition);
+#endif
+#if BOARD_HAS_IMU_TRACKING
+    imu_tracking_install_producer(start_imu_acquisition, begin_tracking, read_tracking);
 #endif
     commands_manager_start();
     os->kernel_start();

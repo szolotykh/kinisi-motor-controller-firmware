@@ -99,7 +99,8 @@ static void restart_batch(bool reset_origin)
     experiment.encoder_us = 0;
     experiment.encoder_valid = false;
     experiment.configured_us = hw_clock_microseconds();
-    if (++experiment.generation == 0) ++experiment.generation;
+    // Physical cache epochs with the high bit set belong to standalone IMU tracking.
+    if (++experiment.generation >= UINT32_C(0x80000000)) experiment.generation=1;
     __atomic_store_n(&imu_epoch, experiment.mode == FUSION_MODE_FUSED ? experiment.generation : 0,
                      __ATOMIC_RELEASE);
     __atomic_store_n(&published_epoch, experiment.mode ? experiment.generation : 0, __ATOMIC_RELEASE);

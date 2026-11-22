@@ -1,5 +1,6 @@
 #include "hw_imu.h"
 #include "hw_config.h"
+#include <stddef.h>
 
 #if NUMBER_IMU_SENSORS > 0
 #include "hw_timers.h"
@@ -18,8 +19,8 @@
 static SPI_HandleTypeDef imu_spi;
 static bool bus_ready;
 static bool spi_in_use;
-typedef struct { uint64_t earliest, latest; double xyz[3]; } axis_event_t;
-typedef struct { axis_event_t events[4]; unsigned next; } axis_history_t;
+typedef struct { uint64_t earliest, latest; double xyz[3]; uint32_t sequence; } axis_event_t;
+typedef struct { axis_event_t events[4]; unsigned next; uint32_t sequence; } axis_history_t;
 static struct {
     uint32_t epoch;
     uint64_t accel_probe, gyro_probe, verified_at;
@@ -27,6 +28,7 @@ static struct {
 static struct {
     uint32_t epoch;
     hw_imu_status_t status;
+    uint32_t generation, losses;
     axis_history_t accel, gyro;
 } cache;
 
@@ -35,6 +37,13 @@ static struct {
 static void invalidate(uint32_t epoch, hw_imu_status_t status)
 {
     uint32_t irq = __get_PRIMASK(); __disable_irq();
+    if (cache.epoch != epoch) {
+        ++cache.generation;
+        cache.accel.sequence = cache.gyro.sequence = 0;
+        cache.losses = status == HW_IMU_IO_ERROR;
+    } else if (status == HW_IMU_IO_ERROR || cache.accel.next || cache.gyro.next) {
+        ++cache.losses;
+    }
     cache.epoch = epoch;
     cache.status = status;
     cache.accel.next = cache.gyro.next = 0;
@@ -220,14 +229,25 @@ hw_imu_status_t hw_imu_read(uint8_t index, hw_imu_sample_t *sample)
 }
 
 #if NUMBER_IMU_SENSORS > 0
+static void note_lost_observation(void)
+{
+    uint32_t irq = __get_PRIMASK(); __disable_irq();
+    ++cache.losses;
+    __set_PRIMASK(irq);
+}
+
 static void publish(axis_history_t *history, uint64_t earliest, uint64_t latest, const uint8_t *data, double scale)
 {
     // A preempted/late poll provides no tight source time. Leave the previous
     // verified events eligible only for their original lifetime.
-    if (!earliest || latest < earliest || latest - earliest > 5000) return;
+    if (!earliest || latest < earliest || latest - earliest > 5000) {
+        note_lost_observation();
+        return;
+    }
     axis_event_t event = {.earliest=earliest, .latest=latest};
     for (unsigned i = 0; i < 3; ++i) event.xyz[i] = signed_sample(data + 2*i)*scale;
     uint32_t irq = __get_PRIMASK(); __disable_irq();
+    event.sequence = ++history->sequence;
     history->events[history->next % 4] = event;
     if (++history->next == 8) history->next = 4;
     cache.status = HW_IMU_OK;
@@ -269,6 +289,7 @@ static hw_imu_status_t poll_sensor(uint32_t epoch)
         // If another payload arrived while reading, neither event is associated
         // unambiguously. Consume the indication and wait for a new event.
         if (!(ready & 0x80)) publish(&cache.accel, previous, end, bytes, 6.0*9.80665/32768.0);
+        else note_lost_observation();
     }
 
     begin = hw_clock_microseconds();
@@ -276,6 +297,7 @@ static hw_imu_status_t poll_sensor(uint32_t epoch)
     end = hw_clock_microseconds(); previous = producer.gyro_probe;
     producer.gyro_probe = begin;
     if (count) {
+        if (count > 1) note_lost_observation();
         // Only remove the frames counted at this inspection. Later frames remain in FIFO.
         for (unsigned i = 0; i < count; ++i)
             if (!read_registers(0, false, 0x3F, bytes, 6)) return HW_IMU_IO_ERROR;
@@ -310,14 +332,19 @@ void hw_imu_poll_observations(uint32_t epoch)
 #endif
 }
 
-hw_imu_status_t hw_imu_read_before(uint32_t epoch, uint64_t at, hw_imu_sample_t *sample,
-                                    uint64_t *accel_us, uint64_t *gyro_us)
+static hw_imu_status_t read_pair(uint32_t epoch, uint64_t at, hw_imu_sample_t *sample,
+                                 uint64_t *accel_us, uint64_t *gyro_us, hw_imu_cursor_t *cursor)
 {
 #if NUMBER_IMU_SENSORS > 0
     if (!sample || !accel_us || !gyro_us) return HW_IMU_IO_ERROR;
     axis_event_t a, g;
     uint32_t irq = __get_PRIMASK(); __disable_irq();
     hw_imu_status_t status = epoch && cache.epoch == epoch ? cache.status : HW_IMU_NOT_READY;
+    if (cursor && (cursor->epoch != epoch ||
+        (cache.epoch == epoch ? (cursor->cache_generation != cache.generation || cursor->losses != cache.losses) :
+                                cursor->cache_generation != cache.generation + 1u))) {
+        status = status == HW_IMU_IO_ERROR ? status : HW_IMU_STALE;
+    }
     bool both = status == HW_IMU_OK && newest_before(&cache.accel, at, &a) && newest_before(&cache.gyro, at, &g);
     __set_PRIMASK(irq);
     if (!both) return status == HW_IMU_OK ? HW_IMU_NOT_READY : status;
@@ -326,13 +353,49 @@ hw_imu_status_t hw_imu_read_before(uint32_t epoch, uint64_t at, hw_imu_sample_t 
     if (at-a.earliest > 35000 || at-g.earliest > 35000 ||
         (a.latest > g.earliest && a.latest-g.earliest > 15000) ||
         (g.latest > a.earliest && g.latest-a.earliest > 15000)) return HW_IMU_STALE;
+    if (cursor) {
+        if (a.sequence - cursor->accel_sequence > 1u || g.sequence - cursor->gyro_sequence > 1u)
+            return HW_IMU_STALE;
+        cursor->accel_sequence = a.sequence;
+        cursor->gyro_sequence = g.sequence;
+    }
     *sample = (hw_imu_sample_t){a.xyz[0],a.xyz[1],a.xyz[2],g.xyz[0],g.xyz[1],g.xyz[2]};
     *accel_us = a.earliest; *gyro_us = g.earliest;
     return HW_IMU_OK;
 #else
-    (void)epoch; (void)at; (void)sample; (void)accel_us; (void)gyro_us;
+    (void)epoch; (void)at; (void)sample; (void)accel_us; (void)gyro_us; (void)cursor;
     return HW_IMU_UNAVAILABLE;
 #endif
+}
+
+hw_imu_status_t hw_imu_read_before(uint32_t epoch, uint64_t at, hw_imu_sample_t *sample,
+                                   uint64_t *accel_us, uint64_t *gyro_us)
+{
+    return read_pair(epoch, at, sample, accel_us, gyro_us, NULL);
+}
+
+void hw_imu_begin_tracking(hw_imu_cursor_t *cursor, uint32_t epoch)
+{
+    *cursor = (hw_imu_cursor_t){.epoch = epoch};
+#if NUMBER_IMU_SENSORS > 0
+    uint32_t irq = __get_PRIMASK(); __disable_irq();
+    cursor->cache_generation = cache.generation;
+    if (cache.epoch == epoch) {
+        cursor->accel_sequence = cache.accel.sequence;
+        cursor->gyro_sequence = cache.gyro.sequence;
+        cursor->losses = cache.losses;
+    } else {
+        ++cursor->cache_generation;
+    }
+    __set_PRIMASK(irq);
+#endif
+}
+
+hw_imu_status_t hw_imu_read_tracking(hw_imu_cursor_t *cursor, uint32_t epoch, uint64_t at,
+                                     hw_imu_sample_t *sample, uint64_t *accel_us, uint64_t *gyro_us)
+{
+    if (!cursor) return HW_IMU_IO_ERROR;
+    return read_pair(epoch, at, sample, accel_us, gyro_us, cursor);
 }
 
 hw_imu_status_t hw_imu_read_observation(uint8_t index, hw_imu_sample_t *sample,

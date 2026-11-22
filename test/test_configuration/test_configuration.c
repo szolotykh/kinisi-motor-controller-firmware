@@ -19,6 +19,7 @@
 #include <setjmp.h>
 #include <math.h>
 #include "platform_fusion.h"
+#include "imu_tracking.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -147,13 +148,15 @@ hw_temperature_status_t hw_temperature_read(uint8_t i, double *v) { abort(); }
 hw_current_sense_status_t hw_current_sense_read(uint8_t i, double *v) { abort(); }
 osThreadState_t osThreadGetState(osThreadId_t t) { return t ? 0 : osThreadError; }
 typedef struct { void (*fn)(void *); void *arg; } task_t;
-static task_t controller_task, odom_task, supervisor_task;
+static task_t controller_task, odom_task, supervisor_task, tracking_task;
 static jmp_buf task_end;
 static bool first_delay;
+static TickType_t scheduled_delay;
 osThreadId_t osThreadNew(void (*fn)(void *), void *arg, const osThreadAttr_t *attr)
 {
     task_t *task = !strcmp(attr->name, "ControllerTask") ? &controller_task :
-        !strcmp(attr->name, "FeedbackWatch") ? &supervisor_task : &odom_task;
+        !strcmp(attr->name, "FeedbackWatch") ? &supervisor_task :
+        !strcmp(attr->name, "InertialTrack") ? &tracking_task : &odom_task;
     *task = (task_t){fn, arg};
     ++tasks_started;
     return task;
@@ -161,6 +164,7 @@ osThreadId_t osThreadNew(void (*fn)(void *), void *arg, const osThreadAttr_t *at
 TickType_t xTaskGetTickCount(void) { return 0; }
 void vTaskDelayUntil(TickType_t *last, TickType_t period)
 {
+    scheduled_delay = period;
     if (!first_delay) longjmp(task_end, 1);
     first_delay = false;
 }
@@ -410,6 +414,9 @@ static void fresh_brake_commands(void)
 #if BOARD_HAS_FUSION_EXPERIMENT
 #include "fusion_scenarios.h"
 #endif
+#if BOARD_HAS_IMU_TRACKING
+#include "imu_tracking_scenarios.h"
+#endif
 int main(int argc, char **argv)
 {
     assert(argc == 4);
@@ -436,6 +443,9 @@ int main(int argc, char **argv)
     assert(!tasks_started && !motion_writes && !fram_writes);
     for (int i = 0; i < 4; ++i) assert(output[i] == 0);
     connect();
+#if BOARD_HAS_IMU_TRACKING
+    if (!strcmp(mode, "imu-tracking")) { imu_tracking_scenario(); return 0; }
+#endif
 #if BOARD_HAS_FUSION_EXPERIMENT
     if (!strcmp(mode, "fusion")) { fusion_scenario(type); return 0; }
 #endif
@@ -448,6 +458,10 @@ int main(int argc, char **argv)
     }
     if (!strcmp(mode, "brake-policy")) { fresh_brake_commands(); return 0; }
     if (!strcmp(mode, "unsupported")) {
+        request((controller_command_t){.commandType=SET_IMU_TRACKING}, RESPONSE_SENSOR_NOT_AVAILABLE);
+        request((controller_command_t){.commandType=GET_IMU_TRACKING_STATUS}, RESPONSE_SENSOR_NOT_AVAILABLE);
+        request((controller_command_t){.commandType=GET_IMU_TRACKING_VECTOR}, RESPONSE_SENSOR_NOT_AVAILABLE);
+        request((controller_command_t){.commandType=GET_IMU_TRACKING_CONFIGURATION}, RESPONSE_SENSOR_NOT_AVAILABLE);
         request((controller_command_t){.commandType=GET_FUSION_STATUS}, RESPONSE_SENSOR_NOT_AVAILABLE);
         request((controller_command_t){.commandType=SET_FUSION_EXPERIMENT}, RESPONSE_SENSOR_NOT_AVAILABLE);
         configure(type);

@@ -245,6 +245,9 @@ static uint8_t handle(controller_command_t *cmd, protocol_send_fn reply)
     bool idle = connection_board_idle();
     bool stale_board_request = (request_wake_barriers & BEFORE_BOARD_WAKE) != 0;
     bool guarded = creates_subscription(cmd->commandType) || cmd->commandType == SET_DRIVER_SLEEP;
+#if BOARD_HAS_IMU_TRACKING
+    guarded |= cmd->commandType == SET_IMU_TRACKING && cmd->properties.set_imu_tracking.action != IMU_TRACKING_ACTION_STOP;
+#endif
 #if BOARD_HAS_FUSION_EXPERIMENT
     guarded |= cmd->commandType == SET_FUSION_EXPERIMENT;
 #endif
@@ -260,6 +263,8 @@ static uint8_t handle(controller_command_t *cmd, protocol_send_fn reply)
     switch (cmd->commandType) {
     case SET_BOARD_IDLE:
     case GET_BOARD_IDLE:
+    case SET_IMU_TRACKING: case GET_IMU_TRACKING_STATUS:
+    case GET_IMU_TRACKING_VECTOR: case GET_IMU_TRACKING_CONFIGURATION:
     case SET_FUSION_EXPERIMENT: case GET_FUSION_STATUS:
     case GET_FUSION_VECTOR: case GET_FUSION_CONFIGURATION:
     case SAVE_CONFIGURATION:

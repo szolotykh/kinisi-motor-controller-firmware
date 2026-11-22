@@ -27,6 +27,10 @@ sources = ['test/test_configuration/test_idle_hook.c', 'test/test_configuration/
 
 with tempfile.TemporaryDirectory() as folder:
     out = Path(folder)
+    imu_test = out / 'imu_only.exe'
+    subprocess.run([compiler, '-std=c11', '-O2', '-Wall', '-Wextra', '-Werror', '-Iinclude',
+                    'test/test_imu_only/test_imu_only.c', '-lm', '-o', str(imu_test)], cwd=root, check=True)
+    subprocess.run([str(imu_test)], check=True)
     for revision in (2, 3, "3_1", 4):
         binary = out / f'configuration_v{revision}.exe'
         usb_objects = []
@@ -56,6 +60,7 @@ with tempfile.TemporaryDirectory() as folder:
             subprocess.run([str(binary), mode, str(image), str(platform)], check=True, timeout=10)
 
         if revision == 4:
+            run('imu-tracking', out / 'unconfigured.fram', 1)
             for preset in (1, 2, 3):
                 run('fusion', out / 'unconfigured.fram', preset)
             print('PASS fusion mode, source age, frame/bias, matched wheel outputs, position/velocity fail-stop and rearm on all presets')

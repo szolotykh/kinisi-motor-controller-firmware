@@ -29,3 +29,12 @@ hw_imu_status_t hw_imu_read_observation(uint8_t index, hw_imu_sample_t *sample,
 void hw_imu_poll_observations(uint32_t epoch);
 hw_imu_status_t hw_imu_read_before(uint32_t epoch, uint64_t encoder_us, hw_imu_sample_t *sample,
                                     uint64_t *accel_us, uint64_t *gyro_us);
+
+// One cursor for each independent integrating consumer. Arm it at the start of
+// an episode. The physical producer and other readers never consume this cursor.
+typedef struct {
+    uint32_t epoch, cache_generation, losses, accel_sequence, gyro_sequence;
+} hw_imu_cursor_t;
+void hw_imu_begin_tracking(hw_imu_cursor_t *cursor, uint32_t epoch);
+hw_imu_status_t hw_imu_read_tracking(hw_imu_cursor_t *cursor, uint32_t epoch, uint64_t now,
+                                     hw_imu_sample_t *sample, uint64_t *accel_us, uint64_t *gyro_us);

@@ -31,7 +31,7 @@ int main(void)
     init_response response = initialization_response();
     const unsigned char expected[] = {
         1, 0, KINISI_BOARD_VERSION_MINOR, KINISI_BOARD_VERSION_PATCH,
-        2, 19, 0, 0x78, 0x56, 0x34, 0x12, 0xef, 0xcd, 0xab, 0x90,
+        2, 20, 0, 0x78, 0x56, 0x34, 0x12, 0xef, 0xcd, 0xab, 0x90,
     };
     assert(sizeof(response) == sizeof(expected));
     assert(memcmp(&response, expected, sizeof(expected)) == 0);
@@ -47,9 +47,11 @@ int main(void)
     assert(initialization_validate(&command) == INIT_STATUS_INCOMPATIBLE);
     assert(response.board_minor == KINISI_BOARD_VERSION_MINOR);
     command.properties.init.protocol_major = 2;
-    command.properties.init.protocol_minor = 20;
+    command.properties.init.protocol_minor = 21;
     assert(initialization_validate(&command) == INIT_STATUS_INCOMPATIBLE);
-    command.properties.init.protocol_minor = 19; // Experimental chassis feedback on v0.4.
+    command.properties.init.protocol_minor = 20; // Independent IMU-only relative tracking on v0.4.
+    assert(initialization_validate(&command) == INIT_STATUS_OK);
+    command.properties.init.protocol_minor = 19; // Fusion remains compatible.
     assert(initialization_validate(&command) == INIT_STATUS_OK);
     command.properties.init.protocol_minor = 18; // Board idle on original v0.3 and Nano.
     assert(initialization_validate(&command) == INIT_STATUS_OK);
