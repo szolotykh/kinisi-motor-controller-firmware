@@ -9,6 +9,7 @@
 #if defined(MP_V1)
 #define MOTOR_CONTROL_MODEL MOTOR_CONTROL_MODEL_PWM
 #define BOARD_HAS_DRIVER_SLEEP 0
+#define BOARD_HAS_BOARD_IDLE 0
 #define MOTOR_PWM_FREQUENCY_HZ 100000U
 static const uint32_t motor_pwm_frequencies_hz[] = {10000U, 20000U, 25000U, 50000U, 100000U};
 #define NUMBER_MOTORS 4
@@ -56,6 +57,7 @@ static const status_led_info_t status_led_info[NUMBER_STATUS_LEDS] = {
 #elif defined(MP_V2)
 #define MOTOR_CONTROL_MODEL MOTOR_CONTROL_MODEL_PWM
 #define BOARD_HAS_DRIVER_SLEEP 0
+#define BOARD_HAS_BOARD_IDLE 0
 #define MOTOR_PWM_FREQUENCY_HZ 100000U
 static const uint32_t motor_pwm_frequencies_hz[] = {10000U, 20000U, 25000U, 50000U, 100000U};
 #define NUMBER_MOTORS 4
@@ -106,6 +108,7 @@ static const status_led_info_t status_led_info[NUMBER_STATUS_LEDS] = {
 #elif defined(MP_V3)
 #define MOTOR_CONTROL_MODEL MOTOR_CONTROL_MODEL_PWM
 #define BOARD_HAS_DRIVER_SLEEP 0
+#define BOARD_HAS_BOARD_IDLE 0
 #define MOTOR_PWM_FREQUENCY_HZ 100000U
 static const uint32_t motor_pwm_frequencies_hz[] = {10000U, 20000U, 25000U, 50000U, 100000U};
 #define NUMBER_MOTORS 4
@@ -162,6 +165,7 @@ static const status_led_info_t status_led_info[NUMBER_STATUS_LEDS] = {
 #elif defined(MP_V4)
 #define MOTOR_CONTROL_MODEL MOTOR_CONTROL_MODEL_ENABLE_DIRECTION
 #define BOARD_HAS_DRIVER_SLEEP 1
+#define BOARD_HAS_BOARD_IDLE 1
 #define MOTOR_PWM_FREQUENCY_HZ 100000U
 static const uint32_t motor_pwm_frequencies_hz[] = {10000U, 20000U, 25000U, 50000U, 100000U};
 #define NUMBER_MOTORS 4

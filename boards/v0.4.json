@@ -8,6 +8,9 @@
   "mcu": {
     "part": "STM32F405VGT6"
   },
+  "power": {
+    "board_idle": true
+  },
   "buses": {
     "imu_spi": {
       "peripheral": "SPI2",

@@ -31,4 +31,4 @@ void initialize_external_i2c(void);
  */
 uint8_t try_send_external_i2c(uint8_t* data, uint16_t data_len);
 // Called with IRQs excluded to mark frames already queued or mid-transaction.
-void mark_pending_external_i2c_requests(void);
+void mark_pending_external_i2c_requests(uint8_t barriers);

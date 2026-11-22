@@ -14,7 +14,7 @@ includes = ['test/test_configuration/stubs', 'test/test_position/stubs', 'test/t
             'include', 'lib/hardware', 'lib/utils/src',
             'lib/libcontrollers/src', 'lib/protocol', 'lib/config_store', 'lib/initialization',
             'lib/connection', 'lib/time_sync', 'lib/command_requirements']
-sources = ['test/test_configuration/test_configuration.c', 'test/test_configuration/test_sleep_queues.c',
+sources = ['test/test_configuration/test_idle_hook.c', 'test/test_configuration/test_configuration.c', 'test/test_configuration/test_sleep_queues.c',
            'lib/utils/src/message_queue.c', 'src/commands_manager.c', 'src/command_handler.c',
            'src/controller_configuration.c', 'src/platform.c', 'src/platform_differential.c',
            'src/platform_omni.c', 'src/platform_mecanum.c', 'src/controllers_manager.c',
@@ -33,6 +33,7 @@ with tempfile.TemporaryDirectory() as folder:
                         '-Wno-unused-parameter', '-Wno-unused-variable', '-Wno-error=absolute-value',
                         f'-DMP_V{revision}', '-DMOTOR_CONTROL_MODEL_ENABLE_DIRECTION=2',
                         f'-DBOARD_HAS_DRIVER_SLEEP={int(revision == 4)}',
+                        f'-DBOARD_HAS_BOARD_IDLE={int(revision == 4)}',
                         f'-DMOTOR_CONTROL_MODEL={2 if revision == 4 else 1}',
                         *['-I' + path for path in includes], *sources, '-lm', '-o', str(binary)],
                        cwd=root, check=True)
@@ -46,7 +47,11 @@ with tempfile.TemporaryDirectory() as folder:
             continue
         for bus in (0, 1):
             run('sleep-queues', out / 'unconfigured.fram', bus)
+            run('idle-queues', out / 'unconfigured.fram', bus)
         print('PASS both transport wake directions, backpressure, fragmented USB input and fresh-motion boundary')
+        run('idle-policy', out / 'idle.fram', 1)
+        run('wake-boot', out / 'idle.fram', 1)
+        print('PASS board idle restart, motion cancellation, shallow WFI, failed entry and wake, independent inhibit and retry')
         run('sleep-policy', out / 'sleep.fram', 1)
         run('wake-boot', out / 'sleep.fram', 1)
         print('PASS driver command gating, target cancellation, reconnect, volatile reset and saved configuration')

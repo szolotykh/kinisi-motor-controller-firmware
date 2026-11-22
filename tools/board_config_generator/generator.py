@@ -63,7 +63,7 @@ def entries(value, maximum, at, minimum=1):
 
 def validate(board):
     fields(board, ("schema_version", "board", "mcu", "buses", "motors", "encoders", "gpio", "status_leds"),
-           ("shared_pins", "temperature_sensors", "imu_sensors"))
+           ("shared_pins", "temperature_sensors", "imu_sensors", "power"))
     integer(board["schema_version"], 1, 1, "schema_version")
     identity = board["board"]
     fields(identity, ("model", "revision", "build_define"), at="board")
@@ -75,6 +75,9 @@ def validate(board):
             "board.build_define: expected MP_V<number>")
     fields(board["mcu"], ("part",), at="mcu")
     require(board["mcu"]["part"] in ("STM32F405RGT6", "STM32F405VGT6"), "mcu.part: unsupported MCU")
+    if "power" in board:
+        fields(board["power"], ("board_idle",), at="power")
+        boolean(board["power"]["board_idle"], "power.board_idle")
     pins, timer_channels, encoder_timers = {}, set(), set()
 
     def pin(value, user):
@@ -254,6 +257,8 @@ def validate(board):
         declared.add(item["pin"])
     for value, users in pins.items():
         require(len(users) == 1 or value in declared, f"pin {value} is shared by {', '.join(users)}; declare shared_pins explicitly")
+    if board.get("power", {}).get("board_idle"):
+        require(supports_driver_sleep(board), "power.board_idle requires explicit motor-driver sleep")
     return board
 
 
@@ -308,7 +313,8 @@ def client_profile(board):
     """Project hardware definitions into public, language-neutral feature metadata."""
     return {
         "board": {"model": board["board"]["model"], "revision": board["board"]["revision"]},
-        "power": {"driver_sleep": supports_driver_sleep(board)},
+        "power": {"driver_sleep": supports_driver_sleep(board),
+                  "board_idle": board.get("power", {}).get("board_idle", False)},
         "resources": {
             "motors": len(board["motors"]["channels"]), "encoders": len(board["encoders"]),
             "gpio": len(board["gpio"]), "status_leds": len(board["status_leds"]),
@@ -359,6 +365,7 @@ def render(boards):
         model = motors["control_model"].upper()
         hardware += [selection, f"#define MOTOR_CONTROL_MODEL MOTOR_CONTROL_MODEL_{model}",
                      f"#define BOARD_HAS_DRIVER_SLEEP {int(supports_driver_sleep(board))}",
+                     f"#define BOARD_HAS_BOARD_IDLE {int(board.get('power', {}).get('board_idle', False))}",
                      f"#define MOTOR_PWM_FREQUENCY_HZ {motors['pwm_frequency_hz']}U",
                      "static const uint32_t motor_pwm_frequencies_hz[] = {" +
                      ", ".join(str(v) + "U" for v in motors['supported_pwm_frequencies_hz']) + "};"]

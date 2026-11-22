@@ -211,16 +211,17 @@ int main(void)
         init_queue(&I2CCommandQueue);
         for (unsigned frame = 0; frame < 2; ++frame) {
             HAL_I2C_AddrCallback(&hi2c2, 0, 0);
-            if (!frame && !phase) mark_pending_external_i2c_requests();
+            if (!frame && !phase) mark_pending_external_i2c_requests(1);
             i2c_message_buffer[0] = 3;
             HAL_I2C_SlaveRxCpltCallback(&hi2c2);
-            if (!frame && phase) mark_pending_external_i2c_requests();
+            if (!frame && phase) mark_pending_external_i2c_requests(1);
+            if (!frame) mark_pending_external_i2c_requests(2); // Both barriers survive the fragmented write.
             memcpy(i2c_message_buffer + 1, "abc", 3);
             HAL_I2C_SlaveRxCpltCallback(&hi2c2);
         }
         char frame[4];
         int length;
-        assert(dequeue(&I2CCommandQueue, frame, &length) == 1 && length == 3);
+        assert(dequeue(&I2CCommandQueue, frame, &length) == 3 && length == 3);
         assert(dequeue(&I2CCommandQueue, frame, &length) == 0 && length == 3);
     }
     assert(irq_mask == 0);

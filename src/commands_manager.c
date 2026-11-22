@@ -17,6 +17,7 @@
 #include "hw_clock.h"
 #include "hw_motor_faults.h"
 #include "hw_motor.h"
+#include "wake_barriers.h"
 #include "controllers_manager.h"
 #include "odometry_manager.h"
 
@@ -87,34 +88,39 @@ static bool try_i2c(uint8_t *data, uint8_t length)
  * @brief Copy and remove one queued frame while excluding IRQ producers.
  * @return True when a frame was dequeued; length excludes its prefix.
  */
-static bool take_command(message_queue_t *queue, char *buffer, int *length, bool *before_wake)
+static bool take_command(message_queue_t *queue, char *buffer, int *length, uint8_t *barriers)
 {
     // IRQ producers also update queue->count; dequeue must not race their increment.
     uint32_t mask = __get_PRIMASK();
     __disable_irq();
     bool available = !is_queue_empty(queue);
-    if (available) *before_wake = dequeue(queue, buffer, length) != 0;
+    if (available) *barriers = dequeue(queue, buffer, length);
     __set_PRIMASK(mask);
     return available;
 }
 
 // Both ingress queues can have pending motion (including a fragmented frame)
 // while the other transport completes a wake. Reply to those stale requests
-// with DRIVERS_ASLEEP before allowing fresh motion. Keep non-motion traffic.
+// with DRIVERS_ASLEEP before allowing fresh motion. A board wake also
+// fences older subscription setup and independent driver-mode requests.
 static void process_queue(connection_t *connection, message_queue_t *queue)
 {
     if (!connection_can_receive(connection)) return;
     char buffer[MESSAGE_QUEUE_MAX_STR_LENGTH];
     int length;
-    bool before_wake;
-    if (!take_command(queue, buffer, &length, &before_wake)) return;
-    bool waking = length > 0 && (uint8_t)buffer[0] == SET_DRIVER_SLEEP && hw_motor_drivers_sleeping();
-    connection_receive_queued(connection, (const uint8_t *)buffer, length, before_wake);
-    if (waking && !hw_motor_drivers_sleeping()) {
+    uint8_t barriers;
+    if (!take_command(queue, buffer, &length, &barriers)) return;
+    bool was_idle = connection_board_idle();
+    bool was_sleeping = hw_motor_drivers_sleeping();
+    connection_receive_queued(connection, (const uint8_t *)buffer, length, barriers);
+    uint8_t crossed = 0;
+    if (was_idle && !connection_board_idle()) crossed |= BEFORE_BOARD_WAKE;
+    if (was_sleeping && !hw_motor_drivers_sleeping()) crossed |= BEFORE_DRIVER_WAKE;
+    if (crossed) {
         uint32_t mask = __get_PRIMASK();
         __disable_irq();
-        mark_pending_frames(&CommandQueue);
-        mark_pending_external_i2c_requests();
+        mark_pending_frames(&CommandQueue, crossed);
+        mark_pending_external_i2c_requests(crossed);
         __set_PRIMASK(mask);
     }
 }

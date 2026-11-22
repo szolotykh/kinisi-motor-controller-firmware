@@ -15,6 +15,9 @@ The bundle has `schema_version: 1` and a `boards` array. Each profile contains:
 - `power.driver_sleep`: whether every motor driver has supported explicit sleep control.
   Treat an absent flag as unavailable. The public commands require a ready session
   on firmware protocol 2.15 or later in the compatible major version.
+- `power.board_idle`: support for communication-preserving idle. Require a true flag
+  on the exact profile and a ready protocol 2.16 (or newer compatible 2.x) connection.
+  Earlier bundles may omit this field. See [board idle](board-idle.md).
 - `motor_features`: per-motor IDs, current-sense/current-limit/fault-reporting flags,
   and optional `current_limit_options` with discrete thresholds in milliamps and `can_disable`.
 - `sensors`: temperature sensor IDs and IMU IDs with accelerometer/gyroscope flags.

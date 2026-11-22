@@ -14,7 +14,7 @@ message_queue_t CommandQueue, I2CCommandQueue;
 USBD_HandleTypeDef hUsbDeviceFS = {USBD_STATE_CONFIGURED, &hUsbDeviceFS};
 void MX_USB_DEVICE_Init(void) {}
 void initialize_external_i2c(void) {}
-void mark_pending_external_i2c_requests(void) { mark_pending_frames(&I2CCommandQueue); }
+void mark_pending_external_i2c_requests(uint8_t barriers) { mark_pending_frames(&I2CCommandQueue, barriers); }
 uint32_t hw_motor_fault_event_sequence(uint8_t i) { (void)i; return 0; }
 static uint32_t masked;
 uint32_t __get_PRIMASK(void) { return masked; }
@@ -22,7 +22,7 @@ void __disable_irq(void) { masked = 1; }
 void __set_PRIMASK(uint32_t value) { masked = value; }
 
 static unsigned stale_bus, phase, ticks;
-static bool blocked, attempted, ready[2];
+static bool blocked, attempted, ready[2], board;
 static uint8_t replies[20], errors[20];
 static jmp_buf finished;
 static char partial[256];
@@ -61,6 +61,7 @@ static controller_command_t speed(unsigned id, double value) {
 static void next_turn(uint32_t ms) {
     assert(!masked && ms == 1 && ++ticks < 100);
     const unsigned other = 1 - stale_bus;
+    controller_command_t transition = {.commandType=board ? SET_BOARD_IDLE : SET_DRIVER_SLEEP};
     switch (phase) {
     case 0:
         for (unsigned i = 0; i < 2; ++i)
@@ -77,14 +78,23 @@ static void next_turn(uint32_t ms) {
         break;
     case 3:
         if (replies[4] != SET_MOTOR_SPEED) return;
-        issue(other, (controller_command_t){.commandType=SET_DRIVER_SLEEP, .message_id=5, .properties.set_driver_sleep={1}});
+        transition.message_id = 5;
+        if (board) transition.properties.set_board_idle.idle = 1;
+        else transition.properties.set_driver_sleep.sleeping = 1;
+        issue(other, transition);
         break;
     case 4:
-        if (replies[5] != SET_DRIVER_SLEEP) return;
+        if (replies[5] != transition.commandType) return;
         assert(hw_motor_drivers_sleeping());
         blocked = true;
         issue(stale_bus, (controller_command_t){.commandType=GET_DRIVER_SLEEP, .message_id=6});
         issue(stale_bus, speed(7, 50));
+        if (board) {
+            issue(stale_bus, (controller_command_t){.commandType=SET_DRIVER_SLEEP, .message_id=11,
+                .properties.set_driver_sleep={0}});
+            issue(stale_bus, (controller_command_t){.commandType=SUBSCRIBE, .message_id=12,
+                .properties.subscribe={TOPIC_TEMPERATURE,0,250}});
+        }
         if (!stale_bus) {
             partial_size = encode(speed(8, 60), partial);
             assert(enqueue_multi(queue(0), partial, 2));
@@ -92,10 +102,11 @@ static void next_turn(uint32_t ms) {
         break;
     case 5:
         if (!attempted) return;
-        issue(other, (controller_command_t){.commandType=SET_DRIVER_SLEEP, .message_id=9, .properties.set_driver_sleep={0}});
+        transition.message_id = 9;
+        issue(other, transition);
         break;
     case 6:
-        if (replies[9] != SET_DRIVER_SLEEP) return;
+        if (replies[9] != transition.commandType) return;
         assert(!hw_motor_drivers_sleeping());
         blocked = false;
         if (!stale_bus) assert(enqueue_multi(queue(0), partial + 2, partial_size - 2));
@@ -105,6 +116,7 @@ static void next_turn(uint32_t ms) {
         if (!replies[10]) return;
         assert(replies[6] == GET_DRIVER_SLEEP);
         assert(errors[7] == RESPONSE_DRIVERS_ASLEEP && errors[8] == RESPONSE_DRIVERS_ASLEEP);
+        if (board) assert(errors[11] == RESPONSE_BOARD_IDLE && errors[12] == RESPONSE_BOARD_IDLE);
         assert(replies[10] == SET_MOTOR_SPEED);
         longjmp(finished, 1);
     }
@@ -115,7 +127,8 @@ const os_interface_t *get_os_interface(void) {
     return &os;
 }
 void CommandHandlerTask(void *);
-void run_sleep_queues(unsigned blocked_bus) {
+void run_sleep_queues(unsigned blocked_bus, bool board_idle) {
+    board = board_idle;
     stale_bus = blocked_bus;
     if (!setjmp(finished)) CommandHandlerTask(NULL);
 }

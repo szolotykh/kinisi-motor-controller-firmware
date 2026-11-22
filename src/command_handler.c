@@ -27,6 +27,36 @@
 #include "hw_drv8873.h"
 #endif
 
+#if BOARD_HAS_DRIVER_SLEEP
+static uint8_t set_driver_sleep(bool sleeping)
+{
+    if (sleeping && !hw_motor_drivers_sleeping()) {
+        // Drain both controller mutexes before changing any driver pins.
+        platform_stop_velocity_controller();
+        controllers_manager_stop_controller_multiple(BMOTOR0 | BMOTOR1 | BMOTOR2 | BMOTOR3);
+    }
+    return hw_motor_set_driver_sleep(sleeping) ? RESPONSE_OK : RESPONSE_INTERNAL_ERROR;
+}
+#endif
+
+#if BOARD_HAS_BOARD_IDLE
+static bool drivers_were_sleeping;
+static uint8_t set_board_idle(bool idle)
+{
+    if (idle) {
+        if (!connection_board_idle()) {
+            drivers_were_sleeping = hw_motor_drivers_sleeping();
+            connection_set_board_idle(true, hw_clock_microseconds());
+        }
+        return set_driver_sleep(true); // Retry unconfirmed pins after a failed entry.
+    }
+    if (!connection_board_idle()) return RESPONSE_OK;
+    uint8_t status = set_driver_sleep(drivers_were_sleeping);
+    if (status == RESPONSE_OK) connection_set_board_idle(false, hw_clock_microseconds());
+    return status;
+}
+#endif
+
 // A platform can run open-loop without encoders. Feedback operations need
 // a live counter and a usable scale for every wheel that the platform owns.
 static bool platform_feedback_ready(const hw_encoder_interface_t *encoder)
@@ -542,6 +572,20 @@ uint8_t command_handler(controller_command_t* cmd, void (*command_callback)(uint
             command_callback((uint8_t *)&response, sizeof(response));
             return RESPONSE_OK;
         }
+        case SET_BOARD_IDLE:
+        case GET_BOARD_IDLE: {
+#if BOARD_HAS_BOARD_IDLE
+            if (cmd->commandType == GET_BOARD_IDLE) {
+                uint8_t idle = connection_board_idle();
+                command_callback(&idle, sizeof(idle));
+                return RESPONSE_OK;
+            }
+            if (cmd->properties.set_board_idle.idle > 1) return RESPONSE_INVALID_ARGUMENT;
+            return set_board_idle(cmd->properties.set_board_idle.idle != 0);
+#else
+            return RESPONSE_SENSOR_NOT_AVAILABLE;
+#endif
+        }
         case SET_DRIVER_SLEEP:
         case GET_DRIVER_SLEEP: {
 #if BOARD_HAS_DRIVER_SLEEP
@@ -551,14 +595,8 @@ uint8_t command_handler(controller_command_t* cmd, void (*command_callback)(uint
                 return RESPONSE_OK;
             }
             if (cmd->properties.set_driver_sleep.sleeping > 1) return RESPONSE_INVALID_ARGUMENT;
-            bool sleeping = cmd->properties.set_driver_sleep.sleeping != 0;
-            if (sleeping && !hw_motor_drivers_sleeping()) {
-                // Cancel position under its mutex, then drain any PID tick under
-                // the motor-controller mutex before changing any nSLEEP pins.
-                platform_stop_velocity_controller();
-                controllers_manager_stop_controller_multiple(BMOTOR0 | BMOTOR1 | BMOTOR2 | BMOTOR3);
-            }
-            return hw_motor_set_driver_sleep(sleeping) ? RESPONSE_OK : RESPONSE_INTERNAL_ERROR;
+            if (connection_board_idle()) return RESPONSE_BOARD_IDLE;
+            return set_driver_sleep(cmd->properties.set_driver_sleep.sleeping != 0);
 #else
             return RESPONSE_SENSOR_NOT_AVAILABLE;
 #endif

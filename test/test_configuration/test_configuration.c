@@ -1,6 +1,8 @@
 // Production session, command, platform and storage paths; simulated devices and scheduler.
 #include "commands_handler.h"
 #include "connection.h"
+#include "initialization.h"
+#include "wake_barriers.h"
 #include "controller_configuration.h"
 #include "config_store.h"
 #include "hw_drv8873.h"
@@ -23,17 +25,18 @@ static double encoder_scale[4], output[4];
 static unsigned motion_writes, tasks_started, fram_writes, fram_reads;
 static int write_budget = -1, failed_motor = -1, failed_encoder = -1;
 static uint32_t frequency = 100000;
-static bool driver_sleep;
+static bool driver_sleep, fail_driver_transition;
 bool hw_motor_drivers_sleeping(void) { return driver_sleep; }
 bool hw_motor_set_driver_sleep(bool sleeping) {
     if (sleeping && !driver_sleep) {
         for (unsigned i = 0; i < 4; ++i) assert(output[i] == 0 && !controllers_manager_is_running(i));
         assert(!platform_is_controller_running());
     }
-    driver_sleep = sleeping;
-    return true;
+    driver_sleep = sleeping || fail_driver_transition;
+    return !fail_driver_transition;
 }
-void run_sleep_queues(unsigned blocked_bus);
+void run_sleep_queues(unsigned blocked_bus, bool board_idle);
+void check_idle_hook(bool expected);
 
 bool hw_fram_read(uint16_t address, void *data, uint16_t length)
 {
@@ -212,17 +215,30 @@ static void verify(int type)
     check_frequency(25000);
 }
 
-static void sleep_policy(void)
+static void sleep_policy(bool board)
 {
     controller_command_t set_sleep = {.commandType=SET_DRIVER_SLEEP, .properties.set_driver_sleep={1}};
     controller_command_t get_sleep = {.commandType=GET_DRIVER_SLEEP};
+    if (board) {
+        set_sleep = (controller_command_t){.commandType=SET_BOARD_IDLE, .properties.set_board_idle={1}};
+        get_sleep.commandType = GET_BOARD_IDLE;
+    }
     connection_init(&session, command_handler, send_frame, hw_clock_microseconds);
     request(set_sleep, RESPONSE_INIT_REQUIRED);
     request(get_sleep, RESPONSE_INIT_REQUIRED);
+    request((controller_command_t){.commandType=INIT,
+        .properties.init={.protocol_major=2, .client_capabilities=CLIENT_CAP_WALL_CLOCK}}, RESPONSE_OK);
+    request(set_sleep, RESPONSE_CLOCK_NOT_READY);
+    request(get_sleep, RESPONSE_CLOCK_NOT_READY);
+    assert(!connection_board_idle() && !driver_sleep);
     connect();
     request(get_sleep, RESPONSE_OK);
     assert(reply_len == 5 && reply[4] == 0);
     request((controller_command_t){.commandType=SET_DRIVER_SLEEP, .properties.set_driver_sleep={2}}, RESPONSE_INVALID_ARGUMENT);
+    if (board) {
+        request((controller_command_t){.commandType=SET_BOARD_IDLE, .properties.set_board_idle={2}}, RESPONSE_INVALID_ARGUMENT);
+        check_idle_hook(false);
+    }
     configure(PLATFORM_DIFFERENTIAL);
     request((controller_command_t){.commandType=SAVE_CONFIGURATION}, RESPONSE_OK);
     unsigned writes = fram_writes;
@@ -236,7 +252,22 @@ static void sleep_policy(void)
     request((controller_command_t){.commandType=SET_PLATFORM_TARGET_VELOCITY,
         .properties.set_platform_target_velocity={0.1,0,0}}, RESPONSE_OK);
     assert(controllers_manager_is_running(3) && platform_is_controller_running());
+    if (board) {
+        // Already active: no-op exit must leave the running controllers untouched.
+        request((controller_command_t){.commandType=SET_BOARD_IDLE, .properties.set_board_idle={0}}, RESPONSE_OK);
+        assert(controllers_manager_is_running(3) && platform_is_controller_running());
+        fail_driver_transition = true;
+        request(set_sleep, RESPONSE_INTERNAL_ERROR);
+        assert(connection_board_idle() && driver_sleep);
+        fail_driver_transition = false;
+    }
     request(set_sleep, RESPONSE_OK);
+    if (board) {
+        request(set_sleep, RESPONSE_OK);
+        check_idle_hook(true);
+        for (unsigned state = 0; state < 2; ++state)
+            request((controller_command_t){.commandType=SET_DRIVER_SLEEP, .properties.set_driver_sleep={state}}, RESPONSE_BOARD_IDLE);
+    }
     assert(!platform_is_controller_running() && !controllers_manager_is_running(3) && driver_sleep);
     connect();
     request(get_sleep, RESPONSE_OK);
@@ -256,8 +287,17 @@ static void sleep_policy(void)
     }
     verify(PLATFORM_DIFFERENTIAL);
     request((controller_command_t){.commandType=COAST_PLATFORM}, RESPONSE_OK);
-    set_sleep.properties.set_driver_sleep.sleeping = 0;
+    if (board) {
+        set_sleep.properties.set_board_idle.idle = 0;
+        fail_driver_transition = true;
+        request(set_sleep, RESPONSE_INTERNAL_ERROR);
+        request(get_sleep, RESPONSE_OK);
+        assert(reply[4] == 1 && driver_sleep && connection_board_idle());
+        fail_driver_transition = false;
+    } else set_sleep.properties.set_driver_sleep.sleeping = 0;
     request(set_sleep, RESPONSE_OK);
+    assert(!driver_sleep);
+    if (board) check_idle_hook(false);
     verify(PLATFORM_DIFFERENTIAL);
     assert(fram_writes == writes);
     request((controller_command_t){.commandType=GET_MOTOR_POSITION, .properties.get_motor_position={3}},
@@ -265,8 +305,33 @@ static void sleep_policy(void)
     request((controller_command_t){.commandType=SET_PLATFORM_TARGET_VELOCITY}, RESPONSE_CONTROLLER_NOT_INITIALIZED);
     request((controller_command_t){.commandType=SET_MOTOR_TARGET_SPEED, .properties.set_motor_target_speed={3,1}},
         RESPONSE_CONTROLLER_NOT_INITIALIZED);
-    set_sleep.properties.set_driver_sleep.sleeping = 1;
-    request(set_sleep, RESPONSE_OK);
+    if (board) {
+        controller_command_t enter = {.commandType=SET_BOARD_IDLE, .properties.set_board_idle={1}};
+        request((controller_command_t){.commandType=SET_DRIVER_SLEEP, .properties.set_driver_sleep={1}}, RESPONSE_OK);
+        fail_driver_transition = true;
+        request(enter, RESPONSE_INTERNAL_ERROR);
+        // Independent inhibit must be confirmed before even releasing board idle.
+        request(set_sleep, RESPONSE_INTERNAL_ERROR);
+        assert(driver_sleep && connection_board_idle());
+        fail_driver_transition = false;
+        request(set_sleep, RESPONSE_OK);
+        assert(driver_sleep && !connection_board_idle());
+        request(enter, RESPONSE_OK);
+        request(enter, RESPONSE_OK);
+        request(set_sleep, RESPONSE_OK);
+        assert(driver_sleep && !connection_board_idle());
+        request(enter, RESPONSE_OK);
+        set_sleep.message_id = ++next_id;
+        connection_receive_queued(&session, (const uint8_t *)&set_sleep,
+            command_request_size(SET_BOARD_IDLE), BEFORE_BOARD_WAKE);
+        connection_poll(&session);
+        assert(reply_len == 6 && reply[1] == KINISI_MESSAGE_ERROR &&
+               reply[4] == SET_BOARD_IDLE && reply[5] == RESPONSE_BOARD_IDLE);
+        assert(driver_sleep && connection_board_idle()); // Restart must clear both volatile inhibits.
+    } else {
+        set_sleep.properties.set_driver_sleep.sleeping = 1;
+        request(set_sleep, RESPONSE_OK);
+    }
 }
 
 int main(int argc, char **argv)
@@ -274,8 +339,8 @@ int main(int argc, char **argv)
     assert(argc == 4);
     const char *mode = argv[1], *path = argv[2];
     int type = atoi(argv[3]);
-    if (!strcmp(mode, "sleep-queues")) {
-        run_sleep_queues(type);
+    if (!strcmp(mode, "sleep-queues") || !strcmp(mode, "idle-queues")) {
+        run_sleep_queues(type, !strcmp(mode, "idle-queues"));
         assert(output[3] == 70 && motion_writes == 2);
         return 0;
     }
@@ -289,6 +354,9 @@ int main(int argc, char **argv)
     connect();
     if (!strcmp(mode, "unsupported")) {
         configure(type);
+        request((controller_command_t){.commandType=GET_BOARD_IDLE}, RESPONSE_SENSOR_NOT_AVAILABLE);
+        request((controller_command_t){.commandType=SET_BOARD_IDLE, .properties.set_board_idle={1}}, RESPONSE_SENSOR_NOT_AVAILABLE);
+        assert(!connection_board_idle() && !driver_sleep);
         request((controller_command_t){.commandType=GET_DRIVER_SLEEP}, RESPONSE_SENSOR_NOT_AVAILABLE);
         request((controller_command_t){.commandType=SET_DRIVER_SLEEP, .properties.set_driver_sleep={1}}, RESPONSE_SENSOR_NOT_AVAILABLE);
         request((controller_command_t){.commandType=SAVE_CONFIGURATION}, RESPONSE_SENSOR_NOT_AVAILABLE);
@@ -298,9 +366,11 @@ int main(int argc, char **argv)
         assert(encoder_scale[3] == 803.5 && reversed_motor[3]);
         return 0;
     }
-    if (!strcmp(mode, "sleep-policy")) {
-        sleep_policy();
+    if (!strcmp(mode, "sleep-policy") || !strcmp(mode, "idle-policy")) {
+        sleep_policy(!strcmp(mode, "idle-policy"));
     } else if (!strcmp(mode, "wake-boot")) {
+        request((controller_command_t){.commandType=GET_BOARD_IDLE}, RESPONSE_OK);
+        assert(reply[4] == 0);
         request((controller_command_t){.commandType=GET_DRIVER_SLEEP}, RESPONSE_OK);
         assert(reply[4] == 0 && !platform_is_controller_running() && !motion_writes);
         verify(PLATFORM_DIFFERENTIAL);

@@ -5,7 +5,7 @@
 #include <string.h>
 
 static connection_t a, b;
-static uint64_t ticks;
+static uint64_t ticks, odometry_timestamp = 12345;
 static uint32_t fault_events[4];
 static uint32_t event_sequence(uint8_t topic, uint8_t index) { return topic == TOPIC_MOTOR_FAULTS && index < 4 ? fault_events[index] : 0; }
 static uint8_t wire[255], wire_size, sensor_error;
@@ -25,7 +25,7 @@ static uint8_t execute(controller_command_t *cmd, protocol_send_fn reply) {
     if (cmd->commandType == INIT) return initialization_validate(cmd);
     if (cmd->commandType == GET_ENCODER_ODOMETRY || cmd->commandType == GET_PLATFORM_ODOMETRY) {
         if (!running) return RESPONSE_ODOMETRY_NOT_INITIALIZED;
-        platform_odometry_sample sample = {12345, 0, 1, 1.25, -2.5, 3.0};
+        platform_odometry_sample sample = {odometry_timestamp, 0, 1, 1.25, -2.5, 3.0};
         reply((uint8_t *)&sample, cmd->commandType == GET_ENCODER_ODOMETRY ? sizeof(encoder_odometry_sample) : sizeof(sample));
     } else if (cmd->commandType == GET_MOTOR_FAULTS) {
         if (sensor_error) return sensor_error;
@@ -203,6 +203,82 @@ static void on_change_tests(void) {
     for (unsigned i = 0; i < CONNECTION_SUBSCRIPTION_CAPACITY; ++i) assert(!a.subscriptions[i].interval_ms);
 }
 
+static void board_idle_telemetry(void)
+{
+    init(&a); init(&b); heartbeat(&a, true); heartbeat(&b, true);
+    configured(&a, TOPIC_MOTOR_FAULTS, SUBSCRIPTION_TRIGGER_ON_EVENT,
+               SUBSCRIPTION_DELIVERY_ON_CHANGE, 0, 500);
+    connection_poll(&a); event(TOPIC_MOTOR_FAULTS, 0);
+    subscribe_mode(&b, TOPIC_IMU, 0, 10, SUBSCRIPTION_MODE_ON_CHANGE);
+    connection_poll(&b); event(TOPIC_IMU, 0);
+    // Retain an undelivered sample at entry. A changed value would otherwise
+    // be replayed from the cached fault registers when transport recovers.
+    busy = true;
+    diagnostic.undervoltage = !diagnostic.undervoltage;
+    ++fault_events[0];
+    connection_poll(&a);
+    busy = false;
+    connection_set_board_idle(true, ticks);
+    unsigned count = sends, before = reads;
+    for (unsigned i = 0; i < 20; ++i) {
+        ticks += 100000; ++fault_events[0];
+        connection_poll(&a); connection_poll(&b);
+    }
+    assert(sends == count && reads == before);
+    request(&b, (controller_command_t){.commandType=POLL_TELEMETRY});
+    assert(sends == count + 1 && wire[1] == POLL_TELEMETRY && reads == before);
+    subscribe(&a, TOPIC_IMU, 0, 10); error(RESPONSE_BOARD_IDLE);
+    subscribe_mode(&b, TOPIC_IMU, 0, 10, SUBSCRIPTION_MODE_ON_CHANGE); error(RESPONSE_BOARD_IDLE);
+    configured(&a, TOPIC_MOTOR_FAULTS, 1, 1, 0, 0); error(RESPONSE_BOARD_IDLE);
+    request(&b, (controller_command_t){.commandType=SUBSCRIBE_ODOMETRY,
+        .properties.subscribe_odometry={0,100}}); error(RESPONSE_BOARD_IDLE);
+    assert(reads == before);
+    request(&a, (controller_command_t){.commandType=PING}); assert(wire[1] == PING);
+    request(&a, (controller_command_t){.commandType=GET_TEMPERATURE});
+    assert(wire[1] == GET_TEMPERATURE && reads == before + 1);
+    request(&a, (controller_command_t){.commandType=GET_TIME_STATUS}); assert(wire[1] == GET_TIME_STATUS);
+    unsubscribe(&a, TOPIC_TEMPERATURE, 0); assert(wire[1] == UNSUBSCRIBE);
+    diagnostic.undervoltage = !diagnostic.undervoltage;
+    connection_set_board_idle(false, ticks);
+    count = sends; before = reads;
+    connection_poll(&a); event(TOPIC_MOTOR_FAULTS, 0);
+    assert(wire[20] == diagnostic.undervoltage);
+    connection_poll(&b); event(TOPIC_IMU, 0);
+    uint64_t stamp; memcpy(&stamp, wire + 6, sizeof(stamp)); assert(stamp == ticks);
+    assert(sends == count + 2 && reads == before + 2);
+    for (unsigned i = 0; i < 20; ++i) { connection_poll(&a); connection_poll(&b); }
+    assert(sends == count + 2 && reads == before + 2);
+    // A complete idle interval between polls resets the ON_CHANGE baseline
+    // and cached sample even though the real sensor value stayed identical.
+    connection_set_board_idle(true, ticks);
+    ++ticks;
+    connection_set_board_idle(false, ticks);
+    connection_poll(&b); event(TOPIC_IMU, 0);
+    assert(sends == count + 3 && reads == before + 3);
+    memcpy(&stamp, wire + 6, sizeof(stamp)); assert(stamp == ticks);
+    // Odometry remains available to direct queries with its actual cached
+    // timestamp. Publication waits for a post-wake measurement.
+    init(&b); heartbeat(&b, true);
+    odometry_timestamp = ++ticks;
+    subscribe_mode(&b, TOPIC_ENCODER_ODOMETRY, 0, 100, SUBSCRIPTION_MODE_ON_CHANGE);
+    connection_poll(&b); event(TOPIC_ENCODER_ODOMETRY, 0);
+    connection_set_board_idle(true, ++ticks);
+    request(&b, (controller_command_t){.commandType=GET_ENCODER_ODOMETRY});
+    memcpy(&stamp, wire + 4, sizeof(stamp)); assert(stamp == odometry_timestamp);
+    connection_set_board_idle(false, ++ticks);
+    count = sends; connection_poll(&b); assert(sends == count);
+    ticks += 100000; odometry_timestamp = ticks;
+    connection_poll(&b); event(TOPIC_ENCODER_ODOMETRY, 0);
+    memcpy(&stamp, wire + 6, sizeof(stamp)); assert(stamp == odometry_timestamp);
+    connection_set_board_idle(true, ticks);
+    unsubscribe(&b, TOPIC_ENCODER_ODOMETRY, 0);
+    assert(wire[1] == UNSUBSCRIBE);
+    // The watchdog still expires during board idle and retains the inhibit.
+    ticks += 61000000; connection_poll(&b);
+    assert(b.lost && connection_board_idle());
+    connection_set_board_idle(false, ticks);
+}
+
 int main(void) {
     init(&a); init(&b);
     subscribe(&a, TOPIC_IMU, 0, 10); error(RESPONSE_INVALID_ARGUMENT);
@@ -324,5 +400,7 @@ int main(void) {
     count = sends; ticks += 100000; connection_poll(&a); assert(sends == count);
     on_change_tests();
     configured_tests();
+    board_idle_telemetry();
+    puts("Board idle: no background reads or events, fresh snapshots across wake, odometry continuity and watchdog expiry passed");
     puts("Generic topics: framing, current sensing, bounds, cadence, backpressure, recovery, capacity and expiry passed");
 }

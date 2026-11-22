@@ -66,14 +66,24 @@ class BoardConfigTests(unittest.TestCase):
             self.assertFalse(keys & {"pin", "bus", "buses", "timer", "peripheral", "mcu", "address",
                                      "build_define", "control_model", "chip_select", "sense_resistor_ohm"})
         v4 = bundle["boards"][3]
-        self.assertEqual(v4["power"], {"driver_sleep": True})
+        self.assertEqual(v4["power"], {"driver_sleep": True, "board_idle": True})
         self.assertEqual(v4["sensors"], {"temperature": [{"id": 0}],
                          "imu": [{"id": 0, "accelerometer": True, "gyroscope": True}]})
         self.assertTrue(all(m["current_sense"] and m["current_limit"] for m in v4["motor_features"]))
         for profile in bundle["boards"][:3]:
-            self.assertEqual(profile["power"], {"driver_sleep": False})
+            self.assertEqual(profile["power"], {"driver_sleep": False, "board_idle": False})
             self.assertEqual(profile["sensors"], {"temperature": [], "imu": []})
             self.assertTrue(all(not m["current_sense"] and not m["current_limit"] for m in profile["motor_features"]))
+
+    def test_idle_mode_requires_driver_sleep_and_explicit_opt_in(self):
+        legacy = copy.deepcopy(self.boards[2])
+        legacy["power"] = {"board_idle": True}
+        self.reject(legacy, "requires explicit motor-driver sleep")
+        self.v4["power"]["board_idle"] = 1
+        self.reject(self.v4, "expected true or false")
+        del self.v4["power"]
+        g.validate(self.v4)
+        self.assertEqual(g.client_profile(self.v4)["power"], {"driver_sleep": True, "board_idle": False})
 
     def test_pwm_options(self):
         for board in g.load_boards(ROOT / "boards"):

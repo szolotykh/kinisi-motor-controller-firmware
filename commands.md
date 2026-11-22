@@ -1,6 +1,6 @@
 # Kinisi motor controller commands
 
-**Protocol 2.15.0** · Generated from [commands.json](commands.json)
+**Protocol 2.16.0** · Generated from [commands.json](commands.json)
 
 [Command index](#command-index) · [Wire format](#wire-format) · [Error codes](#error-codes)
 
@@ -91,6 +91,8 @@
 | [`GET_CONFIGURATION_FIELD`](#get_configuration_field-0x5a) | `0x5A` | Client → controller | `double` |
 | [`SET_DRIVER_SLEEP`](#set_driver_sleep-0x5b) | `0x5B` | Client → controller | ACK |
 | [`GET_DRIVER_SLEEP`](#get_driver_sleep-0x5c) | `0x5C` | Client → controller | `uint8_t` |
+| [`SET_BOARD_IDLE`](#set_board_idle-0x5d) | `0x5D` | Client → controller | ACK |
+| [`GET_BOARD_IDLE`](#get_board_idle-0x5e) | `0x5E` | Client → controller | `uint8_t` |
 
 ## Command lifecycle
 
@@ -1688,7 +1690,7 @@ Create or replace this connection's subscription for an odometry source. Require
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`ODOMETRY_NOT_INITIALIZED`](#error-odometry-not-initialized) (9)
+[`BOARD_IDLE`](#error-board-idle) (20) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`ODOMETRY_NOT_INITIALIZED`](#error-odometry-not-initialized) (9)
 
 [Back to command index](#command-index)
 
@@ -2063,7 +2065,7 @@ Create or replace this connection's subscription for a topic and resource. Requi
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`ODOMETRY_NOT_INITIALIZED`](#error-odometry-not-initialized) (9) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`SUBSCRIPTION_LIMIT`](#error-subscription-limit) (17) · [`SAMPLE_OUT_OF_RANGE`](#error-sample-out-of-range) (18)
+[`BOARD_IDLE`](#error-board-idle) (20) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`ODOMETRY_NOT_INITIALIZED`](#error-odometry-not-initialized) (9) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`SUBSCRIPTION_LIMIT`](#error-subscription-limit) (17) · [`SAMPLE_OUT_OF_RANGE`](#error-sample-out-of-range) (18)
 
 [Back to command index](#command-index)
 
@@ -2138,7 +2140,7 @@ Create or replace this connection's subscription with a delivery mode. Requires 
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`ODOMETRY_NOT_INITIALIZED`](#error-odometry-not-initialized) (9) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`SUBSCRIPTION_LIMIT`](#error-subscription-limit) (17) · [`SAMPLE_OUT_OF_RANGE`](#error-sample-out-of-range) (18)
+[`BOARD_IDLE`](#error-board-idle) (20) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`ODOMETRY_NOT_INITIALIZED`](#error-odometry-not-initialized) (9) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`SUBSCRIPTION_LIMIT`](#error-subscription-limit) (17) · [`SAMPLE_OUT_OF_RANGE`](#error-sample-out-of-range) (18)
 
 [Back to command index](#command-index)
 
@@ -2270,7 +2272,7 @@ Create or replace a subscription with independent trigger and delivery settings.
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`ODOMETRY_NOT_INITIALIZED`](#error-odometry-not-initialized) (9) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`SUBSCRIPTION_LIMIT`](#error-subscription-limit) (17) · [`SAMPLE_OUT_OF_RANGE`](#error-sample-out-of-range) (18)
+[`BOARD_IDLE`](#error-board-idle) (20) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`ODOMETRY_NOT_INITIALIZED`](#error-odometry-not-initialized) (9) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`SUBSCRIPTION_LIMIT`](#error-subscription-limit) (17) · [`SAMPLE_OUT_OF_RANGE`](#error-sample-out-of-range) (18)
 
 [Back to command index](#command-index)
 
@@ -2405,7 +2407,7 @@ Explicitly inhibit or wake the board's motor drivers. Entry stops motion and con
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6)
+[`BOARD_IDLE`](#error-board-idle) (20) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6)
 
 [Back to command index](#command-index)
 
@@ -2430,6 +2432,58 @@ No payload parameters.
 | Parameter | Type | Bytes | Description |
 | --- | --- | ---: | --- |
 | `sleeping` | `uint8_t` | 1 | 1 when driver sleep is requested or 0 when motor commands are permitted. |
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16)
+
+[Back to command index](#command-index)
+
+---
+
+### SET_BOARD_IDLE (0x5D)
+
+**Client → controller** · **Payload:** 1 bytes
+
+Enter communication-preserving board idle (1) or explicitly leave it (0). Entry stops control and sleeps all drivers. Existing subscriptions pause and resume with fresh samples. Heartbeat, time sync and direct reads remain available. Wake preserves an independent driver sleep request present on entry, otherwise it verifies initialized drivers and leaves outputs stopped. A failed transition keeps idle and motion inhibition active for explicit retry. Requires READY, protocol 2.16 and a board with board idle support.
+
+#### Parameters
+
+| Parameter | Type | Bytes | Range | Description |
+| --- | --- | ---: | --- | --- |
+| `idle` | `uint8_t` | 1 | 0 to 1 | 1 to enter board idle or 0 to wake the board. |
+
+#### Response
+
+**ACK** — empty payload; echoes the command and message ID.
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`BOARD_IDLE`](#error-board-idle) (20)
+
+[Back to command index](#command-index)
+
+---
+
+### GET_BOARD_IDLE (0x5E)
+
+**Client → controller** · **Payload:** 0 bytes
+
+Read the shared board idle request. It survives reconnect and clears on reset. GET_DRIVER_SLEEP reports the effective motor-driver inhibit, which is also set while the board is idle. Requires READY, protocol 2.16 and a board with board idle support.
+
+#### Parameters
+
+No payload parameters.
+
+#### Response
+
+**Controller → client** · `uint8_t` · **Payload:** 1 bytes
+
+1 while the board idle request is active, otherwise 0.
+
+| Parameter | Type | Bytes | Description |
+| --- | --- | ---: | --- |
+| `idle` | `uint8_t` | 1 | 1 while the board idle request is active, otherwise 0. |
 
 #### Errors
 
@@ -2464,3 +2518,4 @@ Errors use the shared ERROR message. Each command above links to its possible er
 | 17 | <a id="error-subscription-limit"></a>`SUBSCRIPTION_LIMIT` | This connection has no free subscription slots; unsubscribe an existing source first. |
 | 18 | <a id="error-sample-out-of-range"></a>`SAMPLE_OUT_OF_RANGE` | The sensor reading is saturated; no valid measurement can be returned. |
 | 19 | <a id="error-drivers-asleep"></a>`DRIVERS_ASLEEP` | Driver sleep is active. Explicitly wake the drivers before requesting this operation. |
+| 20 | <a id="error-board-idle"></a>`BOARD_IDLE` | Board idle is active. Explicitly wake the board before changing driver sleep or starting a subscription. |
