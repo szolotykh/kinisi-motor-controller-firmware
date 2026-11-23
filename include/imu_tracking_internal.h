@@ -19,6 +19,13 @@ static imu_tracking_reader_t tracking_reader;
 static uint32_t tracking_generation, acquisition_epoch;
 static uint64_t tracking_origin, published_sample;
 static uint32_t tracking_elapsed;
+// Keep a complete wire snapshot until both independent 100 Hz dies have advanced.
+// The core still consumes and integrates every event in source order.
+static struct {
+    uint64_t accel_us, gyro_us;
+    uint32_t sequence;
+    double x, y, yaw, vx, vy, wz;
+} published;
 
 void imu_tracking_install_producer(bool (*start)(void), void (*begin)(uint32_t), imu_tracking_reader_t read)
 {
@@ -75,8 +82,18 @@ static void tracking_update(void)
             if (calibrating) tracking_origin = tracker.sample_us;
             if (tracker.sample_us - tracking_origin >= IMU_TRACKING_WINDOW_US) {
                 imu_only_fail(&tracker, IMU_ONLY_WINDOW_EXPIRED);
-            } else {
+            } else if (!published_sample ||
+                       (tracker.accel_us > published.accel_us && tracker.gyro_us > published.gyro_us)) {
                 published_sample = tracker.sample_us;
+                published.accel_us = tracker.accel_us;
+                published.gyro_us = tracker.gyro_us;
+                published.sequence = tracker.sequence;
+                published.x = tracker.x;
+                published.y = tracker.y;
+                published.yaw = tracker.yaw;
+                published.vx = tracker.vx;
+                published.vy = tracker.vy;
+                published.wz = tracker.wz;
             }
         }
     } else if (result != HW_IMU_NOT_READY) {
@@ -163,6 +180,12 @@ static uint8_t tracking_read(uint8_t command, uint8_t kind, void (*reply)(uint8_
     uint64_t now = hw_clock_microseconds();
     tracking_deadline(now);
     uint8_t result = RESPONSE_OK;
+    if (tracker.health == IMU_ONLY_TRACKING &&
+        (tracking_age(now, published.accel_us) > IMU_ONLY_MAX_AGE_US ||
+         tracking_age(now, published.gyro_us) > IMU_ONLY_MAX_AGE_US)) {
+        imu_only_fail(&tracker, IMU_ONLY_STALE);
+        tracking_publish_active();
+    }
     if (command == GET_IMU_TRACKING_CONFIGURATION) {
         imu_tracking_configuration wire = {tracker.mounting_yaw, IMU_TRACKING_WINDOW_US};
         reply((uint8_t *)&wire, sizeof(wire));
@@ -174,27 +197,28 @@ static uint8_t tracking_read(uint8_t command, uint8_t kind, void (*reply)(uint8_
                              ? IMU_TRACKING_FLAG_RESTART_REQUIRED
                              : 0) |
                         (tracker.health != IMU_ONLY_STOPPED ? IMU_TRACKING_FLAG_MOUNT_CONFIRMED : 0);
+        bool active = tracker.health == IMU_ONLY_TRACKING;
         imu_tracking_status wire = {tracker.health,
                                     tracker.fault,
                                     flags,
                                     0,
-                                    tracker.sequence,
+                                    active ? published.sequence : tracker.sequence,
                                     published_sample,
                                     tracking_elapsed,
-                                    tracking_age(now, tracker.accel_us),
-                                    tracking_age(now, tracker.gyro_us)};
+                                    tracking_age(now, active ? published.accel_us : tracker.accel_us),
+                                    tracking_age(now, active ? published.gyro_us : tracker.gyro_us)};
         reply((uint8_t *)&wire, sizeof(wire));
     } else if (kind > IMU_TRACKING_VECTOR_BIAS)
         result = RESPONSE_INVALID_ARGUMENT;
     else if (tracker.health != IMU_ONLY_TRACKING)
         result = RESPONSE_SAMPLE_NOT_AVAILABLE;
     else {
-        imu_tracking_vector wire = {tracker.sequence, tracker.x, tracker.y, tracker.yaw};
+        imu_tracking_vector wire = {published.sequence, published.x, published.y, published.yaw};
         if (kind == IMU_TRACKING_VECTOR_TWIST) {
-            double c = cos(tracker.yaw), sn = sin(tracker.yaw);
-            wire.x = c * tracker.vx + sn * tracker.vy;
-            wire.y = -sn * tracker.vx + c * tracker.vy;
-            wire.z = tracker.wz;
+            double c = cos(published.yaw), sn = sin(published.yaw);
+            wire.x = c * published.vx + sn * published.vy;
+            wire.y = -sn * published.vx + c * published.vy;
+            wire.z = published.wz;
         } else if (kind == IMU_TRACKING_VECTOR_BIAS) {
             wire.x = tracker.bias_ax;
             wire.y = tracker.bias_ay;
