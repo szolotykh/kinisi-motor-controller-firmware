@@ -207,7 +207,10 @@ static inline void imu_only_step(imu_only_state_t *s, uint64_t now_us, const imu
             ++s->gyro_count;
             s->bias_gz += (m->gz - s->bias_gz) / s->gyro_count;
         }
-        if (s->accel_count >= 25 && s->gyro_count >= 25 && a - s->first_accel >= 500000 &&
+        // Complete the bias window on a fresh gyro measurement. For independently
+        // delivered dies the next acceleration brackets that gyro source time,
+        // so the first complete pair reports a rate measured at its own instant.
+        if (new_g && s->accel_count >= 25 && s->gyro_count >= 25 && a - s->first_accel >= 500000 &&
             g - s->first_gyro >= 500000) {
             // The second calibration event is available at this instant. Do not publish
             // the origin until the slower source also covers it.
