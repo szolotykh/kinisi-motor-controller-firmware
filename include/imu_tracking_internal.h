@@ -17,9 +17,9 @@ static bool (*tracking_start_producer)(void);
 static void (*tracking_begin)(uint32_t);
 static imu_tracking_reader_t tracking_reader;
 static uint32_t tracking_generation, acquisition_epoch;
-static uint64_t tracking_origin, published_sample;
+static uint64_t tracking_origin, published_sample, published_at;
 static uint32_t tracking_elapsed;
-// Keep a complete wire snapshot until both independent 100 Hz dies have advanced.
+// Publish a complete wire snapshot at each covered gyro source time.
 // The core still consumes and integrates every event in source order.
 static struct {
     uint64_t accel_us, gyro_us;
@@ -51,6 +51,9 @@ static void tracking_deadline(uint64_t now)
         tracking_elapsed = elapsed < IMU_TRACKING_WINDOW_US ? (uint32_t)elapsed : IMU_TRACKING_WINDOW_US;
     }
     imu_only_expire(&tracker, now);
+    if (tracker.health == IMU_ONLY_TRACKING && published_sample &&
+        now - published_sample > IMU_ONLY_MAX_AGE_US)
+        imu_only_fail(&tracker, IMU_ONLY_STALE);
     if (tracker.health == IMU_ONLY_TRACKING && now >= tracking_origin &&
         now - tracking_origin >= IMU_TRACKING_WINDOW_US + IMU_TRACKING_PUBLIC_LATENCY_US)
         imu_only_fail(&tracker, IMU_ONLY_WINDOW_EXPIRED);
@@ -77,16 +80,19 @@ static void tracking_update(void)
                                     raw.angular_velocity_y,
                                     raw.angular_velocity_z};
         bool calibrating = tracker.health == IMU_ONLY_CALIBRATING;
-        imu_only_step(&tracker, now, &sample);
+        // Keep a drained snapshot visible for at least one public polling slot.
+        imu_only_process(&tracker, now, &sample, true, !published_sample || now - published_at >= 1000);
         if (tracker.health == IMU_ONLY_TRACKING) {
             if (calibrating) tracking_origin = tracker.sample_us;
             if (tracker.sample_us - tracking_origin >= IMU_TRACKING_WINDOW_US) {
                 imu_only_fail(&tracker, IMU_ONLY_WINDOW_EXPIRED);
-            } else if (!published_sample ||
-                       (tracker.accel_us > published.accel_us && tracker.gyro_us > published.gyro_us)) {
+            } else if (!published_sample || tracker.sample_us > published_sample) {
+                if (published_sample && tracker.sequence == published.sequence)
+                    ++tracker.sequence;
+                published_at = now;
                 published_sample = tracker.sample_us;
                 published.accel_us = tracker.accel_us;
-                published.gyro_us = tracker.gyro_us;
+                published.gyro_us = tracker.gyro.applied_us;
                 published.sequence = tracker.sequence;
                 published.x = tracker.x;
                 published.y = tracker.y;
@@ -109,7 +115,7 @@ static void tracking_poll(void *unused)
     for (;;) {
         // START can arm the cursor between wakes while fusion keeps acquiring
         // 100 Hz observations. Bound the first service delay on every restart.
-        vTaskDelayUntil(&last, pdMS_TO_TICKS(2));
+        vTaskDelayUntil(&last, pdMS_TO_TICKS(imu_tracking_epoch() ? 1 : 2));
         if (!imu_tracking_epoch() || !xSemaphoreTake(tracking_mutex, portMAX_DELAY))
             continue;
         tracking_update();
@@ -180,12 +186,6 @@ static uint8_t tracking_read(uint8_t command, uint8_t kind, void (*reply)(uint8_
     uint64_t now = hw_clock_microseconds();
     tracking_deadline(now);
     uint8_t result = RESPONSE_OK;
-    if (tracker.health == IMU_ONLY_TRACKING &&
-        (tracking_age(now, published.accel_us) > IMU_ONLY_MAX_AGE_US ||
-         tracking_age(now, published.gyro_us) > IMU_ONLY_MAX_AGE_US)) {
-        imu_only_fail(&tracker, IMU_ONLY_STALE);
-        tracking_publish_active();
-    }
     if (command == GET_IMU_TRACKING_CONFIGURATION) {
         imu_tracking_configuration wire = {tracker.mounting_yaw, IMU_TRACKING_WINDOW_US};
         reply((uint8_t *)&wire, sizeof(wire));

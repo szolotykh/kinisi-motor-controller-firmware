@@ -35,6 +35,7 @@ typedef struct {
     imu_only_event_t pending[12];
     unsigned head, count;
     double x, y;
+    uint64_t applied_us;
 } imu_only_axis_t;
 typedef struct {
     double x, y, yaw, vx, vy, wz, bias_ax, bias_ay, bias_gz; // velocity in origin/world axes
@@ -112,6 +113,7 @@ static inline bool imu_only_append(imu_only_axis_t *axis, uint64_t at, double x,
 static inline void imu_only_advance_axis(imu_only_axis_t *axis, uint64_t time)
 {
     if (axis->count && axis->pending[axis->head].time == time) {
+        axis->applied_us = time;
         axis->x = axis->pending[axis->head].x;
         axis->y = axis->pending[axis->head].y;
         axis->head = (axis->head + 1) % 12;
@@ -143,7 +145,38 @@ static inline void imu_only_integrate(imu_only_state_t *s, uint64_t watermark)
     s->wz = s->gyro.x;
 }
 
-static inline void imu_only_step(imu_only_state_t *s, uint64_t now_us, const imu_only_sample_t *m)
+// Advance to one actual gyro acquisition for which acceleration coverage is
+// available. A later gyro stays queued even if it arrived in the same read.
+static inline void imu_only_complete_gyro(imu_only_state_t *s)
+{
+    if (!s->origin_us)
+        return;
+    uint64_t time;
+    bool first = s->health == IMU_ONLY_CALIBRATING;
+    if (first && s->gyro.applied_us == s->origin_us) {
+        time = s->origin_us;
+    } else if (s->gyro.count) {
+        time = s->gyro.pending[s->gyro.head].time;
+    } else {
+        return;
+    }
+    if (time > s->accel_us || time > s->gyro_us)
+        return;
+    imu_only_integrate(s, time);
+    if (first) {
+        // The public origin is the first fully covered gyro acquisition. Retain
+        // integrated velocity in that frame if calibration ended between ticks.
+        double c = cos(s->yaw), sn = sin(s->yaw);
+        double vx = c * s->vx + sn * s->vy;
+        s->vy = -sn * s->vx + c * s->vy;
+        s->vx = vx;
+        s->x = s->y = s->yaw = 0.;
+        s->health = IMU_ONLY_TRACKING;
+    }
+}
+
+static inline void imu_only_process(imu_only_state_t *s, uint64_t now_us, const imu_only_sample_t *m,
+                                    bool publish_on_gyro, bool advance)
 {
     imu_only_expire(s, now_us);
     if (!imu_only_running(s) || !m)
@@ -180,8 +213,11 @@ static inline void imu_only_step(imu_only_state_t *s, uint64_t now_us, const imu
         imu_only_fail(s, IMU_ONLY_TIMESTAMP);
         return;
     }
-    if (!new_a && !new_g)
+    if (!new_a && !new_g) {
+        if (publish_on_gyro && advance)
+            imu_only_complete_gyro(s);
         return;
+    }
     double ax = s->cosine * m->ax - s->sine * m->ay, ay = s->sine * m->ax + s->cosine * m->ay;
     s->accel_us = a;
     s->gyro_us = g;
@@ -219,6 +255,8 @@ static inline void imu_only_step(imu_only_state_t *s, uint64_t now_us, const imu
                 s->health = IMU_ONLY_TRACKING;
             s->accel.x = ax - s->bias_ax;
             s->accel.y = ay - s->bias_ay;
+            s->accel.applied_us = a;
+            s->gyro.applied_us = g;
             s->gyro.x = s->wz = m->gz - s->bias_gz;
         }
         return;
@@ -229,11 +267,18 @@ static inline void imu_only_step(imu_only_state_t *s, uint64_t now_us, const imu
         s->accel.x = ax - s->bias_ax;
         s->accel.y = ay - s->bias_ay;
     }
-    if (new_g && g <= s->sample_us)
+    if (new_g && g <= s->sample_us) {
+        s->gyro.applied_us = g;
         s->gyro.x = m->gz - s->bias_gz;
+    }
     if ((new_a && a > s->sample_us && !imu_only_append(&s->accel, a, ax - s->bias_ax, ay - s->bias_ay)) ||
         (new_g && g > s->sample_us && !imu_only_append(&s->gyro, g, m->gz - s->bias_gz, 0))) {
         imu_only_fail(s, IMU_ONLY_TIMESTAMP);
+        return;
+    }
+    if (publish_on_gyro) {
+        if (advance)
+            imu_only_complete_gyro(s);
         return;
     }
     uint64_t watermark = a < g ? a : g;
@@ -241,4 +286,9 @@ static inline void imu_only_step(imu_only_state_t *s, uint64_t now_us, const imu
         s->health = IMU_ONLY_TRACKING;
         imu_only_integrate(s, watermark);
     }
+}
+
+static inline void imu_only_step(imu_only_state_t *s, uint64_t now_us, const imu_only_sample_t *m)
+{
+    imu_only_process(s, now_us, m, false, true);
 }
