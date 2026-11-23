@@ -264,6 +264,7 @@ static inline void imu_only_process(imu_only_state_t *s, uint64_t now_us, const 
     // A slower channel may catch up to the zero-origin instant. Its observation
     // is then the causal held value for the first forward integration interval.
     if (new_a && a <= s->sample_us) {
+        s->accel.applied_us = a;
         s->accel.x = ax - s->bias_ax;
         s->accel.y = ay - s->bias_ay;
     }

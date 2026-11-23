@@ -51,9 +51,6 @@ static void tracking_deadline(uint64_t now)
         tracking_elapsed = elapsed < IMU_TRACKING_WINDOW_US ? (uint32_t)elapsed : IMU_TRACKING_WINDOW_US;
     }
     imu_only_expire(&tracker, now);
-    if (tracker.health == IMU_ONLY_TRACKING && published_sample &&
-        now - published_sample > IMU_ONLY_MAX_AGE_US)
-        imu_only_fail(&tracker, IMU_ONLY_STALE);
     if (tracker.health == IMU_ONLY_TRACKING && now >= tracking_origin &&
         now - tracking_origin >= IMU_TRACKING_WINDOW_US + IMU_TRACKING_PUBLIC_LATENCY_US)
         imu_only_fail(&tracker, IMU_ONLY_WINDOW_EXPIRED);
@@ -87,6 +84,15 @@ static void tracking_update(void)
             if (tracker.sample_us - tracking_origin >= IMU_TRACKING_WINDOW_US) {
                 imu_only_fail(&tracker, IMU_ONLY_WINDOW_EXPIRED);
             } else if (!published_sample || tracker.sample_us > published_sample) {
+                // Accel acquisition covers the gyro time. Integration uses the
+                // last accel at or before it. Verify the age of both contributions
+                // when creating the estimate, including when draining a backlog.
+                if (now - tracker.accel.applied_us > IMU_ONLY_MAX_AGE_US ||
+                    now - tracker.gyro.applied_us > IMU_ONLY_MAX_AGE_US) {
+                    imu_only_fail(&tracker, IMU_ONLY_STALE);
+                    tracking_publish_active();
+                    return;
+                }
                 if (published_sample && tracker.sequence == published.sequence)
                     ++tracker.sequence;
                 published_at = now;
@@ -115,7 +121,7 @@ static void tracking_poll(void *unused)
     for (;;) {
         // START can arm the cursor between wakes while fusion keeps acquiring
         // 100 Hz observations. Bound the first service delay on every restart.
-        vTaskDelayUntil(&last, pdMS_TO_TICKS(imu_tracking_epoch() ? 1 : 2));
+        vTaskDelayUntil(&last, pdMS_TO_TICKS(2));
         if (!imu_tracking_epoch() || !xSemaphoreTake(tracking_mutex, portMAX_DELAY))
             continue;
         tracking_update();
