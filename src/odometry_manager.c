@@ -35,6 +35,9 @@ typedef struct
     uint64_t encoder_sample_us[NUMBER_ENCODERS];
     uint64_t platform_sample_us;
 #if BOARD_HAS_FEEDBACK_SOURCE_SELECTOR
+    // Split long odometry waits for passive shaft monitoring. Only a completed
+    // full period samples odometry and invokes either estimator.
+    uint32_t phase_ms, remaining_ms;
     feedback_frame_t feedback_frame;
     uint32_t feedback_sequence;
     bool feedback_valid;
@@ -53,9 +56,8 @@ typedef struct
 typedef struct { uint64_t seen, quiet_since, moved; uint16_t count; } rest_sample_t;
 static rest_sample_t rest[NUMBER_ENCODERS];
 
-static bool record_count(uint8_t i, uint16_t count, uint64_t at)
+static bool record_count(rest_sample_t *r, uint16_t count, uint64_t at)
 {
-    rest_sample_t *r = &rest[i];
     bool moved = r->seen && count != r->count;
     if (moved) r->moved = at;
     if (moved || !r->seen || at <= r->seen || at - r->seen > 60000) r->quiet_since = at;
@@ -63,6 +65,16 @@ static bool record_count(uint8_t i, uint16_t count, uint64_t at)
     r->seen = at;
     return moved;
 }
+#if BOARD_HAS_FEEDBACK_SOURCE_SELECTOR
+static rest_sample_t switch_rest[NUMBER_ENCODERS];
+static void sample_switch_rest(uint64_t at)
+{
+    for (uint8_t i = 0; i < NUMBER_ENCODERS; ++i) {
+        if (encoder->is_initialized(i)) record_count(&switch_rest[i],encoder->get_value(i),at);
+        else switch_rest[i] = (rest_sample_t){0};
+    }
+}
+#endif
 #endif
 
 static odometry_manager_state_t odometry_manager_state = {
@@ -88,20 +100,38 @@ void odometry_manager_task(void *argument)
     {
         // Recompute the period each iteration so SET_ODOMETRY_FREQUENCY takes
         // effect at runtime (the interval is a shared state variable).
-        const TickType_t xFrequency = pdMS_TO_TICKS(state->update_interval);
+        uint32_t wait_ms = state->update_interval;
+#if BOARD_HAS_FEEDBACK_SOURCE_SELECTOR
+        if (!state->remaining_ms || state->phase_ms != wait_ms) {
+            state->phase_ms = wait_ms;
+            state->remaining_ms = wait_ms;
+        }
+        wait_ms = state->remaining_ms > 20 ? 20 : state->remaining_ms;
+#endif
+        const TickType_t xFrequency = pdMS_TO_TICKS(wait_ms);
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
         // Obtain odometry mutex
         if (xSemaphoreTake(state->odometry_mutex, portMAX_DELAY))
         {
             // Timestamp the encoder acquisition batch, before integration.
             uint64_t sample_us = hw_clock_microseconds();
+#if BOARD_HAS_FEEDBACK_SOURCE_SELECTOR
+            state->remaining_ms -= wait_ms;
+            if (state->remaining_ms) {
+                sample_switch_rest(sample_us);
+                xSemaphoreGive(state->odometry_mutex);
+                continue;
+            }
+#endif
 #if BOARD_HAS_FUSION_EXPERIMENT
             const uint32_t epoch = platform_fusion_epoch();
 #if BOARD_HAS_FEEDBACK_SOURCE_SELECTOR
             const uint32_t passive_epoch = passive_fusion_epoch();
-            const bool observe_wheels = true; // Also checks coast and independently configured wheels.
+            const bool watch_standalone = epoch || passive_epoch;
+            const bool observe_wheels = true; // Required for the encoder selector's validity.
 #else
             const bool observe_wheels = epoch != 0;
+            const bool watch_standalone = observe_wheels;
 #endif
             bool valid = platform_is_odometry_enabled();
             bool stationary = true, moved = false;
@@ -119,8 +149,12 @@ void odometry_manager_task(void *argument)
                 if(state->is_initialized[i])
                 {
                     uint16_t encoder_value = encoder->get_value(i);
+#if BOARD_HAS_FEEDBACK_SOURCE_SELECTOR
+                    if (encoder->is_initialized(i)) record_count(&switch_rest[i],encoder_value,sample_us);
+                    else switch_rest[i] = (rest_sample_t){0};
+#endif
 #if BOARD_HAS_FUSION_EXPERIMENT
-                    moved |= record_count(i, encoder_value, sample_us);
+                    moved |= record_count(&rest[i], encoder_value, sample_us);
 #endif
                     state->odometry_change[i] = odometry_integrator_wheel_delta(
                         state->encoder_previous_value[i], encoder_value, encoder->get_resolution(i));
@@ -130,9 +164,19 @@ void odometry_manager_task(void *argument)
                     state->encoder_sample_us[i] = sample_us;
                 }
 #if BOARD_HAS_FUSION_EXPERIMENT
-                else if (observe_wheels && encoder->is_initialized(i))
-                    moved |= record_count(i, encoder->get_value(i), sample_us);
-                else rest[i] = (rest_sample_t){0};
+                else if (encoder->is_initialized(i) && (watch_standalone || BOARD_HAS_FEEDBACK_SOURCE_SELECTOR)) {
+                    uint16_t count = encoder->get_value(i);
+#if BOARD_HAS_FEEDBACK_SOURCE_SELECTOR
+                    record_count(&switch_rest[i],count,sample_us);
+#endif
+                    if (watch_standalone) moved |= record_count(&rest[i],count,sample_us);
+                    else rest[i] = (rest_sample_t){0};
+                } else {
+                    rest[i] = (rest_sample_t){0};
+#if BOARD_HAS_FEEDBACK_SOURCE_SELECTOR
+                    switch_rest[i] = (rest_sample_t){0};
+#endif
+                }
                 if (rest[i].seen && sample_us - rest[i].quiet_since < 100000) stationary = false;
 #endif
             }
@@ -410,6 +454,14 @@ void odometry_manager_set_frequency(uint16_t frequency_hz)
 
     if (xSemaphoreTake(odometry_manager_state.odometry_mutex, portMAX_DELAY))
     {
+#if BOARD_HAS_FEEDBACK_SOURCE_SELECTOR
+        if (odometry_manager_state.update_interval != period_ms) {
+            // A wider deadline cannot renew an acquisition produced at the old rate.
+            odometry_manager_state.feedback_valid = false;
+            odometry_manager_state.feedback_reason = FEEDBACK_REASON_WAITING_SAMPLE;
+            feedback_invalidate(FEEDBACK_SOURCE_ENCODER);
+        }
+#endif
         odometry_manager_state.update_interval = period_ms;
         xSemaphoreGive(odometry_manager_state.odometry_mutex);
     }
@@ -525,7 +577,7 @@ bool odometry_feedback_at_rest(uint64_t now)
     bool quiet = true;
     for (uint8_t i=0; i<NUMBER_ENCODERS; ++i) {
         if (!hw->is_initialized(i)) continue;
-        const rest_sample_t *r = &rest[i];
+        const rest_sample_t *r = &switch_rest[i];
         if (!r->seen || now < r->seen || now - r->seen > 60000 ||
             r->seen - r->quiet_since < 100000 || hw->get_value(i) != r->count) quiet = false;
     }
@@ -541,7 +593,11 @@ void odometry_feedback_sample(feedback_snapshot_t *out)
     uint64_t now=hw_clock_microseconds(), stamp=s->platform_sample_us;
     if (!stamp) out->reason=FEEDBACK_REASON_WAITING_SAMPLE;
     else if (!s->feedback_valid) out->reason=s->feedback_reason;
-    else if (now < stamp || now-stamp > (uint64_t)s->update_interval * 3000U) out->reason=FEEDBACK_REASON_STALE;
+    else if (now < stamp || now-stamp > (uint64_t)s->update_interval * 3000U) {
+        s->feedback_valid=false;
+        s->feedback_reason=out->reason=FEEDBACK_REASON_STALE;
+        feedback_invalidate(FEEDBACK_SOURCE_ENCODER);
+    }
     else feedback_snapshot(out,&s->feedback_frame,FEEDBACK_SOURCE_ENCODER,s->feedback_sequence,stamp,
                            s->platform_odometry,s->feedback_twist);
     xSemaphoreGive(s->odometry_mutex);

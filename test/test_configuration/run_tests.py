@@ -60,6 +60,8 @@ with tempfile.TemporaryDirectory() as folder:
             subprocess.run([str(binary), mode, str(image), str(platform)], check=True, timeout=10)
 
         if revision == 4:
+            for hz in (1,10):
+                run('selector-slow',out/'unconfigured.fram',hz)
             for scenario in ('selector-imu','selector-platform'):
                 run(scenario,out/'unconfigured.fram',1)
             for preference in (1,2):

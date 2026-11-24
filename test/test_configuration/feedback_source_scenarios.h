@@ -202,3 +202,47 @@ static void selector_legacy(bool factory)
         check_frequency(25000);
     }
 }
+
+static void selector_slow(unsigned hz)
+{
+    configure(PLATFORM_DIFFERENTIAL);
+    request((controller_command_t){.commandType=SET_ODOMETRY_FREQUENCY,
+        .properties.set_odometry_frequency={hz}},RESPONSE_OK);
+    request((controller_command_t){.commandType=START_PLATFORM_ODOMETRY},RESPONSE_OK);
+    unsigned period = 1000 / hz;
+    select_source(1,RESPONSE_SOURCE_SWITCH_UNSAFE);
+    sample_ticks(8,true); // Physical count scans run at 20 ms, even at 1 Hz.
+    ++wheel_count[3];
+    select_source(1,RESPONSE_SOURCE_SWITCH_UNSAFE);
+    sample_ticks(1,true); --wheel_count[3]; sample_ticks(1,true);
+    select_source(1,RESPONSE_SOURCE_SWITCH_UNSAFE);
+    sample_ticks(7,true);
+    select_source(1,RESPONSE_OK); select_source(0,RESPONSE_OK);
+    feedback_source_status prior=selected_status();
+    for (unsigned ms=0;ms<3*period;ms+=20) {
+        sample_ticks(1,true);
+        feedback_source_status next=selected_status();
+        if (next.valid && prior.valid && next.sequence!=prior.sequence)
+            assert(next.timestamp_us-prior.timestamp_us == period*1000U && next.sequence==prior.sequence+1);
+        prior=next;
+    }
+    assert(prior.valid && prior.max_age_ms==period*3);
+    request((controller_command_t){.commandType=SET_ODOMETRY_FREQUENCY,
+        .properties.set_odometry_frequency={200}},RESPONSE_OK);
+    stale_capture(prior);
+    now+=5000; run_task(odom_task);
+    now+=5000; run_task(odom_task);
+    feedback_source_status fast=selected_status();
+    assert(fast.valid && fast.max_age_ms==15);
+    now+=16000;
+    assert(selected_status().reason==FEEDBACK_REASON_STALE); stale_capture(fast);
+    request((controller_command_t){.commandType=SET_ODOMETRY_FREQUENCY,
+        .properties.set_odometry_frequency={10}},RESPONSE_OK);
+    assert(!selected_status().valid); stale_capture(fast);
+    sample_ticks(5,true);
+    feedback_source_status recovered=selected_status();
+    assert(recovered.valid && recovered.origin_id!=fast.origin_id && recovered.timestamp_us>fast.timestamp_us);
+    now+=61000; // A starved passive sampler cannot certify rest.
+    select_source(1,RESPONSE_SOURCE_SWITCH_UNSAFE);
+    assert(!motion_writes && !platform_is_controller_running());
+}

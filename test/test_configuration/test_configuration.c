@@ -449,6 +449,7 @@ int main(int argc, char **argv)
     connect();
 #if BOARD_HAS_IMU_TRACKING
 #if BOARD_HAS_FEEDBACK_SOURCE_SELECTOR
+    if (!strcmp(mode,"selector-slow")) { selector_slow(type); return 0; }
     if (!strcmp(mode,"selector-imu")) { selector_imu(); return 0; }
     if (!strcmp(mode,"selector-platform")) { selector_platform(); return 0; }
     if (!strncmp(mode,"selector-v1-",12)) { selector_legacy(!strcmp(mode,"selector-v1-factory")); return 0; }
