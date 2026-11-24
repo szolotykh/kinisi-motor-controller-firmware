@@ -61,6 +61,39 @@ static void asynchronous(void)
     assert(fabs(s.vx - .040) < 1e-12);
 }
 
+static void bmi088_closed_interval(void)
+{
+    imu_only_state_t s = {0};
+    assert(imu_only_start(&s, 0, 0, true));
+    imu_only_sample_t m = {.az = 9.80665};
+    for (uint64_t t = 10000; t <= 510000; t += 10000) {
+        m.accel_us = m.gyro_us = t;
+        imu_only_process(&s, t, &m, true, true);
+    }
+    // A filtered ramp from 0 to 1 m/s² in 10 ms has area 0.005 m/s.
+    // Physical acceleration adds tau * dy/dt over that interval. At 522.5
+    // ms the subsequent 2.5 ms contributes only the last available value.
+    m.accel_us = 520000;
+    m.gyro_us = 512500;
+    m.ax = 1.;
+    imu_only_process(&s, 520000, &m, true, true);
+    assert(s.sample_us == 512500 && s.vx == 0.);
+    m.gyro_us = 522500;
+    m.gz = 0.04;
+    imu_only_process(&s, 522500, &m, true, true);
+    assert(s.sample_us == 512500);
+    m.accel_us = 530000;
+    m.ax = 4.; // covers the gyro, but occurs after the published epoch
+    imu_only_process(&s, 530000, &m, true, true);
+    double tau_a = 1. / (2. * acos(-1.) * 40.);
+    assert(s.sample_us == 522500 && s.accel.applied_us == 520000 && s.gyro.applied_us == 522500);
+    assert(fabs(s.vx - (0.0075 + tau_a)) < 1e-12);
+    // For a filtered 4 rad/s² ramp, the ideal rate leads by 4*tau_g.
+    // The three-sigma increment floor permits at most 0.0035 rad/s shrinkage.
+    double ideal_wz = 0.04 + 4. / (2. * acos(-1.) * 32.);
+    assert(s.wz <= ideal_wz && s.wz >= ideal_wz - 0.0035);
+}
+
 static void lifecycle(void)
 {
     imu_only_state_t s = {0};
@@ -110,6 +143,7 @@ int main(void)
 {
     kinematics();
     asynchronous();
+    bmi088_closed_interval();
     lifecycle();
     puts("PASS independent source clocks, calibrated axes, integration, coast, unwrapped yaw and fail-closed "
          "lifecycle");

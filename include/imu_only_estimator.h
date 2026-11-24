@@ -121,7 +121,7 @@ static inline void imu_only_advance_axis(imu_only_axis_t *axis, uint64_t time)
     }
 }
 
-static inline void imu_only_integrate(imu_only_state_t *s, uint64_t watermark)
+static inline void imu_only_integrate(imu_only_state_t *s, uint64_t watermark, bool bmi088_registers)
 {
     while (s->sample_us < watermark) {
         uint64_t end = watermark;
@@ -139,6 +139,13 @@ static inline void imu_only_integrate(imu_only_state_t *s, uint64_t watermark)
         s->vy += ay * dt;
         s->yaw += turn;
         s->sample_us = end;
+        // The generic step interface accepts ideal held SI inputs. Register
+        // reconstruction is specific to the configured v0.4 BMI088 producer.
+        if (!bmi088_registers) {
+            imu_only_advance_axis(&s->accel, end);
+            imu_only_advance_axis(&s->gyro, end);
+            continue;
+        }
         if (s->accel.count && s->accel.pending[s->accel.head].time == end) {
             double old_x = s->accel.x, old_y = s->accel.y;
             double interval = (double)(end - s->accel.applied_us) * 1e-6;
@@ -164,6 +171,8 @@ static inline void imu_only_integrate(imu_only_state_t *s, uint64_t watermark)
             s->wz = s->gyro.x + gain * copysign(excess, delta);
         }
     }
+    if (!bmi088_registers)
+        s->wz = s->gyro.x;
 }
 
 // Advance to one actual gyro acquisition for which acceleration coverage is
@@ -183,7 +192,7 @@ static inline void imu_only_complete_gyro(imu_only_state_t *s)
     }
     if (time > s->accel_us || time > s->gyro_us)
         return;
-    imu_only_integrate(s, time);
+    imu_only_integrate(s, time, true);
     if (first) {
         // The public origin is the first fully covered gyro acquisition. Retain
         // integrated velocity in that frame if calibration ended between ticks.
@@ -288,7 +297,9 @@ static inline void imu_only_process(imu_only_state_t *s, uint64_t now_us, const 
     }
     if (new_g && g <= s->sample_us) {
         s->gyro.applied_us = g;
-        s->wz = s->gyro.x = m->gz - s->bias_gz;
+        s->gyro.x = m->gz - s->bias_gz;
+        if (publish_on_gyro)
+            s->wz = s->gyro.x;
     }
     if ((new_a && a > s->sample_us && !imu_only_append(&s->accel, a, ax - s->bias_ax, ay - s->bias_ay)) ||
         (new_g && g > s->sample_us && !imu_only_append(&s->gyro, g, m->gz - s->bias_gz, 0))) {
@@ -303,7 +314,7 @@ static inline void imu_only_process(imu_only_state_t *s, uint64_t now_us, const 
     uint64_t watermark = a < g ? a : g;
     if (watermark >= s->origin_us) {
         s->health = IMU_ONLY_TRACKING;
-        imu_only_integrate(s, watermark);
+        imu_only_integrate(s, watermark, false);
     }
 }
 
