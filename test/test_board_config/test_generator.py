@@ -22,6 +22,8 @@ class BoardConfigTests(unittest.TestCase):
         self.v4['capabilities']['imu_tracking'] = 1
         self.reject(self.v4, 'imu_tracking')
         del self.v4['capabilities']['imu_tracking']
+        self.reject(self.v4, 'selector requires')
+        del self.v4['capabilities']['feedback_source_selector']
         g.validate(self.v4)
         v3 = copy.deepcopy(next(b for b in self.boards if b['board']['revision'] == '0.3.0'))
         v3['capabilities'] = {'fusion_experiment': False, 'imu_tracking': True}

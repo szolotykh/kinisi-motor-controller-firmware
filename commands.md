@@ -1,6 +1,6 @@
 # Kinisi motor controller commands
 
-**Protocol 2.20.0** · Generated from [commands.json](commands.json)
+**Protocol 2.21.0** · Generated from [commands.json](commands.json)
 
 [Command index](#command-index) · [Wire format](#wire-format) · [Error codes](#error-codes)
 
@@ -101,6 +101,11 @@
 | [`GET_IMU_TRACKING_STATUS`](#get_imu_tracking_status-0x64) | `0x64` | Client → controller | `imu_tracking_status` |
 | [`GET_IMU_TRACKING_VECTOR`](#get_imu_tracking_vector-0x65) | `0x65` | Client → controller | `imu_tracking_vector` |
 | [`GET_IMU_TRACKING_CONFIGURATION`](#get_imu_tracking_configuration-0x66) | `0x66` | Client → controller | `imu_tracking_configuration` |
+| [`SET_FEEDBACK_SOURCE`](#set_feedback_source-0x67) | `0x67` | Client → controller | ACK |
+| [`GET_FEEDBACK_SOURCE_STATUS`](#get_feedback_source_status-0x68) | `0x68` | Client → controller | `feedback_source_status` |
+| [`GET_FEEDBACK_SOURCE_VECTOR`](#get_feedback_source_vector-0x69) | `0x69` | Client → controller | `feedback_source_vector` |
+| [`SET_FEEDBACK_FUSION_MOUNT`](#set_feedback_fusion_mount-0x6a) | `0x6a` | Client → controller | ACK |
+| [`GET_FEEDBACK_FUSION_MOUNT`](#get_feedback_fusion_mount-0x6b) | `0x6b` | Client → controller | `feedback_fusion_mount` |
 
 ## Command lifecycle
 
@@ -2748,6 +2753,152 @@ Packed little-endian IMU-only tracking snapshot.
 
 ---
 
+### SET_FEEDBACK_SOURCE (0x67)
+
+**Client → controller** · **Payload:** 1 bytes
+
+Choose the board-wide telemetry preference. A change requires stopped outputs, disarmed controllers and stationary observed encoders. An unchanged preference is idempotent. The selector never starts motion, wheel odometry, standalone IMU calibration or a controller. FUSED uses an independent passive instance of the release estimator when its explicit mount and encoder odometry are available. It anchors a new relative frame at the first available source sample serviced after a switch or producer restart. The existing SAVE_CONFIGURATION explicitly persists the preference alongside platform setup; cold restore never restores an origin, bias, stationary declaration or motion target. Requires READY and exact model 1 hardware 0.4.0 with feedback_source_selector and protocol 2.21 or newer. Selection only routes tracking telemetry.
+
+#### Parameters
+
+| Parameter | Type | Bytes | Range | Description |
+| --- | --- | ---: | --- | --- |
+| `source` | `uint8_t` | 1 | 0 to 2 | FeedbackSource value (NONE is read-only). |
+
+#### Response
+
+**ACK** — empty payload; echoes the command and message ID.
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`SOURCE_SWITCH_UNSAFE`](#error-source-switch-unsafe) (21)
+
+[Back to command index](#command-index)
+
+---
+
+### GET_FEEDBACK_SOURCE_STATUS (0x68)
+
+**Client → controller** · **Payload:** 0 bytes
+
+Get requested and active source, availability reason and producer detail. Invalid status reports active NONE; no fallback. While valid the sample sequence and monotonic timestamp identify the underlying producer publication. Inspect requested source diagnostics for acquisition ages and fault detail. The standalone IMU is a one-second relative motion-onset diagnostic; fused telemetry uses the existing experimental estimator. Reconnect reads live board state. Requires READY and exact model 1 hardware 0.4.0 with feedback_source_selector and protocol 2.21 or newer. Selection only routes tracking telemetry.
+
+#### Parameters
+
+No payload parameters.
+
+#### Response
+
+**Controller → client** · `feedback_source_status` · **Payload:** 25 bytes
+
+Packed little-endian selector readback.
+
+| Parameter | Type | Bytes | Description |
+| --- | --- | ---: | --- |
+| `requested` | `uint8_t` | 1 | Requested FeedbackSource. |
+| `active` | `uint8_t` | 1 | Active FeedbackSource, NONE while invalid. |
+| `valid` | `uint8_t` | 1 | One when a current source snapshot is available, otherwise zero. |
+| `reason` | `uint8_t` | 1 | FeedbackSourceReason. |
+| `sequence` | `uint32_t` | 4 | Underlying sample sequence when valid; zero when invalid. |
+| `timestamp_us` | `uint64_t` | 8 | Underlying monotonic board sample time; zero when invalid. |
+| `origin_id` | `uint32_t` | 4 | Board-local frame generation. Discard prior coordinates on change or board reboot. |
+| `source_detail` | `uint8_t` | 1 | Native IMU tracking or fusion fault code for the requested source; zero otherwise. |
+| `age_us` | `uint32_t` | 4 | Board-clock sample age in microseconds; UINT32_MAX when unavailable. |
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6)
+
+[Back to command index](#command-index)
+
+---
+
+### GET_FEEDBACK_SOURCE_VECTOR (0x69)
+
+**Client → controller** · **Payload:** 1 bytes
+
+Get selector-relative pose (metres, metres, unwrapped radians) or body twist (metres/second, metres/second, radians/second), +X forward, +Y left, yaw CCW. Relative XY is rotated into the heading at the new anchor. Bracket vectors with valid status reads having identical requested/active source, origin_id, sequence and timestamp_us; also match every vector sequence. Discard mismatches and retry. Compare origins only within the same boot. Requires READY and exact model 1 hardware 0.4.0 with feedback_source_selector and protocol 2.21 or newer. Selection only routes tracking telemetry.
+
+#### Parameters
+
+| Parameter | Type | Bytes | Range | Description |
+| --- | --- | ---: | --- | --- |
+| `kind` | `uint8_t` | 1 | 0 to 1 | FeedbackSourceVectorKind value. |
+
+#### Response
+
+**Controller → client** · `feedback_source_vector` · **Payload:** 28 bytes
+
+Packed little-endian selector readback.
+
+| Parameter | Type | Bytes | Description |
+| --- | --- | ---: | --- |
+| `sequence` | `uint32_t` | 4 | Underlying producer sequence. Bracket with status reads. |
+| `x` | `double` | 8 | X coordinate or body X velocity. |
+| `y` | `double` | 8 | Y coordinate or body Y velocity. |
+| `z` | `double` | 8 | Continuous relative yaw or body yaw rate. |
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`SAMPLE_NOT_AVAILABLE`](#error-sample-not-available) (10)
+
+[Back to command index](#command-index)
+
+---
+
+### SET_FEEDBACK_FUSION_MOUNT (0x6a)
+
+**Client → controller** · **Payload:** 8 bytes
+
+Confirm a rigid centered level board mount for passive fused telemetry, with finite board yaw in [-pi,pi]. Requires stopped outputs and disarmed controllers. Each successful command discards prior passive calibration and pose; the observer requires fresh stationary observations. This volatile setting applies only to passive telemetry. Requires READY, exact v0.4 and protocol 2.21+.
+
+#### Parameters
+
+| Parameter | Type | Bytes | Range | Description |
+| --- | --- | ---: | --- | --- |
+| `mounting_yaw_rad` | `double` | 8 | -3.141592653589793 to 3.141592653589793 | Angle of board +X in chassis XY, counterclockwise about +Z in radians. Rigid, level, centered board with +Z up. |
+
+#### Response
+
+**ACK** — empty payload; echoes the command and message ID.
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`SOURCE_SWITCH_UNSAFE`](#error-source-switch-unsafe) (21)
+
+[Back to command index](#command-index)
+
+---
+
+### GET_FEEDBACK_FUSION_MOUNT (0x6b)
+
+**Client → controller** · **Payload:** 0 bytes
+
+Read the explicit volatile passive fusion mounting confirmation and board yaw. Reset clears confirmation. Requires READY, exact v0.4 and protocol 2.21+.
+
+#### Parameters
+
+No payload parameters.
+
+#### Response
+
+**Controller → client** · `feedback_fusion_mount` · **Payload:** 9 bytes
+
+Packed little-endian selector readback.
+
+| Parameter | Type | Bytes | Description |
+| --- | --- | ---: | --- |
+| `confirmed` | `uint8_t` | 1 | One after an explicit mount declaration this boot. |
+| `mounting_yaw_rad` | `double` | 8 | Angle of board +X in chassis XY, counterclockwise about +Z in radians. Rigid, level, centered board with +Z up. |
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6)
+
+[Back to command index](#command-index)
+
+---
+
 ## Error codes
 
 Errors use the shared ERROR message. Each command above links to its possible errors below. `UNKNOWN_COMMAND` also covers unrecognized or incorrectly directed messages.
@@ -2774,3 +2925,4 @@ Errors use the shared ERROR message. Each command above links to its possible er
 | 18 | <a id="error-sample-out-of-range"></a>`SAMPLE_OUT_OF_RANGE` | The sensor reading is saturated; no valid measurement can be returned. |
 | 19 | <a id="error-drivers-asleep"></a>`DRIVERS_ASLEEP` | Driver sleep is active. Explicitly wake the drivers before requesting this operation. |
 | 20 | <a id="error-board-idle"></a>`BOARD_IDLE` | Board idle is active. Explicitly wake the board before changing driver sleep or starting a subscription. |
+| 21 | <a id="error-source-switch-unsafe"></a>`SOURCE_SWITCH_UNSAFE` | Stop all motor outputs, disarm all controllers and wait for stationary wheel observations before changing the tracking preference. |

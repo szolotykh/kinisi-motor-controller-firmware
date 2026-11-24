@@ -26,6 +26,7 @@ def main():
         data = json.loads(profile.read_text())
         assert data["capabilities"]["imu_tracking"]
         data["capabilities"]["fusion_experiment"] = False
+        data["capabilities"]["feedback_source_selector"] = False
         profile.write_text(json.dumps(data))
         subprocess.run([args.platformio, "run", "-e", "v0_4"], cwd=project, check=True)
         main_object = project/".pio/build/v0_4/src/main.o"
