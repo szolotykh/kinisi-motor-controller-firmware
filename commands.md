@@ -2815,15 +2815,17 @@ Packed little-endian selector readback.
 
 ### GET_FEEDBACK_SOURCE_VECTOR (0x69)
 
-**Client → controller** · **Payload:** 1 bytes
+**Client → controller** · **Payload:** 9 bytes
 
-Get selector-relative pose (metres, metres, unwrapped radians) or body twist (metres/second, metres/second, radians/second), +X forward, +Y left, yaw CCW. Relative XY is rotated into the heading at the new anchor. Bracket vectors with valid status reads having identical requested/active source, origin_id, sequence and timestamp_us; also match every vector sequence. Discard mismatches and retry. Compare origins only within the same boot. Requires READY and exact model 1 hardware 0.4.0 with feedback_source_selector and protocol 2.21 or newer. Selection only routes tracking telemetry.
+Get selector-relative pose (metres, metres, unwrapped radians) or body twist (metres/second, metres/second, radians/second), +X forward, +Y left, yaw CCW. Relative XY is rotated into the heading at the new anchor. First capture a valid status, then request both vectors with its exact origin_id and sequence. Eight distinct recent captures are retained for at most 50000 us after capture. Both keys and the current healthy source/frame must match. Selected historical sample age cannot exceed 50000 us for IMU-only, 60000 us for fused, or three configured encoder periods. Expiry or invalidation immediately rejects cached data. A final live status may naturally advance sequence and time; require the same valid requested/active source and origin, match both vector sequences to the original capture and retry on SAMPLE_NOT_AVAILABLE. Compare origins only within the same boot. Requires READY and exact model 1 hardware 0.4.0 with feedback_source_selector and protocol 2.21 or newer. Selection only routes tracking telemetry.
 
 #### Parameters
 
 | Parameter | Type | Bytes | Range | Description |
 | --- | --- | ---: | --- | --- |
 | `kind` | `uint8_t` | 1 | 0 to 1 | FeedbackSourceVectorKind value. |
+| `origin_id` | `uint32_t` | 4 | — | Frame generation captured by GET_FEEDBACK_SOURCE_STATUS. |
+| `sequence` | `uint32_t` | 4 | — | Exact source sample sequence captured by GET_FEEDBACK_SOURCE_STATUS. |
 
 #### Response
 
@@ -2833,7 +2835,7 @@ Packed little-endian selector readback.
 
 | Parameter | Type | Bytes | Description |
 | --- | --- | ---: | --- |
-| `sequence` | `uint32_t` | 4 | Underlying producer sequence. Bracket with status reads. |
+| `sequence` | `uint32_t` | 4 | Exact producer sequence captured by status and requested by the vector command. |
 | `x` | `double` | 8 | X coordinate or body X velocity. |
 | `y` | `double` | 8 | Y coordinate or body Y velocity. |
 | `z` | `double` | 8 | Continuous relative yaw or body yaw rate. |

@@ -318,7 +318,7 @@
 // Get requested and active source, availability reason and producer detail. Invalid status reports active NONE; no fallback. While valid the sample sequence and monotonic timestamp identify the underlying producer publication. Inspect requested source diagnostics for acquisition ages and fault detail. The standalone IMU is a one-second relative motion-onset diagnostic; fused telemetry uses the existing experimental estimator. Reconnect reads live board state. Requires READY and exact model 1 hardware 0.4.0 with feedback_source_selector and protocol 2.21 or newer. Selection only routes tracking telemetry.
 #define GET_FEEDBACK_SOURCE_STATUS 0x68
 
-// Get selector-relative pose (metres, metres, unwrapped radians) or body twist (metres/second, metres/second, radians/second), +X forward, +Y left, yaw CCW. Relative XY is rotated into the heading at the new anchor. Bracket vectors with valid status reads having identical requested/active source, origin_id, sequence and timestamp_us; also match every vector sequence. Discard mismatches and retry. Compare origins only within the same boot. Requires READY and exact model 1 hardware 0.4.0 with feedback_source_selector and protocol 2.21 or newer. Selection only routes tracking telemetry.
+// Get selector-relative pose (metres, metres, unwrapped radians) or body twist (metres/second, metres/second, radians/second), +X forward, +Y left, yaw CCW. Relative XY is rotated into the heading at the new anchor. First capture a valid status, then request both vectors with its exact origin_id and sequence. Eight distinct recent captures are retained for at most 50000 us after capture. Both keys and the current healthy source/frame must match. Selected historical sample age cannot exceed 50000 us for IMU-only, 60000 us for fused, or three configured encoder periods. Expiry or invalidation immediately rejects cached data. A final live status may naturally advance sequence and time; require the same valid requested/active source and origin, match both vector sequences to the original capture and retry on SAMPLE_NOT_AVAILABLE. Compare origins only within the same boot. Requires READY and exact model 1 hardware 0.4.0 with feedback_source_selector and protocol 2.21 or newer. Selection only routes tracking telemetry.
 #define GET_FEEDBACK_SOURCE_VECTOR 0x69
 
 // Confirm a rigid centered level board mount for passive fused telemetry, with finite board yaw in [-pi,pi]. Requires stopped outputs and disarmed controllers. Each successful command discards prior passive calibration and pose; the observer requires fresh stationary observations. This volatile setting applies only to passive telemetry. Requires READY, exact v0.4 and protocol 2.21+.
@@ -612,7 +612,7 @@ typedef struct
 #pragma pack(push, 1)
 typedef struct
 {
-    uint32_t sequence; // Underlying producer sequence. Bracket with status reads.
+    uint32_t sequence; // Exact producer sequence captured by status and requested by the vector command.
     double x; // X coordinate or body X velocity.
     double y; // Y coordinate or body Y velocity.
     double z; // Continuous relative yaw or body yaw rate.
@@ -1308,9 +1308,11 @@ typedef struct
         struct {
         } get_feedback_source_status;
 
-        // GET_FEEDBACK_SOURCE_VECTOR: Get selector-relative pose (metres, metres, unwrapped radians) or body twist (metres/second, metres/second, radians/second), +X forward, +Y left, yaw CCW. Relative XY is rotated into the heading at the new anchor. Bracket vectors with valid status reads having identical requested/active source, origin_id, sequence and timestamp_us; also match every vector sequence. Discard mismatches and retry. Compare origins only within the same boot. Requires READY and exact model 1 hardware 0.4.0 with feedback_source_selector and protocol 2.21 or newer. Selection only routes tracking telemetry.
+        // GET_FEEDBACK_SOURCE_VECTOR: Get selector-relative pose (metres, metres, unwrapped radians) or body twist (metres/second, metres/second, radians/second), +X forward, +Y left, yaw CCW. Relative XY is rotated into the heading at the new anchor. First capture a valid status, then request both vectors with its exact origin_id and sequence. Eight distinct recent captures are retained for at most 50000 us after capture. Both keys and the current healthy source/frame must match. Selected historical sample age cannot exceed 50000 us for IMU-only, 60000 us for fused, or three configured encoder periods. Expiry or invalidation immediately rejects cached data. A final live status may naturally advance sequence and time; require the same valid requested/active source and origin, match both vector sequences to the original capture and retry on SAMPLE_NOT_AVAILABLE. Compare origins only within the same boot. Requires READY and exact model 1 hardware 0.4.0 with feedback_source_selector and protocol 2.21 or newer. Selection only routes tracking telemetry.
         struct {
             uint8_t kind; // FeedbackSourceVectorKind value.
+            uint32_t origin_id; // Frame generation captured by GET_FEEDBACK_SOURCE_STATUS.
+            uint32_t sequence; // Exact source sample sequence captured by GET_FEEDBACK_SOURCE_STATUS.
         } get_feedback_source_vector;
 
         // SET_FEEDBACK_FUSION_MOUNT: Confirm a rigid centered level board mount for passive fused telemetry, with finite board yaw in [-pi,pi]. Requires stopped outputs and disarmed controllers. Each successful command discards prior passive calibration and pose; the observer requires fresh stationary observations. This volatile setting applies only to passive telemetry. Requires READY, exact v0.4 and protocol 2.21+.
@@ -1423,7 +1425,7 @@ static inline size_t command_request_size(uint8_t command) {
     case GET_IMU_TRACKING_CONFIGURATION: return 3U;
     case SET_FEEDBACK_SOURCE: return 4U;
     case GET_FEEDBACK_SOURCE_STATUS: return 3U;
-    case GET_FEEDBACK_SOURCE_VECTOR: return 4U;
+    case GET_FEEDBACK_SOURCE_VECTOR: return 12U;
     case SET_FEEDBACK_FUSION_MOUNT: return 11U;
     case GET_FEEDBACK_FUSION_MOUNT: return 3U;
     default: return 0;
