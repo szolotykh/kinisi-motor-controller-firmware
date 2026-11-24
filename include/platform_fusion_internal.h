@@ -234,11 +234,11 @@ static void qualify_pose(fusion_estimator_t *e, platform_odometry_t pose)
 }
 
 static uint8_t imu_problem(hw_imu_status_t status, const hw_imu_sample_t *raw,
-                           uint64_t at, uint64_t accel, uint64_t gyro)
+                           uint64_t at, uint64_t accel, uint64_t gyro, uint64_t previous_accel, uint64_t previous_gyro)
 {
     if (status == HW_IMU_STALE) return FUSION_FAULT_STALE;
     if (status != HW_IMU_OK || !accel || !gyro) return FUSION_FAULT_IMU_UNAVAILABLE;
-    if (accel > at || gyro > at || accel < experiment.accel_us || gyro < experiment.gyro_us)
+    if (accel > at || gyro > at || accel < previous_accel || gyro < previous_gyro)
         return FUSION_FAULT_TIMESTAMP;
     if (age(at, accel) > 35000 || age(at, gyro) > 35000 ||
         (accel > gyro ? accel - gyro : gyro - accel) > 15000) return FUSION_FAULT_STALE;
@@ -253,6 +253,13 @@ static uint8_t imu_problem(hw_imu_status_t status, const hw_imu_sample_t *raw,
     if (fabs(raw->angular_velocity_x) > 0.35 || fabs(raw->angular_velocity_y) > 0.35 ||
         fabs(raw->acceleration_z - 9.80665) > 1.0) return FUSION_FAULT_MOUNT_INVALID;
     return FUSION_FAULT_NONE;
+}
+
+static fusion_imu_t body_imu(const hw_imu_sample_t *raw, uint64_t accel, uint64_t gyro, double c, double s)
+{
+    return (fusion_imu_t){.accel_us=accel, .gyro_us=gyro, .valid=true,
+        .ax=-c*raw->acceleration_x+s*raw->acceleration_y, .ay=-s*raw->acceleration_x-c*raw->acceleration_y,
+        .az=raw->acceleration_z, .gz=raw->angular_velocity_z};
 }
 
 void platform_fusion_observe(uint32_t epoch, uint64_t previous, uint64_t at,
@@ -293,7 +300,7 @@ void platform_fusion_observe(uint32_t epoch, uint64_t previous, uint64_t at,
     experiment.twist = (platform_odometry_t){wheel[0], wheel[1], wheel[2]};
     experiment.encoder_valid = true;
     if (need_imu) {
-        uint8_t problem = imu_problem(status, &raw, at, accel, gyro);
+        uint8_t problem = imu_problem(status, &raw, at, accel, gyro, experiment.accel_us, experiment.gyro_us);
         if (problem) {
             reject_feedback(problem);
             goto reset;
@@ -305,12 +312,7 @@ void platform_fusion_observe(uint32_t epoch, uint64_t previous, uint64_t at,
         experiment.accel_us = accel;
         experiment.gyro_us = gyro;
         fusion_estimator_t *e = &experiment.estimator;
-        fusion_imu_t imu = {
-            .accel_us = accel, .gyro_us = gyro, .valid = true,
-            .ax = -experiment.cosine * raw.acceleration_x + experiment.sine * raw.acceleration_y,
-            .ay = -experiment.sine * raw.acceleration_x - experiment.cosine * raw.acceleration_y,
-            .az = raw.acceleration_z, .gz = raw.angular_velocity_z
-        };
+        fusion_imu_t imu = body_imu(&raw, accel, gyro, experiment.cosine, experiment.sine);
         if (!e->calibrated && moved) {
             fusion_estimator_init(e);
             experiment.health = FUSION_HEALTH_WAITING;

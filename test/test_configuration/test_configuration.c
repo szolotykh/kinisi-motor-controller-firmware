@@ -13,6 +13,7 @@
 #include "hw_current_sense.h"
 #include "platform.h"
 #include "platform_common.h"
+#include "odometry_manager.h"
 #include "cmsis_os.h"
 #include "semphr.h"
 #include <assert.h>
@@ -417,6 +418,9 @@ static void fresh_brake_commands(void)
 #if BOARD_HAS_IMU_TRACKING
 #include "imu_tracking_scenarios.h"
 #endif
+#if BOARD_HAS_FEEDBACK_SOURCE_SELECTOR
+#include "feedback_source_scenarios.h"
+#endif
 int main(int argc, char **argv)
 {
     assert(argc == 4);
@@ -444,6 +448,25 @@ int main(int argc, char **argv)
     for (int i = 0; i < 4; ++i) assert(output[i] == 0);
     connect();
 #if BOARD_HAS_IMU_TRACKING
+#if BOARD_HAS_FEEDBACK_SOURCE_SELECTOR
+    if (!strcmp(mode,"selector-imu")) { selector_imu(); return 0; }
+    if (!strcmp(mode,"selector-platform")) { selector_platform(); return 0; }
+    if (!strncmp(mode,"selector-v1-",12)) { selector_legacy(!strcmp(mode,"selector-v1-factory")); return 0; }
+    if (!strcmp(mode,"selector-save")) {
+        select_source(type,RESPONSE_OK);
+        configure(PLATFORM_MECANUM);
+        request((controller_command_t){.commandType=SAVE_CONFIGURATION},RESPONSE_OK);
+        file=fopen(path,"wb"); assert(file && fwrite(fram,1,sizeof(fram),file)==sizeof(fram)); fclose(file);
+        return 0;
+    }
+    if (!strcmp(mode,"selector-restore")) {
+        feedback_source_status s=selected_status();
+        assert(s.requested==type && s.reason==(type==2 ? FEEDBACK_REASON_MOUNT_REQUIRED : FEEDBACK_REASON_NOT_STARTED));
+        invalid_vector(); verify(PLATFORM_MECANUM);
+        assert(!tasks_started && !motion_writes && !platform_is_controller_running() && !platform_is_odometry_enabled());
+        return 0;
+    }
+#endif
     if (!strcmp(mode, "imu-tracking")) { imu_tracking_scenario(); return 0; }
 #endif
 #if BOARD_HAS_FUSION_EXPERIMENT
@@ -458,6 +481,11 @@ int main(int argc, char **argv)
     }
     if (!strcmp(mode, "brake-policy")) { fresh_brake_commands(); return 0; }
     if (!strcmp(mode, "unsupported")) {
+        request((controller_command_t){.commandType=SET_FEEDBACK_SOURCE},RESPONSE_SENSOR_NOT_AVAILABLE);
+        request((controller_command_t){.commandType=GET_FEEDBACK_SOURCE_STATUS},RESPONSE_SENSOR_NOT_AVAILABLE);
+        request((controller_command_t){.commandType=GET_FEEDBACK_SOURCE_VECTOR},RESPONSE_SENSOR_NOT_AVAILABLE);
+        request((controller_command_t){.commandType=SET_FEEDBACK_FUSION_MOUNT},RESPONSE_SENSOR_NOT_AVAILABLE);
+        request((controller_command_t){.commandType=GET_FEEDBACK_FUSION_MOUNT},RESPONSE_SENSOR_NOT_AVAILABLE);
         request((controller_command_t){.commandType=SET_IMU_TRACKING}, RESPONSE_SENSOR_NOT_AVAILABLE);
         request((controller_command_t){.commandType=GET_IMU_TRACKING_STATUS}, RESPONSE_SENSOR_NOT_AVAILABLE);
         request((controller_command_t){.commandType=GET_IMU_TRACKING_VECTOR}, RESPONSE_SENSOR_NOT_AVAILABLE);
@@ -545,6 +573,12 @@ int main(int argc, char **argv)
         request((controller_command_t){.commandType=START_PLATFORM_CONTROLLER,
             .properties.start_platform_controller={.kp=1, .integral_limit=10}}, RESPONSE_OK);
         assert(platform_is_odometry_enabled() && platform_is_controller_running());
+    } else if (!strcmp(mode,"bad-preference") || !strcmp(mode,"bad-layout") || !strcmp(mode,"bad-legacy-padding")) {
+        uint8_t data[72];
+        assert(config_store_load(data,sizeof(data)));
+        data[65] = !strcmp(mode,"bad-preference") ? 3 : 2;
+        data[66] = !strcmp(mode,"bad-layout") ? 3 : !strcmp(mode,"bad-legacy-padding") ? 0 : 2;
+        assert(config_store_save(data,sizeof(data)));
     } else if (!strcmp(mode, "bad-frequency")) {
         // Valid journal and checksum, but the board does not support the recorded frequency.
         uint8_t data[72];

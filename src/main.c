@@ -9,6 +9,7 @@
 #include "hw_imu.h"
 #include "platform_fusion.h"
 #include "imu_tracking.h"
+#include "feedback_source.h"
 #if BOARD_HAS_FUSION_EXPERIMENT || BOARD_HAS_IMU_TRACKING
 #include "cmsis_os.h"
 
@@ -24,7 +25,11 @@ static uint32_t fusion_acquisition_epoch(void)
 static uint32_t acquisition_epoch(void)
 {
 #if BOARD_HAS_IMU_TRACKING
+#if BOARD_HAS_FEEDBACK_SOURCE_SELECTOR
+    return passive_fusion_acquisition_epoch();
+#else
     return imu_acquisition_epoch(fusion_acquisition_epoch());
+#endif
 #else
     return fusion_acquisition_epoch();
 #endif

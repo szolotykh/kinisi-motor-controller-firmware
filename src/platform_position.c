@@ -46,6 +46,9 @@ static void zero_velocity(void)
 
 #if BOARD_HAS_FUSION_EXPERIMENT
 #include "platform_fusion_internal.h"
+#if BOARD_HAS_FEEDBACK_SOURCE_SELECTOR
+#include "passive_fusion_internal.h"
+#endif
 #endif
 
 void platform_position_cancel(void)

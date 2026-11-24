@@ -15,6 +15,7 @@
 #include <hw_clock.h>
 #include <protocol.h>
 #include "platform_fusion.h"
+#include "feedback_source.h"
 
 // Default odometry-task period in ms. 20 ms = 50 Hz: fast enough for good pose
 // integration while driving+turning and to match a typical ROS EKF/Nav2 odom
@@ -33,6 +34,13 @@ typedef struct
     double odometry_change[NUMBER_ENCODERS]; // in Radians
     uint64_t encoder_sample_us[NUMBER_ENCODERS];
     uint64_t platform_sample_us;
+#if BOARD_HAS_FEEDBACK_SOURCE_SELECTOR
+    feedback_frame_t feedback_frame;
+    uint32_t feedback_sequence;
+    bool feedback_valid;
+    uint8_t feedback_reason;
+    platform_odometry_t feedback_twist;
+#endif
     osThreadId_t thread_handler;
     uint32_t update_interval; // in ms
     SemaphoreHandle_t odometry_mutex;
@@ -89,6 +97,12 @@ void odometry_manager_task(void *argument)
             uint64_t sample_us = hw_clock_microseconds();
 #if BOARD_HAS_FUSION_EXPERIMENT
             const uint32_t epoch = platform_fusion_epoch();
+#if BOARD_HAS_FEEDBACK_SOURCE_SELECTOR
+            const uint32_t passive_epoch = passive_fusion_epoch();
+            const bool observe_wheels = true; // Also checks coast and independently configured wheels.
+#else
+            const bool observe_wheels = epoch != 0;
+#endif
             bool valid = platform_is_odometry_enabled();
             bool stationary = true, moved = false;
             platform_odometry_t delta = {0};
@@ -98,7 +112,7 @@ void odometry_manager_task(void *argument)
             for(int i = 0; i < NUMBER_ENCODERS; i++)
             {
 #if BOARD_HAS_FUSION_EXPERIMENT
-                if (epoch && platform_owns_motor(i) && (!state->is_initialized[i] ||
+                if (observe_wheels && platform_owns_motor(i) && (!state->is_initialized[i] ||
                     !encoder->is_initialized(i) || !isfinite(encoder->get_resolution(i)) ||
                     encoder->get_resolution(i) <= 0)) valid = false;
 #endif
@@ -116,7 +130,7 @@ void odometry_manager_task(void *argument)
                     state->encoder_sample_us[i] = sample_us;
                 }
 #if BOARD_HAS_FUSION_EXPERIMENT
-                else if (epoch && encoder->is_initialized(i))
+                else if (observe_wheels && encoder->is_initialized(i))
                     moved |= record_count(i, encoder->get_value(i), sample_us);
                 else rest[i] = (rest_sample_t){0};
                 if (rest[i].seen && sample_us - rest[i].quiet_since < 100000) stationary = false;
@@ -146,6 +160,24 @@ void odometry_manager_task(void *argument)
                 state->platform_sample_us = sample_us;
 #if BOARD_HAS_FUSION_EXPERIMENT
                 delta = odometry_change;
+#if BOARD_HAS_FEEDBACK_SOURCE_SELECTOR
+                uint64_t limit = (uint64_t)state->update_interval * 3000U;
+                bool coherent = valid && previous && sample_us > previous && sample_us - previous <= limit &&
+                    isfinite(delta.x) && isfinite(delta.y) && isfinite(delta.t) &&
+                    isfinite(state->platform_odometry.x) && isfinite(state->platform_odometry.y) &&
+                    isfinite(state->platform_odometry.t);
+                if (coherent) {
+                    double hz = 1e6 / (double)(sample_us - previous);
+                    state->feedback_twist = (platform_odometry_t){delta.x*hz,delta.y*hz,delta.t*hz};
+                    ++state->feedback_sequence;
+                    feedback_anchor(&state->feedback_frame,FEEDBACK_SOURCE_ENCODER,state->platform_odometry);
+                } else if (state->feedback_valid) feedback_invalidate(FEEDBACK_SOURCE_ENCODER);
+                state->feedback_valid = coherent;
+                state->feedback_reason = !valid ? FEEDBACK_REASON_UNAVAILABLE :
+                    !previous ? FEEDBACK_REASON_WAITING_SAMPLE :
+                    sample_us <= previous || sample_us-previous > limit ? FEEDBACK_REASON_STALE :
+                    FEEDBACK_REASON_UNAVAILABLE;
+#endif
 #endif
             }
 #if BOARD_HAS_FUSION_EXPERIMENT
@@ -153,6 +185,9 @@ void odometry_manager_task(void *argument)
 #endif
             xSemaphoreGive(state->odometry_mutex);
 #if BOARD_HAS_FUSION_EXPERIMENT
+#if BOARD_HAS_FEEDBACK_SOURCE_SELECTOR
+            if (passive_epoch) passive_fusion_observe(passive_epoch, previous, sample_us, delta, valid, stationary, moved);
+#endif
             if (epoch) platform_fusion_observe(epoch, previous, sample_us, delta, pose, valid, stationary, moved);
 #endif
         }
@@ -311,6 +346,9 @@ platform_odometry_t odometry_manager_get_platform_odometry(){
  * @brief Zero accumulated platform pose and invalidate its cached sample timestamp.
  */
 void odometry_manager_reset_platform_odometry(){
+#if BOARD_HAS_FEEDBACK_SOURCE_SELECTOR
+    passive_fusion_reset();
+#endif
     // Return if odometry manager is not initialized
     if (odometry_manager_is_not_initialized())
     {
@@ -336,6 +374,10 @@ void odometry_manager_reset_platform_odometry(){
         odometry_manager_state.platform_odometry.y = 0;
         odometry_manager_state.platform_odometry.t = 0;
         odometry_manager_state.platform_sample_us = 0;
+#if BOARD_HAS_FEEDBACK_SOURCE_SELECTOR
+        odometry_manager_state.feedback_valid = false;
+        feedback_invalidate(FEEDBACK_SOURCE_ENCODER);
+#endif
         xSemaphoreGive(odometry_manager_state.odometry_mutex);
     }
 }
@@ -436,9 +478,16 @@ uint8_t odometry_manager_get_platform_sample(platform_odometry_t *pose, uint64_t
  */
 void odometry_manager_invalidate_platform_sample(void)
 {
+#if BOARD_HAS_FEEDBACK_SOURCE_SELECTOR
+    passive_fusion_reset();
+#endif
     if (!odometry_manager_state.odometry_mutex) return;
     if (xSemaphoreTake(odometry_manager_state.odometry_mutex, portMAX_DELAY)) {
         odometry_manager_state.platform_sample_us = 0;
+#if BOARD_HAS_FEEDBACK_SOURCE_SELECTOR
+        odometry_manager_state.feedback_valid = false;
+        feedback_invalidate(FEEDBACK_SOURCE_ENCODER);
+#endif
         xSemaphoreGive(odometry_manager_state.odometry_mutex);
     }
 }
@@ -458,5 +507,43 @@ bool odometry_manager_recent_motion(uint64_t now)
     }
     xSemaphoreGive(mutex);
     return moving;
+}
+#endif
+
+#if BOARD_HAS_FEEDBACK_SOURCE_SELECTOR
+bool odometry_feedback_at_rest(uint64_t now)
+{
+    const hw_encoder_interface_t *hw = get_encoder_interface();
+    bool any = false;
+    for (uint8_t i=0; i<NUMBER_ENCODERS; ++i) any |= hw->is_initialized(i) != 0;
+    if (!any) return true; // Only the operator and output/ownership gates can observe rest without encoders.
+    // When odometry has never run, start only the passive counter sampler.
+    // A later request can succeed after measured quiet time.
+    odometry_manager_initialize();
+    odometry_manager_state_t *state = &odometry_manager_state;
+    if (!state->odometry_mutex || !xSemaphoreTake(state->odometry_mutex,portMAX_DELAY)) return false;
+    bool quiet = true;
+    for (uint8_t i=0; i<NUMBER_ENCODERS; ++i) {
+        if (!hw->is_initialized(i)) continue;
+        const rest_sample_t *r = &rest[i];
+        if (!r->seen || now < r->seen || now - r->seen > 60000 ||
+            r->seen - r->quiet_since < 100000 || hw->get_value(i) != r->count) quiet = false;
+    }
+    xSemaphoreGive(state->odometry_mutex);
+    return quiet;
+}
+
+void odometry_feedback_sample(feedback_snapshot_t *out)
+{
+    odometry_manager_state_t *s = &odometry_manager_state;
+    if (!platform_is_odometry_enabled() || !s->odometry_mutex) { out->reason=FEEDBACK_REASON_NOT_STARTED; return; }
+    if (!xSemaphoreTake(s->odometry_mutex,portMAX_DELAY)) { out->reason=FEEDBACK_REASON_UNAVAILABLE; return; }
+    uint64_t now=hw_clock_microseconds(), stamp=s->platform_sample_us;
+    if (!stamp) out->reason=FEEDBACK_REASON_WAITING_SAMPLE;
+    else if (!s->feedback_valid) out->reason=s->feedback_reason;
+    else if (now < stamp || now-stamp > (uint64_t)s->update_interval * 3000U) out->reason=FEEDBACK_REASON_STALE;
+    else feedback_snapshot(out,&s->feedback_frame,FEEDBACK_SOURCE_ENCODER,s->feedback_sequence,stamp,
+                           s->platform_odometry,s->feedback_twist);
+    xSemaphoreGive(s->odometry_mutex);
 }
 #endif

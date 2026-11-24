@@ -10,6 +10,10 @@
 
 #define IMU_TRACKING_WINDOW_US 1000000U
 #define IMU_TRACKING_PUBLIC_LATENCY_US 50000U
+#include "feedback_source.h"
+#if BOARD_HAS_FEEDBACK_SOURCE_SELECTOR
+static feedback_frame_t tracking_frame;
+#endif
 static imu_only_state_t tracker;
 static SemaphoreHandle_t tracking_mutex;
 static osThreadId_t tracking_worker;
@@ -106,6 +110,10 @@ static void tracking_update(void)
                 published.vx = tracker.vx;
                 published.vy = tracker.vy;
                 published.wz = tracker.wz;
+#if BOARD_HAS_FEEDBACK_SOURCE_SELECTOR
+                feedback_anchor(&tracking_frame, FEEDBACK_SOURCE_IMU_ONLY,
+                                (platform_odometry_t){published.x,published.y,published.yaw});
+#endif
             }
         }
     } else if (result != HW_IMU_NOT_READY) {
@@ -171,6 +179,9 @@ static uint8_t tracking_configure(uint8_t action, uint8_t confirmed, double yaw,
         tracking_origin = published_sample = 0;
         tracking_elapsed = 0;
     }
+#if BOARD_HAS_FEEDBACK_SOURCE_SELECTOR
+    if (result == RESPONSE_OK) feedback_invalidate(FEEDBACK_SOURCE_IMU_ONLY);
+#endif
     tracking_publish_active();
     xSemaphoreGive(tracking_mutex);
     return result;
@@ -236,3 +247,42 @@ static uint8_t tracking_read(uint8_t command, uint8_t kind, void (*reply)(uint8_
         xSemaphoreGive(tracking_mutex);
     return result;
 }
+
+#if BOARD_HAS_FEEDBACK_SOURCE_SELECTOR
+static bool tracking_reports_motion(void)
+{
+    if (!tracking_mutex) return false;
+    if (!xSemaphoreTake(tracking_mutex,portMAX_DELAY)) return true;
+    if (tracking_reader) tracking_update();
+    tracking_deadline(hw_clock_microseconds());
+    bool moving = tracker.health == IMU_ONLY_TRACKING &&
+        (hypot(published.vx,published.vy) >= 0.008 || fabs(published.wz) >= 0.02);
+    xSemaphoreGive(tracking_mutex);
+    return moving;
+}
+
+static void tracking_feedback_sample(feedback_snapshot_t *out)
+{
+    if (!tracking_mutex) { out->reason = FEEDBACK_REASON_NOT_STARTED; return; }
+    if (!xSemaphoreTake(tracking_mutex, portMAX_DELAY)) { out->reason = FEEDBACK_REASON_UNAVAILABLE; return; }
+    if (tracking_reader) tracking_update();
+    tracking_deadline(hw_clock_microseconds());
+    out->detail = tracker.fault;
+    switch (tracker.health) {
+    case IMU_ONLY_TRACKING: {
+        double c = cos(published.yaw), s = sin(published.yaw);
+        feedback_snapshot(out, &tracking_frame, FEEDBACK_SOURCE_IMU_ONLY, published.sequence, published_sample,
+            (platform_odometry_t){published.x,published.y,published.yaw},
+            (platform_odometry_t){c*published.vx+s*published.vy,-s*published.vx+c*published.vy,published.wz});
+        break;
+    }
+    case IMU_ONLY_STOPPED: out->reason = FEEDBACK_REASON_NOT_STARTED; break;
+    case IMU_ONLY_CALIBRATING: out->reason = FEEDBACK_REASON_CALIBRATING; break;
+    case IMU_ONLY_EXPIRED: out->reason = FEEDBACK_REASON_EXPIRED; break;
+    default:
+        out->reason = tracker.fault == IMU_ONLY_STALE ? FEEDBACK_REASON_STALE :
+            tracker.fault == IMU_ONLY_INHIBITED ? FEEDBACK_REASON_INHIBITED : FEEDBACK_REASON_FAULT;
+    }
+    xSemaphoreGive(tracking_mutex);
+}
+#endif

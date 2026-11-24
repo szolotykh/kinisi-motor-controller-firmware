@@ -263,6 +263,8 @@ static uint8_t handle(controller_command_t *cmd, protocol_send_fn reply)
     switch (cmd->commandType) {
     case SET_BOARD_IDLE:
     case GET_BOARD_IDLE:
+    case SET_FEEDBACK_SOURCE: case GET_FEEDBACK_SOURCE_STATUS: case GET_FEEDBACK_SOURCE_VECTOR:
+    case SET_FEEDBACK_FUSION_MOUNT: case GET_FEEDBACK_FUSION_MOUNT:
     case SET_IMU_TRACKING: case GET_IMU_TRACKING_STATUS:
     case GET_IMU_TRACKING_VECTOR: case GET_IMU_TRACKING_CONFIGURATION:
     case SET_FUSION_EXPERIMENT: case GET_FUSION_STATUS:

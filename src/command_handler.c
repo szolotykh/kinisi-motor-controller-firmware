@@ -27,6 +27,9 @@
 #if BOARD_HAS_IMU_TRACKING
 #include "imu_tracking_internal.h"
 #endif
+#if BOARD_HAS_FEEDBACK_SOURCE_SELECTOR
+#include "feedback_source_internal.h"
+#endif
 #if MOTOR_CONTROL_MODEL == MOTOR_CONTROL_MODEL_ENABLE_DIRECTION
 #include "hw_drv8873.h"
 #endif
@@ -43,6 +46,9 @@ static uint8_t set_driver_sleep(bool sleeping)
     bool confirmed = hw_motor_set_driver_sleep(sleeping);
 #if BOARD_HAS_IMU_TRACKING
     if (!was_sleeping && hw_motor_drivers_sleeping()) imu_tracking_inhibit();
+#if BOARD_HAS_FEEDBACK_SOURCE_SELECTOR
+    if (was_sleeping != hw_motor_drivers_sleeping()) passive_fusion_reset();
+#endif
 #endif
 #if BOARD_HAS_FUSION_EXPERIMENT
     bool now_sleeping = hw_motor_drivers_sleeping();
@@ -569,6 +575,28 @@ uint8_t command_handler(controller_command_t* cmd, void (*command_callback)(uint
                 cmd->properties.set_platform_position.x,
                 cmd->properties.set_platform_position.y,
                 cmd->properties.set_platform_position.t});
+        case SET_FEEDBACK_SOURCE: case GET_FEEDBACK_SOURCE_STATUS: case GET_FEEDBACK_SOURCE_VECTOR:
+        case SET_FEEDBACK_FUSION_MOUNT: case GET_FEEDBACK_FUSION_MOUNT:
+#if BOARD_HAS_FEEDBACK_SOURCE_SELECTOR
+            if (cmd->commandType == SET_FEEDBACK_SOURCE)
+                return feedback_select(cmd->properties.set_feedback_source.source);
+            if (cmd->commandType == SET_FEEDBACK_FUSION_MOUNT) {
+                if (!feedback_switch_safe()) return RESPONSE_SOURCE_SWITCH_UNSAFE;
+                return passive_fusion_mount(cmd->properties.set_feedback_fusion_mount.mounting_yaw_rad);
+            }
+            if (cmd->commandType == GET_FEEDBACK_FUSION_MOUNT) {
+                feedback_fusion_mount mount = passive_fusion_get_mount();
+                command_callback((uint8_t *)&mount,sizeof(mount));
+                return RESPONSE_OK;
+            }
+            return feedback_read(cmd->commandType, cmd->commandType == GET_FEEDBACK_SOURCE_VECTOR ?
+                                 cmd->properties.get_feedback_source_vector.kind : 0,
+                                 cmd->commandType == GET_FEEDBACK_SOURCE_VECTOR ? cmd->properties.get_feedback_source_vector.origin_id : 0,
+                                 cmd->commandType == GET_FEEDBACK_SOURCE_VECTOR ? cmd->properties.get_feedback_source_vector.sequence : 0,
+                                 command_callback);
+#else
+            return RESPONSE_SENSOR_NOT_AVAILABLE;
+#endif
         case SET_IMU_TRACKING:
 #if BOARD_HAS_IMU_TRACKING
         {

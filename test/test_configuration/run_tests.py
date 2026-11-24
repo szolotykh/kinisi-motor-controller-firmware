@@ -60,6 +60,20 @@ with tempfile.TemporaryDirectory() as folder:
             subprocess.run([str(binary), mode, str(image), str(platform)], check=True, timeout=10)
 
         if revision == 4:
+            for scenario in ('selector-imu','selector-platform'):
+                run(scenario,out/'unconfigured.fram',1)
+            for preference in (1,2):
+                image=out/f'preferred-{preference}.fram'
+                run('selector-save',image,preference)
+                run('selector-restore',image,preference)
+            for invalid in ('bad-preference','bad-layout','bad-legacy-padding'):
+                image=out/f'{invalid}.fram'
+                run('selector-save',image,2)
+                run(invalid,image,3)
+                run('blank',image,3)
+            for fixture in ('factory','mecanum'):
+                run('selector-v1-'+fixture,root/'test/test_configuration/fixtures'/f'{fixture}.fram',0)
+            print('PASS telemetry selector sources, native sequence/time, coordinate origin, power/ownership boundaries and configuration-v1 migration')
             run('imu-tracking', out / 'unconfigured.fram', 1)
             for preset in (1, 2, 3):
                 run('fusion', out / 'unconfigured.fram', preset)

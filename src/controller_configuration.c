@@ -9,15 +9,17 @@
 #include "platform.h"
 #include "platform_common.h"
 #include <math.h>
+#include "feedback_source.h"
 
-// Version 1 payload for the v0.4 STM32, little-endian with binary64 geometry.
+// Fixed-size payload for the v0.4 STM32, little-endian with binary64 geometry.
 // Explicit padding and masks keep timers, outputs and runtime objects out of FRAM.
 typedef struct {
     double diameter, track_or_length, width_or_radius;
     double resolution[4];
     uint32_t frequency;
     uint8_t type, motors, motor_reverse, encoders, encoder_reverse;
-    uint8_t reserved[7];
+    uint8_t feedback_preference, payload_revision; // Both bytes were reserved zero in v1.
+    uint8_t reserved[5];
 } saved_setup_t;
 _Static_assert(sizeof(saved_setup_t) == 72 && sizeof(double) == 8, "v1 configuration payload layout");
 
@@ -63,6 +65,10 @@ static void capture(saved_setup_t *setup)
             setup->encoder_reverse |= platform.encoder_reverse_mask & (1U << i);
         }
     }
+#if BOARD_HAS_FEEDBACK_SOURCE_SELECTOR
+    setup->feedback_preference = feedback_requested();
+    setup->payload_revision = 2;
+#endif
     setup->frequency = hw_motor_get_pwm_frequency();
 }
 
@@ -93,6 +99,9 @@ static bool valid(const saved_setup_t *s)
     for (unsigned i = 0; i < 4; ++i) {
         if (bit(s->encoders, i) ? !positive(s->resolution[i]) : s->resolution[i] != 0) return false;
     }
+    if (s->payload_revision == 0) {
+        if (s->feedback_preference != FEEDBACK_SOURCE_ENCODER) return false; // Strict original v1 padding.
+    } else if (s->payload_revision != 2 || s->feedback_preference > FEEDBACK_SOURCE_FUSED) return false;
     for (unsigned i = 0; i < sizeof(s->reserved); ++i) if (s->reserved[i]) return false;
     return true;
 }
@@ -163,6 +172,9 @@ void controller_configuration_restore(void)
             !encoder->is_initialized(i) || encoder->get_resolution(i) != s.resolution[i] ||
             hw_encoder_is_reversed(i) != bit(e,i)) goto rollback;
     }
+#if BOARD_HAS_FEEDBACK_SOURCE_SELECTOR
+    feedback_restore_preference(s.feedback_preference);
+#endif
     return;
 rollback:
     hw_motor_discard_restored_setup();
