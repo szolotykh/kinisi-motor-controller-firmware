@@ -24,7 +24,7 @@ typedef struct {
 uint8_t feedback_requested(void);
 void feedback_restore_preference(uint8_t source);
 void feedback_invalidate(uint8_t source);
-void feedback_anchor(feedback_frame_t *frame, uint8_t source, platform_odometry_t pose);
+void feedback_anchor(feedback_frame_t *frame, uint8_t source, uint64_t stamp, platform_odometry_t pose);
 void feedback_snapshot(feedback_snapshot_t *out, const feedback_frame_t *frame, uint8_t source,
                        uint32_t sequence, uint64_t stamp, platform_odometry_t pose, platform_odometry_t twist);
 void odometry_feedback_sample(feedback_snapshot_t *out);

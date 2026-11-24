@@ -111,7 +111,7 @@ static void tracking_update(void)
                 published.vy = tracker.vy;
                 published.wz = tracker.wz;
 #if BOARD_HAS_FEEDBACK_SOURCE_SELECTOR
-                feedback_anchor(&tracking_frame, FEEDBACK_SOURCE_IMU_ONLY,
+                feedback_anchor(&tracking_frame, FEEDBACK_SOURCE_IMU_ONLY, published_sample,
                                 (platform_odometry_t){published.x,published.y,published.yaw});
 #endif
             }

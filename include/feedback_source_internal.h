@@ -3,12 +3,19 @@
 // source. A producer may concurrently invalidate only its own frame.
 #include "feedback_source.h"
 
+// Publish the split 64-bit switch time before the atomic token, so a late
+// pre-switch acquisition cannot establish the new frame. Cortex-M4 supports
+// atomic 32-bit loads/stores; this avoids an RTOS lock in producer callbacks.
+static uint32_t switch_high, switch_low;
 static uint32_t selection = 4U | FEEDBACK_SOURCE_ENCODER;
 static uint32_t selection_token(void) { return __atomic_load_n(&selection, __ATOMIC_ACQUIRE); }
 uint8_t feedback_requested(void) { return selection_token() & 3U; }
 
 void feedback_restore_preference(uint8_t source)
 {
+    uint64_t at=hw_clock_microseconds();
+    __atomic_store_n(&switch_high,(uint32_t)(at >> 32),__ATOMIC_RELAXED);
+    __atomic_store_n(&switch_low,(uint32_t)at,__ATOMIC_RELAXED);
     uint32_t token = selection_token();
     do {
         uint32_t next = ((token + 4U) & ~3U) | source;
@@ -24,10 +31,13 @@ void feedback_invalidate(uint8_t source)
            !__atomic_compare_exchange_n(&selection, &token, token + 4U, false, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE)) {}
 }
 
-void feedback_anchor(feedback_frame_t *frame, uint8_t source, platform_odometry_t pose)
+void feedback_anchor(feedback_frame_t *frame, uint8_t source, uint64_t stamp, platform_odometry_t pose)
 {
     uint32_t token = selection_token();
     if ((token & 3U) != source || token == frame->token) return;
+    uint64_t after = ((uint64_t)__atomic_load_n(&switch_high,__ATOMIC_RELAXED) << 32) |
+                     __atomic_load_n(&switch_low,__ATOMIC_RELAXED);
+    if (stamp <= after) return;
     frame->anchor = pose;
     frame->token = token;
 }

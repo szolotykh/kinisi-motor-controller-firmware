@@ -150,7 +150,7 @@ void passive_fusion_observe(uint32_t epoch, uint64_t previous, uint64_t at, plat
         passive.reason=FEEDBACK_REASON_OK;
         passive.fault=0;
         ++passive.sequence;
-        feedback_anchor(&passive.frame,FEEDBACK_SOURCE_FUSED,(platform_odometry_t){e->x,e->y,e->yaw});
+        feedback_anchor(&passive.frame,FEEDBACK_SOURCE_FUSED,e->sample_us,(platform_odometry_t){e->x,e->y,e->yaw});
     } else if (e->status == FUSION_EST_CALIBRATING || e->status == FUSION_EST_MOTION) {
         passive.reason=FEEDBACK_REASON_CALIBRATING;
         passive.fault=FUSION_FAULT_BIAS_NOT_READY;

@@ -170,7 +170,7 @@ void odometry_manager_task(void *argument)
                     double hz = 1e6 / (double)(sample_us - previous);
                     state->feedback_twist = (platform_odometry_t){delta.x*hz,delta.y*hz,delta.t*hz};
                     ++state->feedback_sequence;
-                    feedback_anchor(&state->feedback_frame,FEEDBACK_SOURCE_ENCODER,state->platform_odometry);
+                    feedback_anchor(&state->feedback_frame,FEEDBACK_SOURCE_ENCODER,sample_us,state->platform_odometry);
                 } else if (state->feedback_valid) feedback_invalidate(FEEDBACK_SOURCE_ENCODER);
                 state->feedback_valid = coherent;
                 state->feedback_reason = !valid ? FEEDBACK_REASON_UNAVAILABLE :

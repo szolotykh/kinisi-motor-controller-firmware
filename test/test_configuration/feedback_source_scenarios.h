@@ -79,6 +79,15 @@ static void selector_imu(void)
     assert(selected_status().origin_id!=origin);
     tracking_ticks(54,0,0);
     assert(selected_status().valid && selected_vector(0).x==0);
+    // A gyro watermark captured just before the switch may be delivered
+    // afterward. Only a genuinely post-switch source acquisition anchors.
+    select_source(FEEDBACK_SOURCE_ENCODER,RESPONSE_OK);
+    now+=10000;
+    select_source(FEEDBACK_SOURCE_IMU_ONLY,RESPONSE_OK);
+    now+=1000; injected_accel=injected_gyro=now-2000; run_task(tracking_task);
+    assert(imu_status().state==IMU_TRACKING_STATE_TRACKING);
+    assert(selected_status().reason==FEEDBACK_REASON_WAITING_SAMPLE); invalid_vector();
+    tracking_ticks(1,0,0); assert(selected_status().valid);
     now+=35001;
     assert(selected_status().reason==FEEDBACK_REASON_STALE);
     invalid_vector();
