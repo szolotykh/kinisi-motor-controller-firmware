@@ -3700,6 +3700,11 @@
                     "name": "age_us",
                     "type": "uint32_t",
                     "description": "Board-clock sample age in microseconds; UINT32_MAX when unavailable."
+                },
+                {
+                    "name": "max_age_ms",
+                    "type": "uint16_t",
+                    "description": "Maximum eligible captured sample age in milliseconds for this source, including the configured encoder period. Compare updated original sample age with the smaller of its captured and current limits."
                 }
             ]
         },

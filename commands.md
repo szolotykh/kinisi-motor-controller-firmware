@@ -2789,7 +2789,7 @@ No payload parameters.
 
 #### Response
 
-**Controller → client** · `feedback_source_status` · **Payload:** 25 bytes
+**Controller → client** · `feedback_source_status` · **Payload:** 27 bytes
 
 Packed little-endian selector readback.
 
@@ -2804,6 +2804,7 @@ Packed little-endian selector readback.
 | `origin_id` | `uint32_t` | 4 | Board-local frame generation. Discard prior coordinates on change or board reboot. |
 | `source_detail` | `uint8_t` | 1 | Native IMU tracking or fusion fault code for the requested source; zero otherwise. |
 | `age_us` | `uint32_t` | 4 | Board-clock sample age in microseconds; UINT32_MAX when unavailable. |
+| `max_age_ms` | `uint16_t` | 2 | Maximum eligible captured sample age in milliseconds for this source, including the configured encoder period. Compare updated original sample age with the smaller of its captured and current limits. |
 
 #### Errors
 

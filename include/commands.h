@@ -605,6 +605,7 @@ typedef struct
     uint32_t origin_id; // Board-local frame generation. Discard prior coordinates on change or board reboot.
     uint8_t source_detail; // Native IMU tracking or fusion fault code for the requested source; zero otherwise.
     uint32_t age_us; // Board-clock sample age in microseconds; UINT32_MAX when unavailable.
+    uint16_t max_age_ms; // Maximum eligible captured sample age in milliseconds for this source, including the configured encoder period. Compare updated original sample age with the smaller of its captured and current limits.
 } feedback_source_status;
 #pragma pack(pop)
 
