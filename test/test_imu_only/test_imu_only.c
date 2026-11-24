@@ -139,11 +139,36 @@ static void lifecycle(void)
     assert(s.health == IMU_ONLY_STOPPED && !s.sample_us && !s.bias_ax);
 }
 
+static void bmi088_first_partial_interval(void)
+{
+    imu_only_state_t s = {0};
+    imu_only_sample_t m = {.az = 9.80665};
+    assert(imu_only_start(&s, 0, 0, true));
+    for (uint64_t t = 10000; t <= 510000; t += 10000) {
+        m.accel_us = t;
+        m.gyro_us = t + 9000;
+        imu_only_process(&s, m.gyro_us, &m, true, true);
+    }
+    assert(s.origin_us == 519000 && s.accel.applied_us == 510000);
+    m.accel_us = 520000;
+    m.ax = 5.;
+    imu_only_process(&s, 520000, &m, true, true);
+    assert(s.sample_us == 519000 && s.vx == 0.);
+    m.gyro_us = 529000;
+    imu_only_process(&s, 529000, &m, true, true);
+    m.accel_us = 530000;
+    imu_only_process(&s, 530000, &m, true, true);
+    // Rest through the origin, a 1 ms filtered ramp to 5, then 9 ms held.
+    double expected = 0.5 * .001 * 5. + 5. / (2. * acos(-1.) * 40.) + .009 * 5.;
+    assert(s.sample_us == 529000 && fabs(s.vx - expected) < 1e-12);
+}
+
 int main(void)
 {
     kinematics();
     asynchronous();
     bmi088_closed_interval();
+    bmi088_first_partial_interval();
     lifecycle();
     puts("PASS independent source clocks, calibrated axes, integration, coast, unwrapped yaw and fail-closed "
          "lifecycle");

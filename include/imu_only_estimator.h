@@ -148,7 +148,10 @@ static inline void imu_only_integrate(imu_only_state_t *s, uint64_t watermark, b
         }
         if (s->accel.count && s->accel.pending[s->accel.head].time == end) {
             double old_x = s->accel.x, old_y = s->accel.y;
-            double interval = (double)(end - s->accel.applied_us) * 1e-6;
+            // The older die can still hold a calibration value from before
+            // the origin. Only time inside this integration window has area.
+            uint64_t begin = s->accel.applied_us < s->origin_us ? s->origin_us : s->accel.applied_us;
+            double interval = (double)(end - begin) * 1e-6;
             imu_only_advance_axis(&s->accel, end);
             // Complete the preceding measured interval by trapezoidal quadrature.
             // For a first-order 40 Hz accel pole, integral(input) also contains
