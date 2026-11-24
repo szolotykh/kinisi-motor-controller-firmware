@@ -139,10 +139,31 @@ static inline void imu_only_integrate(imu_only_state_t *s, uint64_t watermark)
         s->vy += ay * dt;
         s->yaw += turn;
         s->sample_us = end;
-        imu_only_advance_axis(&s->accel, end);
-        imu_only_advance_axis(&s->gyro, end);
+        if (s->accel.count && s->accel.pending[s->accel.head].time == end) {
+            double old_x = s->accel.x, old_y = s->accel.y;
+            double interval = (double)(end - s->accel.applied_us) * 1e-6;
+            imu_only_advance_axis(&s->accel, end);
+            // Complete the preceding measured interval by trapezoidal quadrature.
+            // For a first-order 40 Hz accel pole, integral(input) also contains
+            // tau * (filtered_end - filtered_start). Only closed intervals qualify.
+            double weight = 0.5 * interval + 1.0 / (6.283185307179586 * 40.0);
+            double dx = weight * (s->accel.x - old_x), dy = weight * (s->accel.y - old_y);
+            double ce = cos(s->yaw), se = sin(s->yaw);
+            s->vx += ce * dx - se * dy;
+            s->vy += se * dx + ce * dy;
+        }
+        if (s->gyro.count && s->gyro.pending[s->gyro.head].time == end) {
+            double previous = s->gyro.x;
+            double interval = (double)(end - s->gyro.applied_us) * 1e-6;
+            imu_only_advance_axis(&s->gyro, end);
+            // Estimate the instantaneous rate at this acquisition. Suppress
+            // differences within three modeled standard deviations at 100 Hz.
+            double delta = s->gyro.x - previous;
+            double excess = fmax(0.0, fabs(delta) - 0.00684005);
+            double gain = fmin(1.0, 1.0 / (6.283185307179586 * 32.0 * interval));
+            s->wz = s->gyro.x + gain * copysign(excess, delta);
+        }
     }
-    s->wz = s->gyro.x;
 }
 
 // Advance to one actual gyro acquisition for which acceleration coverage is
@@ -267,7 +288,7 @@ static inline void imu_only_process(imu_only_state_t *s, uint64_t now_us, const 
     }
     if (new_g && g <= s->sample_us) {
         s->gyro.applied_us = g;
-        s->gyro.x = m->gz - s->bias_gz;
+        s->wz = s->gyro.x = m->gz - s->bias_gz;
     }
     if ((new_a && a > s->sample_us && !imu_only_append(&s->accel, a, ax - s->bias_ax, ay - s->bias_ay)) ||
         (new_g && g > s->sample_us && !imu_only_append(&s->gyro, g, m->gz - s->bias_gz, 0))) {
