@@ -62,6 +62,11 @@ with tempfile.TemporaryDirectory() as folder:
         if revision == 4:
             for preset in (1,2,3):
                 run('source-health',out/'unconfigured.fram',preset)
+            for bus in (0,1):
+                run('source-health-queues',out/'unconfigured.fram',bus)
+                run('source-health-live-fused',out/'unconfigured.fram',bus)
+            for index in (0,3):
+                run('source-health-edges',out/'unconfigured.fram',index)
             print('PASS source health, comparison, direct fault provenance and stopped recovery across three presets')
             for hz in (1,10):
                 run('selector-slow',out/'unconfigured.fram',hz)

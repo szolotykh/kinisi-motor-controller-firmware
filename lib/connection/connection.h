@@ -112,4 +112,5 @@ void connection_poll(connection_t *);
  */
 const time_sync_t *connection_current_clock(void);
 // True only during dispatch of a frame begun before a verified driver wake.
+uint8_t connection_before_encoder_ready(void);
 bool connection_before_driver_wake(void);

@@ -5,7 +5,7 @@ static SemaphoreHandle_t health_lock;
 static feedback_imu_reader_t health_reader;
 static bool (*health_encoder_timer)(uint8_t);
 static struct {
-    uint64_t a,g,good_a,good_g,barrier_a,barrier_g;
+    uint64_t a,g,good_a,good_g,barrier_a,barrier_g,power_boundary;
     uint32_t sequence;
     uint8_t reason,detail;
     bool recovering;
@@ -47,10 +47,14 @@ uint32_t feedback_health_raw_epoch(void)
     return __atomic_load_n(&raw_epoch,__ATOMIC_ACQUIRE);
 }
 
-void feedback_health_inhibit(void)
+void feedback_health_power_transition(void)
 {
     // Invalidate even across a complete sleep/wake between producer polls.
     __atomic_add_fetch(&raw_epoch,1,__ATOMIC_RELEASE);
+    if (health_lock && xSemaphoreTake(health_lock,portMAX_DELAY)) {
+        physical_imu.power_boundary=hw_clock_microseconds();
+        xSemaphoreGive(health_lock);
+    }
     feedback_health_reset_comparison();
     feedback_health_poll();
 }
@@ -130,7 +134,8 @@ static void health_poll_locked(void)
         fabs(raw.angular_velocity_x)>=8 || fabs(raw.angular_velocity_y)>=8 || fabs(raw.angular_velocity_z)>=8) {
         health_imu_failed(FEEDBACK_REASON_FAULT,FUSION_FAULT_SATURATION);return;
     }
-    if (physical_imu.recovering && (a<=physical_imu.barrier_a || g<=physical_imu.barrier_g)) {
+    if (a<=physical_imu.power_boundary || g<=physical_imu.power_boundary ||
+        (physical_imu.recovering && (a<=physical_imu.barrier_a || g<=physical_imu.barrier_g))) {
         physical_imu.reason=FEEDBACK_REASON_WAITING_SAMPLE;return;
     }
     if (a!=physical_imu.good_a || g!=physical_imu.good_g) ++physical_imu.sequence;
@@ -145,7 +150,10 @@ void feedback_health_poll(void)
     health_poll_locked();
     uint8_t reason=physical_imu.reason, detail=physical_imu.detail;
     xSemaphoreGive(health_lock);
-    if (reason!=FEEDBACK_REASON_OK) passive_health_fault(reason,detail);
+    if (reason!=FEEDBACK_REASON_OK) {
+        passive_health_fault(reason,detail);
+        platform_fusion_observed_imu_loss(detail?detail:FUSION_FAULT_IMU_UNAVAILABLE);
+    }
 }
 
 static void health_compare(uint64_t at,uint64_t previous,platform_odometry_t delta,bool valid,bool stationary)
@@ -224,9 +232,15 @@ static void health_compare(uint64_t at,uint64_t previous,platform_odometry_t del
 void feedback_health_observe(uint64_t at,uint64_t previous,platform_odometry_t delta,bool valid,bool stationary)
 {
     if (!health_lock || !xSemaphoreTake(health_lock,portMAX_DELAY)) return;
-    if (comparison.mount) health_poll_locked();
+    bool sampled=comparison.mount;
+    if (sampled) health_poll_locked();
     health_compare(at,previous,delta,valid,stationary);
+    uint8_t reason=physical_imu.reason,detail=physical_imu.detail;
     xSemaphoreGive(health_lock);
+    if (sampled && reason!=FEEDBACK_REASON_OK) {
+        passive_health_fault(reason,detail);
+        platform_fusion_observed_imu_loss(detail?detail:FUSION_FAULT_IMU_UNAVAILABLE);
+    }
 }
 
 static uint8_t feedback_health_read(uint8_t command,uint8_t source,void (*reply)(uint8_t *,uint8_t))

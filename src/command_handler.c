@@ -8,6 +8,7 @@
 #include <pid_controller.h>
 #include <hw_gpio.h>
 #include "platform.h"
+#include "platform_common.h"
 #include "commands_handler.h"
 #include "controller_configuration.h"
 #include "driver_sleep_commands.h"
@@ -53,7 +54,7 @@ static uint8_t set_driver_sleep(bool sleeping)
     if (was_sleeping != hw_motor_drivers_sleeping()) {
         passive_fusion_reset();
 #if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
-        if (hw_motor_drivers_sleeping()) feedback_health_inhibit();
+        feedback_health_power_transition();
 #endif
     }
 #endif
@@ -101,15 +102,53 @@ static bool platform_feedback_ready(const hw_encoder_interface_t *encoder)
 }
 
 #if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
+static uint8_t monitored_encoders, bad_encoders;
+static void (*encoder_ingress_fence)(uint8_t);
+static uint8_t (*dequeued_encoder_barriers)(void);
+
+bool feedback_counters_available(void) { return !__atomic_load_n(&bad_encoders,__ATOMIC_ACQUIRE); }
+
+void feedback_install_encoder_fence(void (*fence)(uint8_t),uint8_t (*dequeued)(void))
+{
+    encoder_ingress_fence=fence;
+    dequeued_encoder_barriers=dequeued;
+}
+
 void feedback_guard_platform_control(void)
 {
-    // A failed owned shaft cannot supply any closed-loop chassis target.
-    // Stop the whole owned group and discard velocity/position state. Open-loop
-    // motion and unrelated standalone channels retain their existing ownership.
-    if (platform_is_controller_running() && !platform_feedback_ready(get_encoder_interface())) {
-        platform_stop_velocity_controller();
-        platform_feedback_fence();
+    const hw_encoder_interface_t *hw=get_encoder_interface();
+    uint8_t present=0,bad=0;
+    for (uint8_t i=0;i<NUMBER_ENCODERS;i++) if (hw->is_initialized(i)) present|=1U<<i;
+    uint8_t monitored=__atomic_or_fetch(&monitored_encoders,present,__ATOMIC_ACQ_REL);
+    for (uint8_t i=0;i<NUMBER_ENCODERS;i++) if ((monitored & (1U<<i)) &&
+        (!(present & (1U<<i)) || !feedback_encoder_sampling(i) ||
+         !isfinite(hw->get_resolution(i)) || hw->get_resolution(i)<=0)) bad|=1U<<i;
+    uint8_t changed=bad ^ __atomic_exchange_n(&bad_encoders,bad,__ATOMIC_ACQ_REL);
+    // The recovery edge fences commands submitted while unavailable, even after
+    // the controller was stopped and no further invalid target was dispatched.
+    if (changed) {
+        if (encoder_ingress_fence) encoder_ingress_fence(changed);
+        odometry_counter_transition(changed);
     }
+    if (platform_is_controller_running() && (bad & platform.motor_mask)) platform_stop_velocity_controller();
+    for (uint8_t i=0;i<NUMBER_ENCODERS;i++) if (bad & (1U<<i)) controllers_manager_stop_encoder(i);
+}
+
+static uint8_t guarded_encoders(const controller_command_t *cmd)
+{
+    uint8_t motor;
+    switch (cmd->commandType) {
+    case START_PLATFORM_CONTROLLER: case SET_PLATFORM_TARGET_VELOCITY:
+    case INITIALIZE_PLATFORM_POSITION_CONTROLLER: case INITIALIZE_PLATFORM_POSITION_PID_CONTROLLER:
+    case SET_PLATFORM_POSITION: return platform.motor_mask;
+    case INITIALIZE_MOTOR_CONTROLLER: return 1U<<cmd->properties.initialize_motor_controller.encoder_index;
+    case SET_MOTOR_TARGET_SPEED: motor=cmd->properties.set_motor_target_speed.motor_index;break;
+    case INITIALIZE_MOTOR_POSITION_CONTROLLER: motor=cmd->properties.initialize_motor_position_controller.motor_index;break;
+    case INITIALIZE_MOTOR_POSITION_PID_CONTROLLER: motor=cmd->properties.initialize_motor_position_pid_controller.motor_index;break;
+    case SET_MOTOR_POSITION: motor=cmd->properties.set_motor_position.motor_index;break;
+    default: return 0;
+    }
+    return controllers_manager_encoder_mask(motor);
 }
 #endif
 
@@ -120,7 +159,7 @@ void feedback_guard_platform_control(void)
  * @return RESPONSE_OK for accepted operations, or a generated protocol error code.
  * @note Called serially inside a connection dispatch; ACK/error framing is handled above.
  */
-uint8_t command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t*, uint8_t))
+static uint8_t dispatch_controller_command(controller_command_t* cmd, void (*command_callback)(uint8_t*, uint8_t))
 {
 #if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
     health_init();
@@ -145,6 +184,13 @@ uint8_t command_handler(controller_command_t* cmd, void (*command_callback)(uint
     };
     uint8_t prerequisite = command_requirements_check(cmd, &resources);
     if (prerequisite != RESPONSE_OK) return prerequisite;
+#if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
+    uint8_t required=guarded_encoders(cmd);
+    if (required & __atomic_load_n(&bad_encoders,__ATOMIC_ACQUIRE)) return RESPONSE_ENCODER_NOT_INITIALIZED;
+    uint8_t blocked=connection_before_encoder_ready();
+    if (dequeued_encoder_barriers) blocked|=dequeued_encoder_barriers();
+    if (required & blocked) return RESPONSE_SAMPLE_NOT_AVAILABLE;
+#endif
 
     switch(cmd->commandType)
     {
@@ -473,6 +519,12 @@ uint8_t command_handler(controller_command_t* cmd, void (*command_callback)(uint
             };
 
             platform_start_velocity_controller(plaform_controller_settings);
+#if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
+            if (!platform_feedback_ready(encoder)) {
+                platform_stop_velocity_controller();
+                return RESPONSE_ENCODER_NOT_INITIALIZED;
+            }
+#endif
             }
         break;
 
@@ -814,4 +866,23 @@ uint8_t command_handler(controller_command_t* cmd, void (*command_callback)(uint
         default: return RESPONSE_UNKNOWN_COMMAND;
     }
     return RESPONSE_OK;
+}
+
+uint8_t command_handler(controller_command_t *cmd, void (*reply)(uint8_t *,uint8_t))
+{
+    uint8_t result=dispatch_controller_command(cmd,reply);
+#if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
+    // A higher-priority observer can report loss and repair after the initial
+    // admission test while this request is waiting for a controller mutex.
+    if (result==RESPONSE_OK && dequeued_encoder_barriers) {
+        uint8_t crossed=guarded_encoders(cmd) & dequeued_encoder_barriers();
+        if (crossed) {
+            if (platform_is_controller_running() && (crossed & platform.motor_mask))
+                platform_stop_velocity_controller();
+            for (uint8_t i=0;i<NUMBER_ENCODERS;i++) if (crossed & (1U<<i)) controllers_manager_stop_encoder(i);
+            return RESPONSE_SAMPLE_NOT_AVAILABLE;
+        }
+    }
+#endif
+    return result;
 }

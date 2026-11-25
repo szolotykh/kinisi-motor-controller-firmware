@@ -19,6 +19,7 @@
 #include "hw_motor.h"
 #include "wake_barriers.h"
 #include "platform_fusion.h"
+#include "feedback_source.h"
 #include "controllers_manager.h"
 #include "odometry_manager.h"
 
@@ -95,6 +96,30 @@ static bool try_i2c(uint8_t *data, uint8_t length)
  * @brief Copy and remove one queued frame while excluding IRQ producers.
  * @return True when a frame was dequeued; length excludes its prefix.
  */
+#if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
+static uint32_t shaft_generation[4],dequeued_shaft_generation[4];
+static void fence_encoders(uint8_t shafts)
+{
+    uint32_t mask=__get_PRIMASK();
+    __disable_irq();
+    for (unsigned i=0;i<4;i++) if (shafts & (1U<<i)) ++shaft_generation[i];
+    uint8_t flags=shafts<<ENCODER_BARRIER_SHIFT;
+    mark_pending_frames(&CommandQueue,flags);
+    mark_pending_external_i2c_requests(flags);
+    __set_PRIMASK(mask);
+}
+
+static uint8_t changed_after_dequeue(void)
+{
+    uint32_t mask=__get_PRIMASK();
+    __disable_irq();
+    uint8_t changed=0;
+    for (unsigned i=0;i<4;i++) if (shaft_generation[i]!=dequeued_shaft_generation[i]) changed|=1U<<i;
+    __set_PRIMASK(mask);
+    return changed;
+}
+#endif
+
 static bool take_command(message_queue_t *queue, char *buffer, int *length, uint8_t *barriers)
 {
     // IRQ producers also update queue->count; dequeue must not race their increment.
@@ -105,6 +130,9 @@ static bool take_command(message_queue_t *queue, char *buffer, int *length, uint
         *barriers = dequeue(queue, buffer, length);
 #if BOARD_HAS_FUSION_EXPERIMENT
         platform_fusion_dequeued();
+#if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
+        for (unsigned i=0;i<4;i++) dequeued_shaft_generation[i]=shaft_generation[i];
+#endif
 #endif
     }
     __set_PRIMASK(mask);
@@ -181,6 +209,9 @@ void CommandHandlerTask(void *argument)
 
 #if BOARD_HAS_FUSION_EXPERIMENT
     platform_fusion_install_ingress_fence(fence_feedback_targets);
+#if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
+    feedback_install_encoder_fence(fence_encoders,changed_after_dequeue);
+#endif
 #endif
     // Initialize USB and I2C interfaces
     controller_configuration_restore();
@@ -216,6 +247,9 @@ void CommandHandlerTask(void *argument)
         // Expire watchdogs before accepting queued commands, including stale motion.
         connection_poll(&usb_connection);
         connection_poll(&i2c_connection);
+#if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
+        feedback_guard_platform_control();
+#endif
         // Handle commands from USB interface
         process_queue(&usb_connection, &CommandQueue);
 

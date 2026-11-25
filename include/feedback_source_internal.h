@@ -58,6 +58,9 @@ void feedback_snapshot(feedback_snapshot_t *out, const feedback_frame_t *frame, 
 
 static bool feedback_switch_safe(void)
 {
+#if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
+    if (!feedback_counters_available()) return false;
+#endif
     if (platform_is_controller_running() || !hw_motor_outputs_stopped()) return false;
     for (uint8_t i=0; i<NUMBER_MOTORS; ++i)
         if (controllers_manager_is_running(i)) return false;

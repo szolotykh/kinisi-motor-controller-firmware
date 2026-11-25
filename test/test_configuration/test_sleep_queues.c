@@ -140,7 +140,56 @@ static void usb_idle_turn(void)
     ++phase;
 }
 #endif
+#if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
+static bool counter_outage;
+void health_queue_setup(void);
+void health_queue_shaft(bool failed);
+void health_queue_output(bool running);
+static void counter_queue_turn(void)
+{
+    controller_command_t start={.commandType=START_PLATFORM_CONTROLLER,.message_id=6,
+        .properties.start_platform_controller={8,0,0,100}};
+    controller_command_t target={.commandType=SET_PLATFORM_TARGET_VELOCITY,.message_id=7,
+        .properties.set_platform_target_velocity={.x=.2}};
+    switch (phase) {
+    case 0:
+        for (unsigned i=0;i<2;i++) issue(i,(controller_command_t){.commandType=INIT,.message_id=i+1,.properties.init={.protocol_major=2}});
+        break;
+    case 1:
+        if (!ready[0] || !ready[1]) return;
+        health_queue_setup();health_queue_output(true);
+        health_queue_shaft(true);health_queue_output(false);
+        blocked=true;issue(stale_bus,(controller_command_t){.commandType=PING,.message_id=5});
+        break;
+    case 2:
+        if (!attempted) return;
+        issue(stale_bus,start);
+        partial_size=encode(target,partial);assert(enqueue_multi(queue(stale_bus),partial,2));
+        break;
+    case 3:
+        health_queue_shaft(false); // No peer has read the delayed command yet.
+        break;
+    case 4:
+        assert(enqueue_multi(queue(stale_bus),partial+2,partial_size-2));blocked=false;
+        break;
+    case 5:
+        if (!replies[7]) return;
+        assert(errors[6]==RESPONSE_SAMPLE_NOT_AVAILABLE && errors[7]==RESPONSE_CONTROLLER_NOT_INITIALIZED);
+        health_queue_output(false);
+        start.message_id=8;target.message_id=9;issue(stale_bus,start);issue(stale_bus,target);
+        break;
+    case 6:
+        if (!replies[9]) return;
+        assert(replies[8]==START_PLATFORM_CONTROLLER && replies[9]==SET_PLATFORM_TARGET_VELOCITY);
+        health_queue_output(true);longjmp(finished,1);
+    }
+    ++phase;
+}
+#endif
 static void next_turn(uint32_t ms) {
+#if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
+    if (counter_outage) {assert(ticks++<100);counter_queue_turn();return;}
+#endif
     assert(!masked && ms == 1 && ++ticks < 100);
 #ifdef MP_V3_1
     if (usb_lifecycle) { usb_idle_turn(); return; }
@@ -274,3 +323,10 @@ void run_usb_idle_lifecycle(void) {
     usb_lifecycle = true;
     if (!setjmp(finished)) CommandHandlerTask(NULL);
 }
+
+#if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
+void run_counter_queues(unsigned bus) {
+    stale_bus=bus;counter_outage=true;
+    if (!setjmp(finished)) CommandHandlerTask(NULL);
+}
+#endif

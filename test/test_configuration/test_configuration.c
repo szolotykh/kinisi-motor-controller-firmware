@@ -453,6 +453,9 @@ int main(int argc, char **argv)
 #if BOARD_HAS_IMU_TRACKING
 #if BOARD_HAS_FEEDBACK_SOURCE_SELECTOR
 #if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
+    if (!strcmp(mode,"source-health-live-fused")) {live_fused_outage(type);return 0;}
+    if (!strcmp(mode,"source-health-queues")) {run_counter_queues(type);return 0;}
+    if (!strcmp(mode,"source-health-edges")) {source_health_edges(type);return 0;}
     if (!strcmp(mode,"source-health")) {source_health_scenario(type);return 0;}
 #endif
     if (!strcmp(mode,"selector-slow")) { selector_slow(type); return 0; }

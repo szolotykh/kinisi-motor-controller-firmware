@@ -263,6 +263,15 @@ uint8_t controllers_manager_initialize_controller(uint8_t motor_index, uint8_t e
             return RESPONSE_INTERNAL_ERROR;
         }
         encoder->initialize(controller_info.eIndex, encoder_resolution, is_encoder_reversed);
+#if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
+        if (!encoder->is_initialized(controller_info.eIndex) || !feedback_encoder_sampling(controller_info.eIndex)) {
+            controllers_manager.state.Controller_info[motor_index]=(controller_info_t){0};
+            controllers_manager.state.target_motor_speed[motor_index]=0;
+            motor->stop(motor_index);
+            xSemaphoreGive(controllers_manager.state.controller_state_mutex);
+            return RESPONSE_ENCODER_NOT_INITIALIZED;
+        }
+#endif
         controllers_manager.state.previousEncoderValue[motor_index] = encoder->get_value(encoder_index);
         controllers_manager.state.Controller_info[motor_index] = controller_info;
         controllers_manager.state.target_motor_speed[motor_index] = 0;
@@ -592,6 +601,17 @@ static uint8_t position_lock(uint8_t index)
     }
     return RESPONSE_OK;
 }
+
+#if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
+uint8_t controllers_manager_encoder_mask(uint8_t i)
+{
+    SemaphoreHandle_t lock=controllers_manager.state.controller_state_mutex;
+    if (i>=NUMBER_MOTORS || !lock || !xSemaphoreTake(lock,portMAX_DELAY)) return 0;
+    uint8_t mask=1U<<controllers_manager.state.Controller_info[i].eIndex;
+    xSemaphoreGive(lock);
+    return mask;
+}
+#endif
 
 void controllers_manager_stop_encoder(uint8_t encoder_index)
 {

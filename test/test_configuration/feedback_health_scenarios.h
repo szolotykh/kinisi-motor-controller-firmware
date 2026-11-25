@@ -115,3 +115,71 @@ static void source_health_scenario(unsigned preset)
     assert(imu_status().state==IMU_TRACKING_STATE_EXPIRED && health_status(1).health==FEEDBACK_HEALTH_HEALTHY);
     assert(!platform_is_controller_running());
 }
+
+static void source_health_edges(unsigned index)
+{
+    feedback_health_install(hw_imu_read_observation,sampling_enabled);
+    injected_status=HW_IMU_OK;injected=(hw_imu_sample_t){0,0,9.80665,0,0,0};
+    now=1000000;injected_accel=injected_gyro=now-2000;
+    feedback_source_health good=health_status(1);
+    now+=3000;injected_accel=injected_gyro=now-2000;
+    request((controller_command_t){.commandType=SET_DRIVER_SLEEP,.properties.set_driver_sleep={1}},RESPONSE_OK);
+    now+=2000;request((controller_command_t){.commandType=SET_DRIVER_SLEEP,.properties.set_driver_sleep={0}},RESPONSE_OK);
+    feedback_source_health held=health_status(1);
+    assert(held.health==FEEDBACK_HEALTH_UNAVAILABLE && held.timestamp_us==good.timestamp_us);
+    now+=2000;injected_accel=now;assert(health_status(1).health==FEEDBACK_HEALTH_UNAVAILABLE);
+    injected_gyro=now;assert(health_status(1).health==FEEDBACK_HEALTH_HEALTHY);
+    configure(PLATFORM_DIFFERENTIAL);
+    request((controller_command_t){.commandType=SET_ODOMETRY_FREQUENCY,.properties.set_odometry_frequency={1}},RESPONSE_OK);
+    request((controller_command_t){.commandType=START_PLATFORM_ODOMETRY},RESPONSE_OK);
+    sample_ticks(10,true);assert(odometry_feedback_at_rest(now));
+    stopped_counter=index;
+    assert(!odometry_feedback_at_rest(now));sample_ticks(2,true);
+    stopped_counter=-1;
+    select_source(FEEDBACK_SOURCE_IMU_ONLY,RESPONSE_SOURCE_SWITCH_UNSAFE);
+    set_mount(0,RESPONSE_SOURCE_SWITCH_UNSAFE);
+    sample_ticks(5,true);select_source(FEEDBACK_SOURCE_IMU_ONLY,RESPONSE_SOURCE_SWITCH_UNSAFE);
+    sample_ticks(2,true);select_source(FEEDBACK_SOURCE_IMU_ONLY,RESPONSE_OK);
+    assert(!motion_writes);
+}
+
+void health_queue_setup(void)
+{
+    feedback_health_install(hw_imu_read_observation,sampling_enabled);
+    configure(PLATFORM_DIFFERENTIAL);
+    request((controller_command_t){.commandType=START_PLATFORM_CONTROLLER,.properties.start_platform_controller={8,0,0,100}},RESPONSE_OK);
+    request((controller_command_t){.commandType=SET_PLATFORM_TARGET_VELOCITY,.properties.set_platform_target_velocity={.x=.2}},RESPONSE_OK);
+}
+void health_queue_shaft(bool failed) { stopped_counter=failed?0:-1;feedback_guard_platform_control(); }
+void health_queue_output(bool running)
+{
+    run_task(controller_task);
+    assert((platform_is_controller_running()!=0)==running && hw_motor_outputs_stopped()!=running);
+}
+void run_counter_queues(unsigned bus);
+
+static void live_fused_outage(bool position)
+{
+    configure(PLATFORM_DIFFERENTIAL);
+    request((controller_command_t){.commandType=START_PLATFORM_ODOMETRY},RESPONSE_OK);
+    request((controller_command_t){.commandType=START_PLATFORM_CONTROLLER,.properties.start_platform_controller={8,0,0,100}},RESPONSE_OK);
+    injected_status=HW_IMU_OK;injected=(hw_imu_sample_t){0,0,9.80665,0,0,0};
+    request((controller_command_t){.commandType=SET_FUSION_EXPERIMENT,.properties.set_fusion_experiment={FUSION_MODE_FUSED,0}},RESPONSE_OK);
+    sample_ticks(45,true);
+    controller_command_t target={.commandType=SET_PLATFORM_TARGET_VELOCITY,.properties.set_platform_target_velocity={.x=.2}};
+    if (position) {
+        request((controller_command_t){.commandType=INITIALIZE_PLATFORM_POSITION_CONTROLLER,
+            .properties.initialize_platform_position_controller={.linear_kp=1,.angular_kp=1,.position_tolerance=.01,
+                .heading_tolerance=.01,.max_linear_speed=.3,.max_angular_speed=.6}},RESPONSE_OK);
+        target=(controller_command_t){.commandType=SET_PLATFORM_POSITION,.properties.set_platform_position={.x=.2}};
+    }
+    request(target,RESPONSE_OK);run_task(controller_task);assert(!hw_motor_outputs_stopped());
+    now+=1000;injected_status=HW_IMU_IO_ERROR;feedback_health_poll();
+    assert_coasting();
+    assert(diagnostic().health==FUSION_HEALTH_FAULT && diagnostic().flags==FUSION_FLAG_FRESH_TARGET_REQUIRED);
+    now+=2000;injected_status=HW_IMU_OK;injected_accel=injected_gyro=now;
+    feedback_health_poll();request(target,RESPONSE_SAMPLE_NOT_AVAILABLE);
+    sample_ticks(34,true);run_task(controller_task);assert_coasting();
+    assert(diagnostic().health==FUSION_HEALTH_HEALTHY);
+    request(target,RESPONSE_OK);run_task(controller_task);assert(!hw_motor_outputs_stopped());
+}

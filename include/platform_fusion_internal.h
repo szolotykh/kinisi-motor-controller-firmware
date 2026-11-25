@@ -56,10 +56,6 @@ static void fence_targets(void)
     ingress_fence(&feedback_generation);
 }
 
-#if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
-void platform_feedback_fence(void) { fence_targets(); }
-#endif
-
 static bool fresh_request(void)
 {
     return !ingress_fence || dequeued_generation == __atomic_load_n(&feedback_generation, __ATOMIC_ACQUIRE);
@@ -188,6 +184,22 @@ static void reject_feedback(uint8_t reason)
     experiment.fault = reason;
     clear_target();
 }
+
+#if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
+void platform_fusion_observed_imu_loss(uint8_t fault)
+{
+    if (!platform_fusion_imu_epoch() || !xSemaphoreTake(mutex,portMAX_DELAY)) return;
+    if (experiment.mode==FUSION_MODE_FUSED &&
+        (experiment.health==FUSION_HEALTH_HEALTHY || experiment.target_live)) {
+        // Epoch invalidation also excludes an odometry observation already read
+        // before the physical error but waiting to publish under this mutex.
+        restart_batch(false);
+        experiment.health=FUSION_HEALTH_FAULT;
+        experiment.fault=fault;
+    }
+    xSemaphoreGive(mutex);
+}
+#endif
 
 // Allow one normal 20 ms odometry scheduling phase on top of the estimator's
 // 35 ms acquisition-age bound when the independent control task consumes it.

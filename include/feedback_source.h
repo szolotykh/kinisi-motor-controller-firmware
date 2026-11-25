@@ -44,8 +44,11 @@ typedef hw_imu_status_t (*feedback_imu_reader_t)(uint8_t, hw_imu_sample_t *, uin
 void feedback_health_install(feedback_imu_reader_t reader, bool (*encoder_sampling)(uint8_t));
 void feedback_health_poll(void);
 uint32_t feedback_health_raw_epoch(void);
-void feedback_health_inhibit(void);
+void feedback_health_power_transition(void);
+void odometry_counter_transition(uint8_t changed);
+bool feedback_counters_available(void);
 void feedback_guard_platform_control(void);
+void feedback_install_encoder_fence(void (*fence)(uint8_t),uint8_t (*dequeued)(void));
 void feedback_health_reset_comparison(void);
 void feedback_health_mount(double yaw);
 void feedback_health_observe(uint64_t at, uint64_t previous, platform_odometry_t delta, bool valid, bool stationary);

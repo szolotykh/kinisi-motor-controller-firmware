@@ -7,6 +7,7 @@
 #include "hw_timers.h"
 #include "hw_config.h"
 #include "stm32f4xx_hal.h"
+#include "encoder_timer_sampling.h"
 
 extern void Error_Handler(void);
 
@@ -219,9 +220,5 @@ void HAL_TIM_Encoder_MspDeInit(TIM_HandleTypeDef* htim_encoder)
 bool hw_encoder_sampling_valid(uint8_t i)
 {
     if (i>=NUMBER_ENCODERS || !encoder_status[i].is_initialized) return false;
-    TIM_TypeDef *t=encoder_info[i].timer;
-    return (t->CR1 & TIM_CR1_CEN) && (t->SMCR & TIM_SMCR_SMS)==TIM_ENCODERMODE_TI12 &&
-        (t->CCER & (TIM_CCER_CC1E|TIM_CCER_CC2E))==(TIM_CCER_CC1E|TIM_CCER_CC2E) &&
-        (t->CCMR1 & (TIM_CCMR1_CC1S|TIM_CCMR1_CC2S))==(TIM_CCMR1_CC1S_0|TIM_CCMR1_CC2S_0) &&
-        t->ARR==65535 && t->PSC==0;
+    return encoder_timer_sampling_valid(encoder_info[i].timer);
 }

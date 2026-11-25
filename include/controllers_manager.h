@@ -16,6 +16,7 @@ uint8_t controllers_manager_initialize_position(uint8_t index, position_settings
 uint8_t controllers_manager_set_position(uint8_t index, double radians);
 uint8_t controllers_manager_reset_position(uint8_t index);
 uint8_t controllers_manager_get_position(uint8_t index, double *radians);
+uint8_t controllers_manager_encoder_mask(uint8_t i);
 void controllers_manager_stop_encoder(uint8_t encoder_index);
 
 // Define motor identifiers as bit masks

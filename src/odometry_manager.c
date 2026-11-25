@@ -73,10 +73,17 @@ static bool record_count(rest_sample_t *r, uint16_t count, uint64_t at)
 }
 #if BOARD_HAS_FEEDBACK_SOURCE_SELECTOR
 static rest_sample_t switch_rest[NUMBER_ENCODERS];
+#if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
+static bool sampling_counter(uint8_t index);
+#endif
 static void sample_switch_rest(uint64_t at)
 {
     for (uint8_t i = 0; i < NUMBER_ENCODERS; ++i) {
-        if (encoder->is_initialized(i)) record_count(&switch_rest[i],encoder->get_value(i),at);
+        if (encoder->is_initialized(i)
+#if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
+            && sampling_counter(i)
+#endif
+        ) record_count(&switch_rest[i],encoder->get_value(i),at);
         else switch_rest[i] = (rest_sample_t){0};
     }
 }
@@ -102,6 +109,7 @@ static bool sampling_counter(uint8_t index)
 
 static void discard_invalid_counter(odometry_manager_state_t *s,uint8_t i)
 {
+    rest[i]=switch_rest[i]=(rest_sample_t){0};
     s->rebaseline |= 1U<<i;
     s->encoder_sample_us[i]=0;
     if (platform_owns_motor(i)) {
@@ -162,6 +170,9 @@ void odometry_manager_task(void *argument)
 #endif
             bool valid = platform_is_odometry_enabled();
             bool stationary = true, moved = false;
+#if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
+            stationary=feedback_counters_available();
+#endif
             platform_odometry_t delta = {0};
             uint64_t previous = state->platform_sample_us;
 #endif
@@ -656,7 +667,11 @@ bool odometry_feedback_at_rest(uint64_t now)
         if (!hw->is_initialized(i)) continue;
         const rest_sample_t *r = &switch_rest[i];
 #if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
-        if (!feedback_encoder_sampling(i)) quiet=false;
+        if (!sampling_counter(i)) {
+            discard_invalid_counter(state,i);
+            quiet=false;
+            continue;
+        }
 #endif
         if (!r->seen || now < r->seen || now - r->seen > 60000 ||
             r->seen - r->quiet_since < 100000 || hw->get_value(i) != r->count) quiet = false;
@@ -666,6 +681,17 @@ bool odometry_feedback_at_rest(uint64_t now)
 }
 
 #if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
+void odometry_counter_transition(uint8_t changed)
+{
+    odometry_manager_state_t *s=&odometry_manager_state;
+    if (!s->odometry_mutex || !xSemaphoreTake(s->odometry_mutex,portMAX_DELAY)) return;
+    for (unsigned i=0;i<NUMBER_ENCODERS;i++) if (changed & (1U<<i)) discard_invalid_counter(s,i);
+    xSemaphoreGive(s->odometry_mutex);
+    feedback_health_reset_comparison();
+    // An invalid independent shaft also invalidates evidence of observed rest.
+    passive_health_fault(FEEDBACK_REASON_UNAVAILABLE,FUSION_FAULT_ENCODER_UNAVAILABLE);
+}
+
 static bool owned_counters_valid(odometry_manager_state_t *s)
 {
     for (unsigned i=0;i<NUMBER_ENCODERS;i++) if (platform_owns_motor(i) &&
