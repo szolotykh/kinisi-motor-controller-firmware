@@ -1,5 +1,20 @@
 # Encoder and IMU experiment
 
+## Checking tracking inputs
+
+On a READY model 1 v0.4.0 board with protocol 2.22 and the `feedback_source_health` capability, read `GET_FEEDBACK_SOURCE_HEALTH(source)` for each input. `ENCODER` reports the platform encoder acquisition, `IMU_ONLY` reports the physical BMI088 accelerometer and gyro pair, and `FUSED` reports the passive fused estimate. These reads work independently of the operator's selected telemetry source.
+
+| Board observation | Operator interpretation |
+| --- | --- |
+| `HEALTHY` and `FRESH` | A usable source sample lies within its board-clock freshness budget. Check `COMPARISON_AVAILABLE` to see whether the board could cross-check motion. |
+| `SUSPECT` or `UNAVAILABLE` | Read `reason`, `detail`, and the freshness and fault flags. Read the other source separately to see which observations are still available. |
+| `DISAGREEMENT` | The measured motions conflict. Slip, externally imposed motion and a sensor problem can produce similar evidence. The board reports that uncertainty. |
+| `PROVENANCE` with an old timestamp | The board remembers an acquisition. Its age and `FRESH` flag describe whether it remains current. |
+
+`timestamp_us` uses board uptime. `age_us` uses the same clock. `UINT32_MAX` means the age is unknown or outside the representable interval. `GET_FEEDBACK_IMU_CHANNELS` gives separate acquisition times and ages for the accelerometer and gyro. Constant counts at rest, or low acceleration during straight constant-speed travel, can be normal.
+
+For a position or velocity reading, obtain the requested source, active source, validity and origin with `GET_FEEDBACK_SOURCE_STATUS`. A physical IMU can remain healthy after its one-second diagnostic window expires. Start another window deliberately from a stationary board. Fused telemetry requires a confirmed mounting orientation, encoder odometry, and suitable fresh observations. A source change requires stopped shafts and disarmed outputs. After a source outage, reset or reconnect, read the current origin and validity before using coordinates. Telemetry selection and recovery never issue a motion command. [IMU-only tracking](imu-tracking.md) · [Wire reference](../commands.md)
+
 This opt-in experiment requires a READY protocol 2.19+ session and exact model 1
 hardware 0.4.0 with `capabilities.fusion_experiment: true`. Missing capabilities,
 older firmware and unknown revisions are unavailable. Existing control defaults
