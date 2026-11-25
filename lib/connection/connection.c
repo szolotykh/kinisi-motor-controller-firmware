@@ -265,6 +265,7 @@ static uint8_t handle(controller_command_t *cmd, protocol_send_fn reply)
     case SET_BOARD_IDLE:
     case GET_BOARD_IDLE:
     case SET_IMU_MOUNT: case GET_IMU_MOUNT:
+    case SET_BOARD_MOUNT: case GET_BOARD_MOUNT:
     case GET_FEEDBACK_SOURCE_HEALTH: case GET_FEEDBACK_IMU_CHANNELS:
     case SET_FEEDBACK_SOURCE: case GET_FEEDBACK_SOURCE_STATUS: case GET_FEEDBACK_SOURCE_VECTOR:
     case SET_FEEDBACK_FUSION_MOUNT: case GET_FEEDBACK_FUSION_MOUNT:

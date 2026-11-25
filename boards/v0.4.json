@@ -9,6 +9,7 @@
     "part": "STM32F405VGT6"
   },
   "capabilities": {"fusion_experiment": true, "imu_tracking": true, "feedback_source_selector": true, "feedback_source_health": true, "imu_mounting": true},
+  "imu_geometry": {"underside_center_to_imu_um": [-15373, 26953, 2075]},
   "power": {
     "board_idle": true
   },

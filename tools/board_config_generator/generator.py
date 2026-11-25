@@ -63,7 +63,7 @@ def entries(value, maximum, at, minimum=1):
 
 def validate(board):
     fields(board, ("schema_version", "board", "mcu", "buses", "motors", "encoders", "gpio", "status_leds"),
-           ("shared_pins", "temperature_sensors", "imu_sensors", "power", "usb_vbus_sense", "capabilities"))
+           ("shared_pins", "temperature_sensors", "imu_sensors", "power", "usb_vbus_sense", "capabilities", "imu_geometry"))
     integer(board["schema_version"], 1, 1, "schema_version")
     identity = board["board"]
     fields(identity, ("model", "revision", "build_define"), at="board")
@@ -73,6 +73,16 @@ def validate(board):
     require(all(int(v) <= 255 for v in identity["revision"].split(".")), "board.revision: components must fit uint8")
     require(isinstance(identity["build_define"], str) and re.fullmatch(r"MP_V[1-9][0-9]*(?:_[1-9][0-9]*)?", identity["build_define"]),
             "board.build_define: expected MP_V<number> with an optional patch suffix")
+    if "imu_geometry" in board:
+        require(identity["model"] == 1 and identity["revision"] == "0.4.0", "imu_geometry requires Mini v0.4")
+        fields(board["imu_geometry"], ("underside_center_to_imu_um",), at="imu_geometry")
+        vector = board["imu_geometry"]["underside_center_to_imu_um"]
+        require(isinstance(vector, list) and len(vector) == 3, "imu_geometry requires three board axes")
+        for value in vector:
+            integer(value, -100000, 100000, "imu_geometry.underside_center_to_imu_um")
+        # Every projected, rounded component must fit the 2.24 GET wire bounds.
+        require(4 * sum(v * v for v in vector) < (2 * 31098 + 1) ** 2,
+                "imu_geometry exceeds the protocol 2.24 cross-reference readback range")
     fields(board["mcu"], ("part",), at="mcu")
     require(board["mcu"]["part"] in ("STM32F405RGT6", "STM32F405VGT6"), "mcu.part: unsupported MCU")
     if "power" in board:
@@ -101,6 +111,7 @@ def validate(board):
             boolean(enabled, "capabilities.imu_mounting")
             require(not enabled or board["capabilities"].get("feedback_source_health"),
                     "IMU mounting requires source health on exact v0.4")
+            require(not enabled or "imu_geometry" in board, "imu_mounting requires imu_geometry")
         if board["capabilities"]["fusion_experiment"]:
             require(identity["model"] == 1 and identity["revision"] == "0.4.0", "Fusion experiment requires exact v0.4")
     reserved = dict(FIRMWARE_RESERVED_PINS)
@@ -341,6 +352,7 @@ def pwm(value):
 def client_profile(board):
     """Project hardware definitions into public, language-neutral feature metadata."""
     return {
+        **({"imu_geometry": board["imu_geometry"]} if "imu_geometry" in board else {}),
         "board": {"model": board["board"]["model"], "revision": board["board"]["revision"]},
         "capabilities": {"fusion_experiment": board.get("capabilities", {}).get("fusion_experiment", False), "imu_tracking": board.get("capabilities", {}).get("imu_tracking", False), "feedback_source_selector": board.get("capabilities", {}).get("feedback_source_selector", False), "feedback_source_health": board.get("capabilities", {}).get("feedback_source_health", False), "imu_mounting": board.get("capabilities", {}).get("imu_mounting", False)},
         "power": {"driver_sleep": supports_driver_sleep(board),
@@ -395,6 +407,9 @@ def render(boards):
             identity.append(f"#define KINISI_BOARD_VERSION_{key} {number}")
         identity.append(f"#define KINISI_USB_VBUS_SENSING {int('usb_vbus_sense' in board)}")
         identity.append(f"#define BOARD_HAS_FUSION_EXPERIMENT {int(board.get('capabilities', {}).get('fusion_experiment', False))}")
+        if "imu_geometry" in board:
+            for axis, value in zip("XYZ", board["imu_geometry"]["underside_center_to_imu_um"]):
+                identity.append(f"#define BOARD_UNDERSIDE_CENTER_TO_IMU_{axis}_UM ({value})")
         identity.append(f"#define BOARD_HAS_IMU_MOUNTING {int(board.get('capabilities', {}).get('imu_mounting', False))}")
         identity.append(f"#define BOARD_HAS_FEEDBACK_SOURCE_HEALTH {int(board.get('capabilities', {}).get('feedback_source_health', False))}")
         identity.append(f"#define BOARD_HAS_FEEDBACK_SOURCE_SELECTOR {int(board.get('capabilities', {}).get('feedback_source_selector', False))}")

@@ -97,3 +97,7 @@ respectively; a default 32-byte AVR Wire buffer supports temperature only.
 Board-wide `pwm_frequency` exposes `default_hz` and `supported_hz`. See
 [motor PWM frequency](motor-pwm-frequency.md) for command behavior and lifetime.
 See [motor-driver sleep](driver-sleep.md) for the board-wide inhibit and wake behavior.
+
+## Mini IMU geometry
+
+The Mini v0.4 public profile includes `imu_geometry.underside_center_to_imu_um`, a three-element signed array in board X, Y, Z order. Its values come from the Mini board configuration. Applications can rotate this vector to display U601 relative to the center of the PCB underside. Protocol 2.24 installers supply the board-center pose through the board-mount commands. [Installation reference](imu-mounting.md)

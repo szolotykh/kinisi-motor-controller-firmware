@@ -480,9 +480,12 @@ int main(int argc, char **argv)
     if (!strcmp(mode,"mounted-slow")) { mounted_slow_case(type!=0); return 0; }
     if (!strcmp(mode,"mounted-fast")) { mounted_fast_case(); return 0; }
     if (!strcmp(mode,"mounted-fusion")) { mounted_fusion_case(); return 0; }
-    if (!strncmp(mode, "mount-", 6)) {
-        mount_storage_case(mode, type);
-        if (strcmp(mode, "mount-restore")) {
+    if (!strcmp(mode,"board-reference-guard")) { board_reference_guard(); return 0; }
+    if (!strcmp(mode,"centered-board-turn")) { centered_board_turn(); return 0; }
+    if (!strncmp(mode, "mount-", 6) || !strncmp(mode,"board-ref-",10)) {
+        if (!strncmp(mode,"board-ref-",10)) board_reference_case(mode,type);
+        else mount_storage_case(mode, type);
+        if (strcmp(mode, "mount-restore") && strcmp(mode,"board-ref-restore")) {
             file = fopen(path, "wb");
             assert(file && fwrite(fram, 1, sizeof(fram), file) == sizeof(fram));
             fclose(file);
@@ -537,6 +540,8 @@ int main(int argc, char **argv)
     }
     if (!strcmp(mode, "brake-policy")) { fresh_brake_commands(); return 0; }
     if (!strcmp(mode, "unsupported")) {
+        request((controller_command_t){.commandType=SET_BOARD_MOUNT},RESPONSE_SENSOR_NOT_AVAILABLE);
+        request((controller_command_t){.commandType=GET_BOARD_MOUNT},RESPONSE_SENSOR_NOT_AVAILABLE);
         request((controller_command_t){.commandType=GET_IMU_MOUNT}, RESPONSE_SENSOR_NOT_AVAILABLE);
         request((controller_command_t){.commandType=SET_IMU_MOUNT}, RESPONSE_SENSOR_NOT_AVAILABLE);
         request((controller_command_t){.commandType=GET_FEEDBACK_SOURCE_HEALTH},RESPONSE_SENSOR_NOT_AVAILABLE);

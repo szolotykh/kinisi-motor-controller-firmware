@@ -37,6 +37,19 @@ class BoardConfigTests(unittest.TestCase):
         with self.assertRaisesRegex(g.ConfigError, message):
             g.validate(board)
 
+    def test_capabilities_validated_before_requiring_geometry(self):
+        for revision in ("0.3.0", "0.4.0"):
+            board = copy.deepcopy(next(b for b in self.boards if b["board"]["revision"] == revision))
+            board.pop("imu_geometry", None)
+            for invalid in ([], None, False, 1, "unsupported"):
+                with self.subTest(revision=revision, capabilities=invalid):
+                    board["capabilities"] = invalid
+                    self.reject(board, "capabilities: expected an object")
+        del self.v4["imu_geometry"]
+        self.reject(self.v4, "imu_mounting requires imu_geometry")
+        self.v4["capabilities"]["imu_mounting"] = False
+        g.validate(self.v4)
+
     def test_current_conversion_requires_valid_reference_and_mirror_ratio(self):
         for key, invalid_values in [('reference_voltage_mv', (0, 1799, 3601, True)),
                                     ('current_mirror_ratio', (0, -1, 65536, 1.5, True))]:
@@ -60,6 +73,20 @@ class BoardConfigTests(unittest.TestCase):
             with self.assertRaisesRegex(g.ConfigError, "stale generated board files"):
                 g.generate(output_dir=tmp, check=True)
             self.assertEqual(header.read_text(), "stale")
+
+    def test_imu_geometry_flows_from_board_to_macros_and_public_profile(self):
+        self.assertEqual(self.v4["imu_geometry"]["underside_center_to_imu_um"], [-15373,26953,2075])
+        self.v4["imu_geometry"]["underside_center_to_imu_um"] = [-2200,1350,800]
+        g.validate(self.v4)
+        boards = [self.v4 if b is self.original_v4 else b for b in self.boards]
+        files = g.render(boards)
+        mini = [p["imu_geometry"] for p in json.loads(files["board_profiles.json"])["boards"] if "imu_geometry" in p]
+        self.assertEqual(mini, [self.v4["imu_geometry"]])
+        for axis, value in zip("XYZ", [-2200,1350,800]):
+            self.assertIn(f"#define BOARD_UNDERSIDE_CENTER_TO_IMU_{axis}_UM ({value})",files["board_revision.h"])
+        for invalid in ([0,1], [True,0,0], [0.5,0,0], [0,0,100001], [0,0,50000], [31098,177,0]):
+            self.v4["imu_geometry"]["underside_center_to_imu_um"] = invalid
+            self.reject(self.v4,"imu_geometry")
 
     def test_public_profiles_are_derived_without_wiring_details(self):
         output = g.render(self.boards)

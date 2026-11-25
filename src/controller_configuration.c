@@ -101,7 +101,7 @@ static bool valid(const saved_setup_t *s)
 {
     if (s->payload_revision == 0) {
         if (s->feedback_preference != FEEDBACK_SOURCE_ENCODER) return false;
-    } else if ((s->payload_revision != 2 && s->payload_revision != 3) ||
+    } else if ((s->payload_revision != 2 && s->payload_revision != 3 && s->payload_revision != 4) ||
                s->feedback_preference > FEEDBACK_SOURCE_FUSED) return false;
     for (unsigned i = 0; i < sizeof(s->reserved); ++i) if (s->reserved[i]) return false;
     if (!hw_motor_pwm_frequency_allowed(s->frequency)) return false;
@@ -113,7 +113,7 @@ static bool valid(const saved_setup_t *s)
         if (bit(s->encoders, i) ? !positive(s->resolution[i]) : s->resolution[i] != 0) return false;
     }
     if (s->type == PLATFORM_NONE)
-        return s->payload_revision == 3 && s->diameter == 0 && s->track_or_length == 0 &&
+        return (s->payload_revision == 3 || s->payload_revision == 4) && s->diameter == 0 && s->track_or_length == 0 &&
                s->width_or_radius == 0;
     return wheels && positive(s->diameter) &&
         (s->type == PLATFORM_OMNI ? s->track_or_length == 0 : positive(s->track_or_length)) &&
@@ -122,14 +122,17 @@ static bool valid(const saved_setup_t *s)
 
 uint8_t controller_configuration_save(void)
 {
-    imu_mount_config_t mount = imu_mount_get();
+    imu_mount_saved_t saved = imu_mount_saved();
+    imu_mount_config_t mount = saved.entered;
     if (!platform.is_initialized && !mount.configured) return RESPONSE_PLATFORM_NOT_INITIALIZED;
     mounted_setup_t setup = {0};
     capture(&setup.base);
     uint16_t length = sizeof(setup.base);
     if (mount.configured) {
         if (!imu_mount_valid(&mount)) return RESPONSE_INVALID_ARGUMENT;
-        setup.base.payload_revision = 3;
+        // Both revisions store the exact entered coordinates. V3 refers to U601,
+        // v4 to the PCB underside, using the same 19-byte numeric layout.
+        setup.base.payload_revision = saved.reference == IMU_MOUNT_BOARD_UNDERSIDE ? 4 : 3;
         setup.mount = imu_mount_pack(mount);
         length = MOUNTED_LENGTH;
     }
@@ -161,10 +164,11 @@ void controller_configuration_restore(void)
     uint16_t length = config_store_load_latest(&record, MOUNTED_LENGTH);
     saved_setup_t s = record.base;
     imu_mount_config_t mount = {0};
-    if (length == MOUNTED_LENGTH && s.payload_revision == 3) {
+    bool mounted = s.payload_revision == 3 || s.payload_revision == 4;
+    if (length == MOUNTED_LENGTH && mounted) {
         mount = imu_mount_unpack(record.mount);
         if (record.mount.configured != 1 || !imu_mount_valid(&mount)) return;
-    } else if (length != sizeof(s) || s.payload_revision == 3) return;
+    } else if (length != sizeof(s) || mounted) return;
     if (!valid(&s)) return;
     const hw_motor_interface_t *motor = get_motor_interface();
     uint8_t wheels = platform_motors(s.type);
@@ -205,7 +209,8 @@ void controller_configuration_restore(void)
 #if BOARD_HAS_FEEDBACK_SOURCE_SELECTOR
     feedback_restore_preference(s.feedback_preference);
 #endif
-    if (mount.configured && !imu_mount_restore(&mount)) goto rollback;
+    if (mount.configured && !imu_mount_restore_reference(&mount,
+        s.payload_revision == 4 ? IMU_MOUNT_BOARD_UNDERSIDE : IMU_MOUNT_CHIP)) goto rollback;
     return;
 rollback:
 #if BOARD_HAS_FEEDBACK_SOURCE_SELECTOR

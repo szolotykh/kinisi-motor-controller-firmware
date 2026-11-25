@@ -34,7 +34,8 @@ Other consumers can read the same sensor cache independently.
 ## Deliberate stationary origin
 
 On firmware with `capabilities.imu_mounting`, set the board orientation and the
-signed displacement from the chassis tracking origin to the BMI088. Both
+signed displacement from the chassis tracking origin to the PCB underside center
+using protocol 2.24 board-mount commands. The 2.23 chip-mount commands measure to U601. Both
 tracking modes then use that installation, including on side or inverted
 mounts. The reported pose and velocity describe the chassis origin. The
 chassis must move in a horizontal plane. [Installation and axis diagram](imu-mounting.md)

@@ -28,7 +28,8 @@ and has no IMU-only mode. Comparative accuracy and physical performance remain
 unmeasured until separately reported.
 
 On a v0.4 controller with `capabilities.imu_mounting`, configure the physical
-board orientation and the offset from the chassis tracking origin to the IMU.
+board orientation and, on protocol 2.24+, the offset from the chassis tracking
+origin to the PCB underside center. Protocol 2.23 chip-mount commands use U601.
 Active fusion, passive fused telemetry and encoder/IMU comparison share that
 installation. The passive observer accepts the installation as its mounting
 declaration. The chassis +X axis points forward, +Y points left and +Z points

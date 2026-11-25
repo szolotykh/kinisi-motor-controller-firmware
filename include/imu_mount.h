@@ -21,7 +21,19 @@ static inline bool imu_mount_valid(const imu_mount_config_t *m)
            m->z_um >= -10000000 && m->z_um <= 10000000;
 }
 
-// Serialized configuration command and boot restore entry points.
+typedef enum { IMU_MOUNT_CHIP, IMU_MOUNT_BOARD_UNDERSIDE } imu_mount_reference_t;
+
+// Serialized configuration command and boot restore entry points. Each input is
+// range-checked in its own reference frame. Getters may return derived offsets.
+imu_mount_config_t board_mount_get(void);
+typedef struct {
+    imu_mount_reference_t reference;
+    imu_mount_config_t entered;
+} imu_mount_saved_t;
+imu_mount_saved_t imu_mount_saved(void);
+uint8_t board_mount_set(const imu_mount_config_t *mount);
+bool imu_mount_restore_reference(const imu_mount_config_t *mount, imu_mount_reference_t reference);
+
 imu_mount_config_t imu_mount_get(void);
 uint8_t imu_mount_set(const imu_mount_config_t *mount);
 bool imu_mount_restore(const imu_mount_config_t *mount);

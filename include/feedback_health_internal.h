@@ -103,16 +103,27 @@ void feedback_health_mount(double yaw)
 
 #if BOARD_HAS_IMU_MOUNTING
 uint8_t platform_fusion_set_mount(const imu_mount_frame_t *frame);
-static imu_mount_config_t installation;
+static imu_mount_config_t installation, board_installation;
+static imu_mount_reference_t installation_reference;
+imu_mount_config_t board_mount_get(void) { return board_installation; }
+imu_mount_saved_t imu_mount_saved(void)
+{
+    // Boot restore and both buses' SET/SAVE handlers share CommandHandlerTask.
+    // Acquisition tasks consume protected frames and never write this record.
+    return (imu_mount_saved_t){installation_reference,
+        installation_reference==IMU_MOUNT_BOARD_UNDERSIDE ? board_installation : installation};
+}
+
 
 imu_mount_config_t imu_mount_get(void) { return installation; } // Serialized command/restore thread.
 
-static uint8_t apply_mount(const imu_mount_config_t *mount)
+static uint8_t apply_mount(const imu_mount_config_t *chip, const imu_mount_config_t *board,
+                           imu_mount_reference_t reference)
 {
     health_init();
     if (!tracking_mutex) tracking_mutex=xSemaphoreCreateMutex();
     if (!tracking_mutex || !health_lock) return RESPONSE_INTERNAL_ERROR;
-    imu_mount_frame_t frame=imu_mount_frame(mount);
+    imu_mount_frame_t frame=imu_mount_frame(chip);
     // Reserve every mutable observer before changing the first. Normal polling
     // releases the health lock before calling fusion, and tracking never takes
     // the health or fusion locks. No source estimate spans installations.
@@ -136,26 +147,70 @@ static uint8_t apply_mount(const imu_mount_config_t *mount)
     comparison.mounting=frame;
     comparison.mounting_boundary=hw_clock_microseconds();
     reset_comparison_locked();
-    installation=*mount;
+    installation=*chip;
+    board_installation=*board;
+    installation_reference=reference;
     xSemaphoreGive(health_lock);
     xSemaphoreGive(tracking_mutex);
     return RESPONSE_OK;
 }
 
-uint8_t imu_mount_set(const imu_mount_config_t *mount)
+// Apply R_board_to_chassis to the board-local underside-to-chip vector.
+// imu_mount_rotate takes BMI088 axes; undo its fixed in-plane sensor flip here.
+static imu_mount_config_t opposite_reference(imu_mount_config_t entered, imu_mount_reference_t reference)
+{
+    if (!entered.configured) return entered;
+    imu_mount_frame_t frame=imu_mount_frame(&entered);
+    mount_xyz_t offset=imu_mount_rotate(&frame,(mount_xyz_t){-BOARD_UNDERSIDE_CENTER_TO_IMU_X_UM,
+        -BOARD_UNDERSIDE_CENTER_TO_IMU_Y_UM,BOARD_UNDERSIDE_CENTER_TO_IMU_Z_UM});
+    // Round the displacement once so forward and inverse wire conversions agree
+    // exactly to the micrometre, even when the entered offset is at a limit.
+    int direction=reference==IMU_MOUNT_BOARD_UNDERSIDE ? 1 : -1;
+    entered.x_um+=direction*(int32_t)lround(offset.x);
+    entered.y_um+=direction*(int32_t)lround(offset.y);
+    entered.z_um+=direction*(int32_t)lround(offset.z);
+    return entered;
+}
+
+static bool same_mount(const imu_mount_config_t *a,const imu_mount_config_t *b)
+{
+    return a->configured==b->configured && a->roll_cdeg==b->roll_cdeg &&
+        a->pitch_cdeg==b->pitch_cdeg && a->yaw_cdeg==b->yaw_cdeg &&
+        a->x_um==b->x_um && a->y_um==b->y_um && a->z_um==b->z_um;
+}
+
+static uint8_t install_reference(const imu_mount_config_t *mount,imu_mount_reference_t reference,bool at_boot)
 {
     if (!imu_mount_valid(mount)) return RESPONSE_INVALID_ARGUMENT;
-    if (!feedback_switch_safe()) return RESPONSE_SOURCE_SWITCH_UNSAFE;
-    if (mount->configured==installation.configured && mount->roll_cdeg==installation.roll_cdeg &&
-        mount->pitch_cdeg==installation.pitch_cdeg && mount->yaw_cdeg==installation.yaw_cdeg &&
-        mount->x_um==installation.x_um && mount->y_um==installation.y_um && mount->z_um==installation.z_um)
+    if (!at_boot && !feedback_switch_safe()) return RESPONSE_SOURCE_SWITCH_UNSAFE;
+    imu_mount_config_t other=opposite_reference(*mount,reference);
+    const imu_mount_config_t *chip=reference==IMU_MOUNT_CHIP ? mount : &other;
+    const imu_mount_config_t *board=reference==IMU_MOUNT_BOARD_UNDERSIDE ? mount : &other;
+    if (!at_boot && same_mount(chip,&installation)) {
+        installation_reference=reference;
         return RESPONSE_OK;
-    return apply_mount(mount);
+    }
+    return apply_mount(chip,board,reference);
+}
+
+uint8_t imu_mount_set(const imu_mount_config_t *mount)
+{
+    return install_reference(mount,IMU_MOUNT_CHIP,false);
+}
+
+uint8_t board_mount_set(const imu_mount_config_t *mount)
+{
+    return install_reference(mount,IMU_MOUNT_BOARD_UNDERSIDE,false);
+}
+
+bool imu_mount_restore_reference(const imu_mount_config_t *mount,imu_mount_reference_t reference)
+{
+    return install_reference(mount,reference,true)==RESPONSE_OK;
 }
 
 bool imu_mount_restore(const imu_mount_config_t *mount)
 {
-    return imu_mount_valid(mount) && apply_mount(mount)==RESPONSE_OK;
+    return imu_mount_restore_reference(mount,IMU_MOUNT_CHIP);
 }
 #endif
 

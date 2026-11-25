@@ -65,6 +65,15 @@ with tempfile.TemporaryDirectory() as folder:
             subprocess.run([str(binary), mode, str(image), str(platform)], check=True, timeout=10)
 
         if revision == 4:
+            run("board-reference-guard", out/"unconfigured.fram", 0)
+            run("centered-board-turn", out/"unconfigured.fram", 0)
+            for index in range(5):
+                image = out / f'board-ref-{index}.fram'
+                run("board-ref-save", image, index)
+                run("board-ref-restore", image, index)
+            run("board-ref-cut", image, 3)
+            run("board-ref-restore", image, 4)
+            print("PASS PCB center and chip frame conversion, centered in-place turn, edge persistence and interrupted replacement")
             for displaced in (0, 1):
                 run("mounted-slow", out/"unconfigured.fram", displaced)
             for scenario in ("mounted-imu", "mounted-fusion", "mounted-fast"):

@@ -146,9 +146,11 @@ Read the running geometry and directions with `GET_CONFIGURATION_FIELD` and
 the applied frequency with `GET_PWM_FREQUENCY`.
 
 Protocol 2.23 also saves the explicit IMU installation and allows a mount to
-be saved before platform initialization. Use `GET_IMU_MOUNT` to read the
-geometry restored from the revision 3 payload. Revision 1 and 2 payloads
-restore their existing settings with the physical mount unconfigured. Read
+be saved before platform initialization. Use `GET_BOARD_MOUNT` on protocol 2.24+ to read the PCB underside center.
+The revision 4 payload retains those operator-entered board coordinates. The
+revision 3 payload retains coordinates entered through the 2.23 chip-reference
+command. Both formats restore the same physical installation in 2.24. Revision
+1 and 2 payloads restore their settings with the mounting unconfigured. Read
 the setup guide before converting older client-side yaw values. A fresh
 stationary initialization establishes the tracking origin after reboot.
 [IMU installation and yaw conversion](imu-mounting.md)

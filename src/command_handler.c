@@ -710,6 +710,35 @@ static uint8_t dispatch_controller_command(controller_command_t* cmd, void (*com
 #else
             return RESPONSE_SENSOR_NOT_AVAILABLE;
 #endif
+        case SET_BOARD_MOUNT:
+#if BOARD_HAS_IMU_MOUNTING
+        {
+            imu_mount_config_t mount = {
+                .roll_cdeg = cmd->properties.set_board_mount.roll_cdeg,
+                .pitch_cdeg = cmd->properties.set_board_mount.pitch_cdeg,
+                .yaw_cdeg = cmd->properties.set_board_mount.yaw_cdeg,
+                .x_um = cmd->properties.set_board_mount.x_um,
+                .y_um = cmd->properties.set_board_mount.y_um,
+                .z_um = cmd->properties.set_board_mount.z_um,
+                .configured = true
+            };
+            return board_mount_set(&mount);
+        }
+#else
+            return RESPONSE_SENSOR_NOT_AVAILABLE;
+#endif
+        case GET_BOARD_MOUNT:
+#if BOARD_HAS_IMU_MOUNTING
+        {
+            imu_mount_config_t applied = board_mount_get();
+            board_mount_configuration mount = {applied.roll_cdeg,applied.pitch_cdeg,applied.yaw_cdeg,
+                applied.x_um,applied.y_um,applied.z_um,applied.configured};
+            command_callback((uint8_t *)&mount, sizeof(mount));
+            return RESPONSE_OK;
+        }
+#else
+            return RESPONSE_SENSOR_NOT_AVAILABLE;
+#endif
         case GET_FEEDBACK_SOURCE_HEALTH: case GET_FEEDBACK_IMU_CHANNELS:
 #if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
             return feedback_health_read(cmd->commandType,cmd->commandType==GET_FEEDBACK_SOURCE_HEALTH ?
