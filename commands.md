@@ -1,6 +1,6 @@
 # Kinisi motor controller commands
 
-**Protocol 2.21.0** · Generated from [commands.json](commands.json)
+**Protocol 2.22.0** · Generated from [commands.json](commands.json)
 
 [Command index](#command-index) · [Wire format](#wire-format) · [Error codes](#error-codes)
 
@@ -106,6 +106,8 @@
 | [`GET_FEEDBACK_SOURCE_VECTOR`](#get_feedback_source_vector-0x69) | `0x69` | Client → controller | `feedback_source_vector` |
 | [`SET_FEEDBACK_FUSION_MOUNT`](#set_feedback_fusion_mount-0x6a) | `0x6a` | Client → controller | ACK |
 | [`GET_FEEDBACK_FUSION_MOUNT`](#get_feedback_fusion_mount-0x6b) | `0x6b` | Client → controller | `feedback_fusion_mount` |
+| [`GET_FEEDBACK_SOURCE_HEALTH`](#get_feedback_source_health-0x6c) | `0x6c` | Client → controller | `feedback_source_health` |
+| [`GET_FEEDBACK_IMU_CHANNELS`](#get_feedback_imu_channels-0x6d) | `0x6d` | Client → controller | `feedback_imu_channels` |
 
 ## Command lifecycle
 
@@ -2893,6 +2895,75 @@ Packed little-endian selector readback.
 | --- | --- | ---: | --- |
 | `confirmed` | `uint8_t` | 1 | One after an explicit mount declaration this boot. |
 | `mounting_yaw_rad` | `double` | 8 | Angle of board +X in chassis XY, counterclockwise about +Z in radians. Rigid, level, centered board with +Z up. |
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6)
+
+[Back to command index](#command-index)
+
+---
+
+### GET_FEEDBACK_SOURCE_HEALTH (0x6c)
+
+**Client → controller** · **Payload:** 1 bytes
+
+Read producer health independently of selector and control. ENCODER is the running platform encoder batch, IMU_ONLY is physical BMI088 pair availability independent of the one-second estimate, FUSED is the passive fused estimate. Disagreement indicates conflicting observations without assigning sensor blame. HEALTHY means directly usable data. Comparability is separate. Historical provenance remains readable during failure. Reconnect reads board state. Requires READY, exact v0.4 and protocol 2.22+ with feedback_source_health.
+
+#### Parameters
+
+| Parameter | Type | Bytes | Range | Description |
+| --- | --- | ---: | --- | --- |
+| `source` | `uint8_t` | 1 | 0 to 2 | FeedbackSource value, excluding NONE. |
+
+#### Response
+
+**Controller → client** · `feedback_source_health` · **Payload:** 28 bytes
+
+Read producer health independently of selector and control. ENCODER is the running platform encoder batch, IMU_ONLY is physical BMI088 pair availability independent of the one-second estimate, FUSED is the passive fused estimate. Disagreement indicates conflicting observations without assigning sensor blame. HEALTHY means directly usable data. Comparability is separate. Historical provenance remains readable during failure. Reconnect reads board state.
+
+| Parameter | Type | Bytes | Description |
+| --- | --- | ---: | --- |
+| `source` | `uint8_t` | 1 | Echo of FeedbackSource request. |
+| `health` | `uint8_t` | 1 | FeedbackSourceHealthState. |
+| `reason` | `uint8_t` | 1 | FeedbackSourceReason for current producer availability. |
+| `detail` | `uint8_t` | 1 | FusionFault explanation if present. |
+| `flags` | `uint32_t` | 4 | FeedbackSourceHealthFlag bit mask. |
+| `sequence` | `uint32_t` | 4 | Sequence of the last producer publication or observed distinct raw IMU pair, wrapping modulo 2^32; use PROVENANCE for presence. |
+| `timestamp_us` | `uint64_t` | 8 | Last usable source time in board uptime microseconds. For the BMI088 pair this is its older die timestamp. |
+| `age_us` | `uint32_t` | 4 | Age of that timestamp in board uptime microseconds, UINT32_MAX if absent, future or too old to represent. |
+| `max_age_us` | `uint32_t` | 4 | Source freshness budget in microseconds. |
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6)
+
+[Back to command index](#command-index)
+
+---
+
+### GET_FEEDBACK_IMU_CHANNELS (0x6d)
+
+**Client → controller** · **Payload:** 0 bytes
+
+Read independent last observed accelerometer and gyro acquisition times in board uptime microseconds. A timestamp of zero and age UINT32_MAX indicate no observed acquisition. These are physical source observations, independent of the finite IMU-only tracking window. A pair must meet the 35000 us age and 15000 us skew limits. Requires READY, exact v0.4 and protocol 2.22+ with feedback_source_health.
+
+#### Parameters
+
+No payload parameters.
+
+#### Response
+
+**Controller → client** · `feedback_imu_channels` · **Payload:** 24 bytes
+
+Read independent last observed accelerometer and gyro acquisition times in board uptime microseconds. A timestamp of zero and age UINT32_MAX indicate no observed acquisition. These are physical source observations, independent of the finite IMU-only tracking window. A pair must meet the 35000 us age and 15000 us skew limits.
+
+| Parameter | Type | Bytes | Description |
+| --- | --- | ---: | --- |
+| `accel_timestamp_us` | `uint64_t` | 8 | Last observed accelerometer acquisition time in board uptime microseconds. |
+| `gyro_timestamp_us` | `uint64_t` | 8 | Last observed gyro acquisition time in board uptime microseconds. |
+| `accel_age_us` | `uint32_t` | 4 | Board-derived acquisition age in microseconds, UINT32_MAX if unknown. |
+| `gyro_age_us` | `uint32_t` | 4 | Board-derived acquisition age in microseconds, UINT32_MAX if unknown. |
 
 #### Errors
 

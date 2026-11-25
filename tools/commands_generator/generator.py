@@ -41,8 +41,21 @@ FEEDBACK_CATALOGS = [
     ('feedback_source_vectors', 'FeedbackSourceVectorKind', 'FEEDBACK_VECTOR', ['POSE', 'TWIST']),
 ]
 
+HEALTH_CATALOGS = [
+    ('feedback_source_health_states', 'FeedbackSourceHealthState', 'FEEDBACK_HEALTH', ['HEALTHY', 'SUSPECT', 'UNAVAILABLE', 'INDETERMINATE']),
+    ('feedback_source_health_flags', 'FeedbackSourceHealthFlag', 'FEEDBACK_HEALTH_FLAG', ['PROVENANCE', 'FRESH', 'DISAGREEMENT', 'COMPARISON_AVAILABLE', 'RECOVERING', 'RESTART_REQUIRED', 'TIMESTAMP_FAULT', 'SATURATION']),
+]
+
 def validate_feedback_source(schema):
     commands = {c['command'] for c in schema.get('commands', [])}
+    health_commands = {'GET_FEEDBACK_SOURCE_HEALTH', 'GET_FEEDBACK_IMU_CHANNELS'}
+    if commands & health_commands or any(k in schema for k, *_ in HEALTH_CATALOGS):
+        if not health_commands <= commands or 'GET_FEEDBACK_SOURCE_STATUS' not in commands:
+            raise ValueError('Incomplete feedback health command family')
+        for key, _, _, names in HEALTH_CATALOGS:
+            expected = [(1 << i if key.endswith('_flags') else i, n) for i,n in enumerate(names)]
+            if [(v['id'],v['name']) for v in schema.get(key, [])] != expected:
+                raise ValueError('Invalid ' + key + ' catalog')
     required = {'SET_FEEDBACK_SOURCE', 'GET_FEEDBACK_SOURCE_STATUS', 'GET_FEEDBACK_SOURCE_VECTOR', 'SET_FEEDBACK_FUSION_MOUNT', 'GET_FEEDBACK_FUSION_MOUNT'}
     if not commands & required and not any(key in schema for key, *_ in FEEDBACK_CATALOGS):
         return
@@ -557,7 +570,7 @@ def generate_c_header_file(commands_data):
             for item in commands_data[key]:
                 result += f"    {prefix}_{item['name']} = {item['id']},\n"
             result += f'}} {typename};\n\n'
-    for key, _, prefix, _ in FUSION_CATALOGS + IMU_TRACKING_CATALOGS + FEEDBACK_CATALOGS:
+    for key, _, prefix, _ in FUSION_CATALOGS + IMU_TRACKING_CATALOGS + FEEDBACK_CATALOGS + HEALTH_CATALOGS:
         for item in commands_data.get(key, []):
             result += f"#define {prefix}_{item['name']} {item['id']}U\n"
     topics = commands_data.get('topics', [])

@@ -79,7 +79,7 @@ def validate(board):
         fields(board["power"], ("board_idle",), at="power")
         boolean(board["power"]["board_idle"], "power.board_idle")
     if "capabilities" in board:
-        fields(board["capabilities"], ("fusion_experiment",), optional=("imu_tracking", "feedback_source_selector"), at="capabilities")
+        fields(board["capabilities"], ("fusion_experiment",), optional=("imu_tracking", "feedback_source_selector", "feedback_source_health"), at="capabilities")
         boolean(board["capabilities"]["fusion_experiment"], "capabilities.fusion_experiment")
         if "imu_tracking" in board["capabilities"]:
             boolean(board["capabilities"]["imu_tracking"], "capabilities.imu_tracking")
@@ -91,6 +91,11 @@ def validate(board):
             if enabled:
                 require(board["capabilities"]["fusion_experiment"] and board["capabilities"].get("imu_tracking"),
                         "feedback source selector requires fusion and IMU tracking on exact v0.4")
+        if "feedback_source_health" in board["capabilities"]:
+            enabled = board["capabilities"]["feedback_source_health"]
+            boolean(enabled, "capabilities.feedback_source_health")
+            require(not enabled or board["capabilities"].get("feedback_source_selector"),
+                    "feedback source health requires the feedback source selector")
         if board["capabilities"]["fusion_experiment"]:
             require(identity["model"] == 1 and identity["revision"] == "0.4.0", "Fusion experiment requires exact v0.4")
     reserved = dict(FIRMWARE_RESERVED_PINS)
@@ -332,7 +337,7 @@ def client_profile(board):
     """Project hardware definitions into public, language-neutral feature metadata."""
     return {
         "board": {"model": board["board"]["model"], "revision": board["board"]["revision"]},
-        "capabilities": {"fusion_experiment": board.get("capabilities", {}).get("fusion_experiment", False), "imu_tracking": board.get("capabilities", {}).get("imu_tracking", False), "feedback_source_selector": board.get("capabilities", {}).get("feedback_source_selector", False)},
+        "capabilities": {"fusion_experiment": board.get("capabilities", {}).get("fusion_experiment", False), "imu_tracking": board.get("capabilities", {}).get("imu_tracking", False), "feedback_source_selector": board.get("capabilities", {}).get("feedback_source_selector", False), "feedback_source_health": board.get("capabilities", {}).get("feedback_source_health", False)},
         "power": {"driver_sleep": supports_driver_sleep(board),
                   "board_idle": board.get("power", {}).get("board_idle", False)},
         "resources": {
@@ -385,6 +390,7 @@ def render(boards):
             identity.append(f"#define KINISI_BOARD_VERSION_{key} {number}")
         identity.append(f"#define KINISI_USB_VBUS_SENSING {int('usb_vbus_sense' in board)}")
         identity.append(f"#define BOARD_HAS_FUSION_EXPERIMENT {int(board.get('capabilities', {}).get('fusion_experiment', False))}")
+        identity.append(f"#define BOARD_HAS_FEEDBACK_SOURCE_HEALTH {int(board.get('capabilities', {}).get('feedback_source_health', False))}")
         identity.append(f"#define BOARD_HAS_FEEDBACK_SOURCE_SELECTOR {int(board.get('capabilities', {}).get('feedback_source_selector', False))}")
         identity.append(f"#define BOARD_HAS_IMU_TRACKING {int(board.get('capabilities', {}).get('imu_tracking', False))}")
         identity.append(f"#define BOARD_HAS_BOARD_IDLE {int(board.get('power', {}).get('board_idle', False))}")
