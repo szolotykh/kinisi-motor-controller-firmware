@@ -20,7 +20,7 @@ static SPI_HandleTypeDef imu_spi;
 static bool bus_ready;
 static bool spi_in_use;
 typedef struct { uint64_t earliest, latest; double xyz[3]; uint32_t sequence; } axis_event_t;
-typedef struct { axis_event_t events[4]; unsigned next; uint32_t sequence; } axis_history_t;
+typedef struct { axis_event_t events[4]; unsigned next; uint32_t sequence; uint64_t last_earliest; } axis_history_t;
 static struct {
     uint32_t epoch;
     uint64_t accel_probe, gyro_probe, verified_at;
@@ -40,6 +40,7 @@ static void invalidate(uint32_t epoch, hw_imu_status_t status)
     if (cache.epoch != epoch) {
         ++cache.generation;
         cache.accel.sequence = cache.gyro.sequence = 0;
+        cache.accel.last_earliest = cache.gyro.last_earliest = 0;
         cache.losses = status == HW_IMU_IO_ERROR;
     } else if (status == HW_IMU_IO_ERROR || cache.accel.next || cache.gyro.next) {
         ++cache.losses;
@@ -248,6 +249,7 @@ static void publish(axis_history_t *history, uint64_t earliest, uint64_t latest,
     for (unsigned i = 0; i < 3; ++i) event.xyz[i] = signed_sample(data + 2*i)*scale;
     uint32_t irq = __get_PRIMASK(); __disable_irq();
     event.sequence = ++history->sequence;
+    history->last_earliest = earliest;
     history->events[history->next % 4] = event;
     if (++history->next == 8) history->next = 4;
     cache.status = HW_IMU_OK;
@@ -411,4 +413,18 @@ hw_imu_status_t hw_imu_read_observation(uint8_t index, hw_imu_sample_t *sample,
     (void)index; (void)sample; (void)accel_us; (void)gyro_us;
     return HW_IMU_UNAVAILABLE;
 #endif
+}
+
+hw_imu_status_t hw_imu_read_health(uint8_t index, hw_imu_sample_t *sample, uint64_t *a, uint64_t *g)
+{
+    hw_imu_status_t result=hw_imu_read_observation(index,sample,a,g);
+#if NUMBER_IMU_SENSORS > 0
+    if (index==0 && a && g && result!=HW_IMU_OK) {
+        uint32_t irq=__get_PRIMASK(); __disable_irq();
+        *a=cache.accel.last_earliest;
+        *g=cache.gyro.last_earliest;
+        __set_PRIMASK(irq);
+    }
+#endif
+    return result;
 }

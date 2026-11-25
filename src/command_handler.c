@@ -30,6 +30,9 @@
 #if BOARD_HAS_FEEDBACK_SOURCE_SELECTOR
 #include "feedback_source_internal.h"
 #endif
+#if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
+#include "feedback_health_internal.h"
+#endif
 #if MOTOR_CONTROL_MODEL == MOTOR_CONTROL_MODEL_ENABLE_DIRECTION
 #include "hw_drv8873.h"
 #endif
@@ -47,7 +50,12 @@ static uint8_t set_driver_sleep(bool sleeping)
 #if BOARD_HAS_IMU_TRACKING
     if (!was_sleeping && hw_motor_drivers_sleeping()) imu_tracking_inhibit();
 #if BOARD_HAS_FEEDBACK_SOURCE_SELECTOR
-    if (was_sleeping != hw_motor_drivers_sleeping()) passive_fusion_reset();
+    if (was_sleeping != hw_motor_drivers_sleeping()) {
+        passive_fusion_reset();
+#if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
+        if (hw_motor_drivers_sleeping()) feedback_health_inhibit();
+#endif
+    }
 #endif
 #endif
 #if BOARD_HAS_FUSION_EXPERIMENT
@@ -83,11 +91,27 @@ static bool platform_feedback_ready(const hw_encoder_interface_t *encoder)
     for (uint8_t i = 0; i < NUMBER_MOTORS; ++i) {
         if (!platform_owns_motor(i)) continue;
         if (i >= NUMBER_ENCODERS || !encoder->is_initialized(i)) return false;
+#if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
+        if (!feedback_encoder_sampling(i)) return false;
+#endif
         double resolution = encoder->get_resolution(i);
         if (!isfinite(resolution) || resolution <= 0) return false;
     }
     return true;
 }
+
+#if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
+void feedback_guard_platform_control(void)
+{
+    // A failed owned shaft cannot supply any closed-loop chassis target.
+    // Stop the whole owned group and discard velocity/position state. Open-loop
+    // motion and unrelated standalone channels retain their existing ownership.
+    if (platform_is_controller_running() && !platform_feedback_ready(get_encoder_interface())) {
+        platform_stop_velocity_controller();
+        platform_feedback_fence();
+    }
+}
+#endif
 
 /**
  * @brief Execute a validated command after checking its resource prerequisites.
@@ -98,6 +122,11 @@ static bool platform_feedback_ready(const hw_encoder_interface_t *encoder)
  */
 uint8_t command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t*, uint8_t))
 {
+#if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
+    health_init();
+    feedback_guard_platform_control();
+#endif
+
     const gpio_interface_t* gpio = get_gpio_interface();
     const hw_motor_interface_t* motor = get_motor_interface();
     const hw_encoder_interface_t* encoder = get_encoder_interface();
@@ -575,6 +604,13 @@ uint8_t command_handler(controller_command_t* cmd, void (*command_callback)(uint
                 cmd->properties.set_platform_position.x,
                 cmd->properties.set_platform_position.y,
                 cmd->properties.set_platform_position.t});
+        case GET_FEEDBACK_SOURCE_HEALTH: case GET_FEEDBACK_IMU_CHANNELS:
+#if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
+            return feedback_health_read(cmd->commandType,cmd->commandType==GET_FEEDBACK_SOURCE_HEALTH ?
+                    cmd->properties.get_feedback_source_health.source : 0,command_callback);
+#else
+            return RESPONSE_SENSOR_NOT_AVAILABLE;
+#endif
         case SET_FEEDBACK_SOURCE: case GET_FEEDBACK_SOURCE_STATUS: case GET_FEEDBACK_SOURCE_VECTOR:
         case SET_FEEDBACK_FUSION_MOUNT: case GET_FEEDBACK_FUSION_MOUNT:
 #if BOARD_HAS_FEEDBACK_SOURCE_SELECTOR
@@ -582,7 +618,11 @@ uint8_t command_handler(controller_command_t* cmd, void (*command_callback)(uint
                 return feedback_select(cmd->properties.set_feedback_source.source);
             if (cmd->commandType == SET_FEEDBACK_FUSION_MOUNT) {
                 if (!feedback_switch_safe()) return RESPONSE_SOURCE_SWITCH_UNSAFE;
-                return passive_fusion_mount(cmd->properties.set_feedback_fusion_mount.mounting_yaw_rad);
+                uint8_t result=passive_fusion_mount(cmd->properties.set_feedback_fusion_mount.mounting_yaw_rad);
+#if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
+                if (result==RESPONSE_OK) feedback_health_mount(cmd->properties.set_feedback_fusion_mount.mounting_yaw_rad);
+#endif
+                return result;
             }
             if (cmd->commandType == GET_FEEDBACK_FUSION_MOUNT) {
                 feedback_fusion_mount mount = passive_fusion_get_mount();

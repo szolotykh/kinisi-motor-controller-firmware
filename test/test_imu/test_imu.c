@@ -266,6 +266,17 @@ int main(int argc, char **argv) {
         assert(hw_imu_read_observation(0, &raw, &a, &g) == HW_IMU_STALE); // Frozen accel, disjoint windows.
         tick += 2; acc_regs[0x1D] = 0x80; gyro_regs[0x0E] = 1; hw_imu_poll_observations(1);
         assert(hw_imu_read_observation(0, &raw, &a, &g) == HW_IMU_OK);
+        hw_imu_cursor_t health_cursor;
+        hw_imu_begin_tracking(&health_cursor,1);
+        uint64_t health_a,health_g;
+        assert(hw_imu_read_health(0,&raw,&health_a,&health_g)==HW_IMU_OK && a==health_a && g==health_g);
+        assert(hw_imu_read(0,&raw)==HW_IMU_OK); // Direct GET_IMU does not consume FIFO/DRDY.
+        poll_events(1,2,true,1);
+        assert(hw_imu_read_health(0,&raw,&a,&g)==HW_IMU_OK && a>health_a && g>health_g);
+        assert(hw_imu_read_tracking(&health_cursor,1,hw_clock_microseconds(),&raw,&health_a,&health_g)==HW_IMU_OK &&
+               a==health_a && g==health_g);
+        for(unsigned k=0;k<22;k++) poll_events(1,2,false,1);
+        assert(hw_imu_read_health(0,&raw,&a,&g)==HW_IMU_STALE && a==health_a && g>health_g);
         // Individually narrow event windows can still span >15 ms worst-case skew.
         uint64_t epoch_start = hw_clock_microseconds();
         hw_imu_poll_observations(2);
@@ -278,7 +289,7 @@ int main(int argc, char **argv) {
         // interval fills the hardware FIFO and leaves an old but readable cache.
         // Every restart has a new high-bit epoch; concurrent fused acquisition uses
         // its own low-bit epoch and both consumers can read one event without consuming it.
-        const uint32_t owners[]={0x80000001u,0x80000002u,3u,0x80000003u};
+        const uint32_t owners[]={0x20000000u,0x80000001u,0x20000000u,0x20000001u,0x80000002u,3u,0x80000003u};
         for (unsigned i=0;i<sizeof(owners)/sizeof(owners[0]);++i) {
             tick+=2000; gyro_regs[0x0E]=32; acc_regs[0x1D]=0x80;
             uint32_t epoch=owners[i];

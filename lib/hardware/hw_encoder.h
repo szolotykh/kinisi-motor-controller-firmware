@@ -43,3 +43,6 @@ void hw_encoder_init(void);
 uint8_t hw_encoder_is_reversed(encoder_index_t index);
 bool hw_encoder_try_initialize(encoder_index_t index, double resolution, uint8_t reversed);
 void hw_encoder_discard_restored_setup(void);
+
+// Validate the live quadrature timer configuration without modifying it.
+bool hw_encoder_sampling_valid(uint8_t index);

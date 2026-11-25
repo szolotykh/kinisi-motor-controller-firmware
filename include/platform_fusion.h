@@ -10,6 +10,7 @@
 uint32_t platform_fusion_epoch(void);
 void platform_fusion_install_ingress_fence(void (*fence)(uint32_t *));
 void platform_fusion_dequeued(void);
+void platform_feedback_fence(void);
 void platform_fusion_observe(uint32_t epoch, uint64_t previous_us, uint64_t encoder_us,
                              platform_odometry_t delta, platform_odometry_t pose, bool valid, bool stationary, bool moved);
 typedef hw_imu_status_t (*platform_imu_reader_t)(uint32_t epoch, uint64_t at, hw_imu_sample_t *,

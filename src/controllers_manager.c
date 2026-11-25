@@ -15,6 +15,7 @@
 #include <hw_encoder.h>
 #include "platform_position.h"
 #include "platform_fusion.h"
+#include "feedback_source.h"
 #include "protocol.h"
 
 // Update interval for PID controller in milliseconds
@@ -90,6 +91,9 @@ void StartControllerTask(void *argument)
         // effect at runtime (the interval is a shared state variable).
         const TickType_t xPeriod = pdMS_TO_TICKS(controllers_manager_state->update_interval_ms);
         vTaskDelayUntil(&xLastWakeTime, xPeriod);
+#if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
+        feedback_guard_platform_control();
+#endif
         platform_position_update();
 
         // Aquire controller state mutex before updating controller state
@@ -104,6 +108,19 @@ void StartControllerTask(void *argument)
                 if(controller_info->state == RUN && !controller_info->feedback_hold)
                 {
                     pid_controller_t* controller = &controller_info->controller;
+#if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
+                    if (!encoder->is_initialized(controller_info->eIndex) ||
+                        !feedback_encoder_sampling(controller_info->eIndex) ||
+                        !(encoder->get_resolution(controller_info->eIndex)>0) ||
+                        !isfinite(encoder->get_resolution(controller_info->eIndex))) {
+                        controller_info->state=STOP;
+                        controller_info->position_active=controller_info->position_initialized=0;
+                        controllers_manager_state->target_motor_speed[index]=0;
+                        pid_controller_reset(controller);
+                        motor->stop(controller_info->mIndex);
+                        continue;
+                    }
+#endif
 
                     // Get current velocity from encoder
                     const uint16_t current_encoder_value = encoder->get_value(controller_info->eIndex);

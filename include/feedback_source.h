@@ -38,4 +38,20 @@ void passive_fusion_observe(uint32_t epoch, uint64_t previous, uint64_t at, plat
                             bool valid, bool stationary, bool moved);
 void passive_fusion_sample(feedback_snapshot_t *out);
 void passive_fusion_reset(void);
+#if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
+#include "hw_imu.h"
+typedef hw_imu_status_t (*feedback_imu_reader_t)(uint8_t, hw_imu_sample_t *, uint64_t *, uint64_t *);
+void feedback_health_install(feedback_imu_reader_t reader, bool (*encoder_sampling)(uint8_t));
+void feedback_health_poll(void);
+uint32_t feedback_health_raw_epoch(void);
+void feedback_health_inhibit(void);
+void feedback_guard_platform_control(void);
+void feedback_health_reset_comparison(void);
+void feedback_health_mount(double yaw);
+void feedback_health_observe(uint64_t at, uint64_t previous, platform_odometry_t delta, bool valid, bool stationary);
+bool feedback_encoder_sampling(uint8_t index);
+void odometry_health_read(feedback_source_health *out);
+void passive_health_fault(uint8_t reason,uint8_t detail);
+void passive_health_read(feedback_source_health *out);
+#endif
 #endif

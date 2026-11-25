@@ -56,6 +56,10 @@ static void fence_targets(void)
     ingress_fence(&feedback_generation);
 }
 
+#if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
+void platform_feedback_fence(void) { fence_targets(); }
+#endif
+
 static bool fresh_request(void)
 {
     return !ingress_fence || dequeued_generation == __atomic_load_n(&feedback_generation, __ATOMIC_ACQUIRE);

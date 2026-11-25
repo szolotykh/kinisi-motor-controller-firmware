@@ -60,6 +60,9 @@ with tempfile.TemporaryDirectory() as folder:
             subprocess.run([str(binary), mode, str(image), str(platform)], check=True, timeout=10)
 
         if revision == 4:
+            for preset in (1,2,3):
+                run('source-health',out/'unconfigured.fram',preset)
+            print('PASS source health, comparison, direct fault provenance and stopped recovery across three presets')
             for hz in (1,10):
                 run('selector-slow',out/'unconfigured.fram',hz)
             for scenario in ('selector-imu','selector-platform'):

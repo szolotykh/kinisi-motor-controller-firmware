@@ -420,6 +420,9 @@ static void fresh_brake_commands(void)
 #endif
 #if BOARD_HAS_FEEDBACK_SOURCE_SELECTOR
 #include "feedback_source_scenarios.h"
+#if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
+#include "feedback_health_scenarios.h"
+#endif
 #endif
 int main(int argc, char **argv)
 {
@@ -449,6 +452,9 @@ int main(int argc, char **argv)
     connect();
 #if BOARD_HAS_IMU_TRACKING
 #if BOARD_HAS_FEEDBACK_SOURCE_SELECTOR
+#if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
+    if (!strcmp(mode,"source-health")) {source_health_scenario(type);return 0;}
+#endif
     if (!strcmp(mode,"selector-slow")) { selector_slow(type); return 0; }
     if (!strcmp(mode,"selector-imu")) { selector_imu(); return 0; }
     if (!strcmp(mode,"selector-platform")) { selector_platform(); return 0; }
@@ -482,6 +488,8 @@ int main(int argc, char **argv)
     }
     if (!strcmp(mode, "brake-policy")) { fresh_brake_commands(); return 0; }
     if (!strcmp(mode, "unsupported")) {
+        request((controller_command_t){.commandType=GET_FEEDBACK_SOURCE_HEALTH},RESPONSE_SENSOR_NOT_AVAILABLE);
+        request((controller_command_t){.commandType=GET_FEEDBACK_IMU_CHANNELS},RESPONSE_SENSOR_NOT_AVAILABLE);
         request((controller_command_t){.commandType=SET_FEEDBACK_SOURCE},RESPONSE_SENSOR_NOT_AVAILABLE);
         request((controller_command_t){.commandType=GET_FEEDBACK_SOURCE_STATUS},RESPONSE_SENSOR_NOT_AVAILABLE);
         request((controller_command_t){.commandType=GET_FEEDBACK_SOURCE_VECTOR},RESPONSE_SENSOR_NOT_AVAILABLE);

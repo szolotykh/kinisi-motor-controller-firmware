@@ -115,7 +115,17 @@ static uint8_t feedback_read(uint8_t command, uint8_t kind, uint32_t origin, uin
     switch (source) {
     case FEEDBACK_SOURCE_ENCODER: odometry_feedback_sample(&s); break;
     case FEEDBACK_SOURCE_IMU_ONLY: tracking_feedback_sample(&s); break;
-    case FEEDBACK_SOURCE_FUSED: passive_fusion_sample(&s); break;
+    case FEEDBACK_SOURCE_FUSED:
+#if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
+        feedback_health_poll();
+        if (platform_is_odometry_enabled()) {
+            feedback_source_health enc={0};
+            odometry_health_read(&enc);
+            if (enc.detail==FUSION_FAULT_ENCODER_UNAVAILABLE)
+                passive_health_fault(enc.reason,enc.detail);
+        }
+#endif
+        passive_fusion_sample(&s); break;
     }
     uint32_t token = selection_token();
     if (!s.reason && token != s.token) s.reason = FEEDBACK_REASON_WAITING_SAMPLE;

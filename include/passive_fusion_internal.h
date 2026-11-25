@@ -12,7 +12,7 @@ static struct {
     fusion_estimator_t estimator;
     feedback_frame_t frame;
     uint32_t epoch, generation, sequence;
-    uint64_t start, encoder, accel, gyro;
+    uint64_t start, encoder, accel, gyro, last_good;
     uint8_t reason, fault;
 } passive;
 
@@ -31,6 +31,7 @@ uint32_t passive_fusion_acquisition_epoch(void)
 static void passive_restart(bool enabled)
 {
     fusion_estimator_init(&passive.estimator);
+    passive.last_good = 0;
     passive.start = hw_clock_microseconds();
     passive.encoder = passive.accel = passive.gyro = 0;
     passive.reason = FEEDBACK_REASON_CALIBRATING;
@@ -150,6 +151,7 @@ void passive_fusion_observe(uint32_t epoch, uint64_t previous, uint64_t at, plat
         passive.reason=FEEDBACK_REASON_OK;
         passive.fault=0;
         ++passive.sequence;
+        passive.last_good=e->sample_us;
         feedback_anchor(&passive.frame,FEEDBACK_SOURCE_FUSED,e->sample_us,(platform_odometry_t){e->x,e->y,e->yaw});
     } else if (e->status == FUSION_EST_CALIBRATING || e->status == FUSION_EST_MOTION) {
         passive.reason=FEEDBACK_REASON_CALIBRATING;
@@ -178,3 +180,32 @@ void passive_fusion_sample(feedback_snapshot_t *out)
     }
     xSemaphoreGive(passive.lock);
 }
+
+#if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
+void passive_health_fault(uint8_t reason,uint8_t detail)
+{
+    if (!passive_fusion_epoch() || !xSemaphoreTake(passive.lock,portMAX_DELAY)) return;
+    if (passive_fusion_epoch() && passive.reason==FEEDBACK_REASON_OK)
+        passive_reject(reason,detail);
+    xSemaphoreGive(passive.lock);
+}
+
+void passive_health_read(feedback_source_health *out)
+{
+    out->reason=FEEDBACK_REASON_NOT_STARTED;
+    out->max_age_us=60000U;
+    if (!passive.lock || !xSemaphoreTake(passive.lock,portMAX_DELAY)) return;
+    out->timestamp_us=passive.last_good;
+    out->sequence=passive.last_good?passive.sequence:0;
+    if (feedback_requested()==FEEDBACK_SOURCE_FUSED) {
+        if (!passive.mount.confirmed) out->reason=FEEDBACK_REASON_MOUNT_REQUIRED;
+        else if (hw_motor_drivers_sleeping()) {out->reason=FEEDBACK_REASON_INHIBITED;out->detail=FUSION_FAULT_INHIBITED;}
+        else if (platform_is_odometry_enabled()) {
+            if (passive.reason==FEEDBACK_REASON_OK && passive_late(hw_clock_microseconds()))
+                passive_reject(FEEDBACK_REASON_STALE,FUSION_FAULT_STALE);
+            out->reason=passive.reason; out->detail=passive.fault;
+        } else out->detail=FUSION_FAULT_ENCODER_UNAVAILABLE;
+    }
+    xSemaphoreGive(passive.lock);
+}
+#endif

@@ -38,3 +38,8 @@ typedef struct {
 void hw_imu_begin_tracking(hw_imu_cursor_t *cursor, uint32_t epoch);
 hw_imu_status_t hw_imu_read_tracking(hw_imu_cursor_t *cursor, uint32_t epoch, uint64_t now,
                                      hw_imu_sample_t *sample, uint64_t *accel_us, uint64_t *gyro_us);
+
+// Non-consuming monitor. On an unavailable pair, individually observed channel
+// timestamps remain available without implying that the sample payload is usable.
+hw_imu_status_t hw_imu_read_health(uint8_t index, hw_imu_sample_t *sample,
+                                   uint64_t *accel_us, uint64_t *gyro_us);
