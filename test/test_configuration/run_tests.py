@@ -65,6 +65,7 @@ with tempfile.TemporaryDirectory() as folder:
             for bus in (0,1):
                 run('source-health-queues',out/'unconfigured.fram',bus)
                 run('source-health-live-fused',out/'unconfigured.fram',bus)
+                run('source-health-binding',out/'unconfigured.fram',bus)
             for index in (0,3):
                 run('source-health-edges',out/'unconfigured.fram',index)
             print('PASS source health, comparison, direct fault provenance and stopped recovery across three presets')

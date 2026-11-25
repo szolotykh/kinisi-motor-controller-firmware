@@ -11,9 +11,9 @@ I2C_HandleTypeDef hi2c2;
 message_queue_t I2CCommandQueue;
 volatile i2c_receive_state_t receive_state;
 static volatile uint8_t tx_busy;
-static volatile uint8_t rx_before_wake;
+static volatile uint16_t rx_before_wake;
 
-void mark_pending_external_i2c_requests(uint8_t barriers) {
+void mark_pending_external_i2c_requests(uint16_t barriers) {
     mark_pending_frames(&I2CCommandQueue, barriers);
     // Cleared at the next write address, covering both an outstanding length
     // byte and a frame whose length arrived before the wake transition.

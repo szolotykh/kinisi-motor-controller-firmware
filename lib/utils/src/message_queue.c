@@ -18,7 +18,7 @@ void init_queue(message_queue_t *queue) {
     queue->incomplete_barriers = 0;
 }
 
-void mark_pending_frames(message_queue_t *queue, unsigned char barriers) {
+void mark_pending_frames(message_queue_t *queue, uint16_t barriers) {
     for (unsigned i = 0, slot = queue->head; i < queue->count; ++i) {
         queue->wake_barriers[slot] |= barriers;
         slot = (slot + 1) % MESSAGE_QUEUE_MAX_SIZE;
@@ -100,7 +100,7 @@ int dequeue(message_queue_t *queue, char *message, int *message_len) {
     unsigned char length = msg[0];
     memcpy(message, msg + 1, length);
     *message_len = length;
-    unsigned char barriers = queue->wake_barriers[queue->head];
+    uint16_t barriers = queue->wake_barriers[queue->head];
     queue->head = (queue->head + 1) % MESSAGE_QUEUE_MAX_SIZE;
     queue->count--;
     return barriers;

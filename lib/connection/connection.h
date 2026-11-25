@@ -99,7 +99,7 @@ bool connection_can_receive(const connection_t *);
  * Successful timing replies have no ACK.
  */
 void connection_receive(connection_t *, const uint8_t *, size_t);
-void connection_receive_queued(connection_t *, const uint8_t *, size_t, uint8_t wake_barriers);
+void connection_receive_queued(connection_t *, const uint8_t *, size_t, uint16_t wake_barriers);
 /**
  * @brief Service pending output, announce READY, or advance periodic synchronization.
  * @note Call frequently on the command task. Stalled replies expire; busy control
@@ -112,5 +112,5 @@ void connection_poll(connection_t *);
  */
 const time_sync_t *connection_current_clock(void);
 // True only during dispatch of a frame begun before a verified driver wake.
-uint8_t connection_before_encoder_ready(void);
+uint16_t connection_before_encoder_ready(void);
 bool connection_before_driver_wake(void);

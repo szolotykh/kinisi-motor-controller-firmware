@@ -8,7 +8,7 @@ void platform_fusion_dequeued(void) {}
 #endif
 #if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
 // This fixture invokes the synchronous disconnect callback directly.
-void feedback_install_encoder_fence(void (*fence)(uint8_t),uint8_t (*dequeued)(void))
+void feedback_install_encoder_fence(void (*fence)(uint16_t),uint16_t (*dequeued)(void))
 { (void)fence; (void)dequeued; }
 void feedback_guard_platform_control(void) { assert(!"command loop unused in disconnect fixture"); }
 #endif
@@ -26,7 +26,7 @@ uint8_t try_send_external_i2c(uint8_t *data, uint16_t length) {
     memcpy(i2c_reply, data, length); i2c_reply_length = (uint8_t)length; return 1;
 }
 bool hw_motor_drivers_sleeping(void) { return false; }
-void mark_pending_external_i2c_requests(uint8_t barriers) { mark_pending_frames(&I2CCommandQueue, barriers); }
+void mark_pending_external_i2c_requests(uint16_t barriers) { mark_pending_frames(&I2CCommandQueue, barriers); }
 void controller_configuration_restore(void) {}
 void initialize_external_i2c(void) {}
 const os_interface_t *get_os_interface(void) { assert(!"task loop not used in this harness"); return NULL; }
@@ -62,7 +62,7 @@ static void check_recovery_fence(void)
 {
     char frame[] = {3, SET_PLATFORM_POSITION, 1, 0}, output_frame[256];
     unsigned generation = 0;
-    uint8_t barriers;
+    uint16_t barriers;
     int length;
     init_queue(&CommandQueue); init_queue(&I2CCommandQueue);
     assert(enqueue_multi(&CommandQueue, frame, 2) && enqueue(&I2CCommandQueue, frame));

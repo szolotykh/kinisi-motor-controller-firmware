@@ -22,7 +22,7 @@ void MX_USB_DEVICE_Init(void) {}
 void MX_USB_DEVICE_Process(void) {}
 #endif
 void initialize_external_i2c(void) {}
-void mark_pending_external_i2c_requests(uint8_t barriers) { mark_pending_frames(&I2CCommandQueue, barriers); }
+void mark_pending_external_i2c_requests(uint16_t barriers) { mark_pending_frames(&I2CCommandQueue, barriers); }
 uint32_t hw_motor_fault_event_sequence(uint8_t i) { (void)i; return 0; }
 static uint32_t masked;
 uint32_t __get_PRIMASK(void) { return masked; }

@@ -97,30 +97,30 @@ static bool try_i2c(uint8_t *data, uint8_t length)
  * @return True when a frame was dequeued; length excludes its prefix.
  */
 #if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
-static uint32_t shaft_generation[4],dequeued_shaft_generation[4];
-static void fence_encoders(uint8_t shafts)
+static uint32_t feedback_generation[9],dequeued_feedback_generation[9];
+static void fence_encoders(uint16_t affected)
 {
     uint32_t mask=__get_PRIMASK();
     __disable_irq();
-    for (unsigned i=0;i<4;i++) if (shafts & (1U<<i)) ++shaft_generation[i];
-    uint8_t flags=shafts<<ENCODER_BARRIER_SHIFT;
+    for (unsigned i=0;i<9;i++) if (affected & (1U<<i)) ++feedback_generation[i];
+    uint16_t flags=affected<<ENCODER_BARRIER_SHIFT;
     mark_pending_frames(&CommandQueue,flags);
     mark_pending_external_i2c_requests(flags);
     __set_PRIMASK(mask);
 }
 
-static uint8_t changed_after_dequeue(void)
+static uint16_t changed_after_dequeue(void)
 {
     uint32_t mask=__get_PRIMASK();
     __disable_irq();
-    uint8_t changed=0;
-    for (unsigned i=0;i<4;i++) if (shaft_generation[i]!=dequeued_shaft_generation[i]) changed|=1U<<i;
+    uint16_t changed=0;
+    for (unsigned i=0;i<9;i++) if (feedback_generation[i]!=dequeued_feedback_generation[i]) changed|=1U<<i;
     __set_PRIMASK(mask);
     return changed;
 }
 #endif
 
-static bool take_command(message_queue_t *queue, char *buffer, int *length, uint8_t *barriers)
+static bool take_command(message_queue_t *queue, char *buffer, int *length, uint16_t *barriers)
 {
     // IRQ producers also update queue->count; dequeue must not race their increment.
     uint32_t mask = __get_PRIMASK();
@@ -131,7 +131,7 @@ static bool take_command(message_queue_t *queue, char *buffer, int *length, uint
 #if BOARD_HAS_FUSION_EXPERIMENT
         platform_fusion_dequeued();
 #if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
-        for (unsigned i=0;i<4;i++) dequeued_shaft_generation[i]=shaft_generation[i];
+        for (unsigned i=0;i<9;i++) dequeued_feedback_generation[i]=feedback_generation[i];
 #endif
 #endif
     }
@@ -160,7 +160,7 @@ static void process_queue(connection_t *connection, message_queue_t *queue)
     if (!connection_can_receive(connection)) return;
     char buffer[MESSAGE_QUEUE_MAX_STR_LENGTH];
     int length;
-    uint8_t barriers;
+    uint16_t barriers;
     if (!take_command(queue, buffer, &length, &barriers)) return;
     bool was_idle = connection_board_idle();
     bool was_sleeping = hw_motor_drivers_sleeping();

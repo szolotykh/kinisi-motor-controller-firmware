@@ -6,6 +6,7 @@
 #define MESSAGE_QUEUE_H
 
 #include <string.h>
+#include <stdint.h>
 
 // Maximum number of messages that can be stored in the queue
 #define MESSAGE_QUEUE_MAX_SIZE 30
@@ -21,8 +22,8 @@ typedef struct {
     unsigned int count; // Number of messages in the queue
     char incomplete[MESSAGE_QUEUE_MAX_STR_LENGTH]; // Buffer to hold incomplete messages
     unsigned int incomplete_count; // Number of bytes in the incomplete message buffer
-    unsigned char wake_barriers[MESSAGE_QUEUE_MAX_SIZE];
-    unsigned char incomplete_barriers;
+    uint16_t wake_barriers[MESSAGE_QUEUE_MAX_SIZE];
+    uint16_t incomplete_barriers;
 } message_queue_t;
 
 // Initialize the message queue
@@ -32,7 +33,7 @@ typedef struct {
  */
 void init_queue(message_queue_t *queue);
 // Caller excludes IRQ producers. A partly received stream frame is included.
-void mark_pending_frames(message_queue_t *queue, unsigned char barriers);
+void mark_pending_frames(message_queue_t *queue, uint16_t barriers);
 
 // Check if the queue is empty
 /**

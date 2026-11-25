@@ -224,8 +224,8 @@ static bool odometry_command(uint8_t cmd)
  * @param reply Callback that captures an unframed response payload.
  * @return RESPONSE_OK or a generated protocol error code.
  */
-static uint8_t request_wake_barriers;
-uint8_t connection_before_encoder_ready(void) { return request_wake_barriers >> ENCODER_BARRIER_SHIFT; }
+static uint16_t request_wake_barriers;
+uint16_t connection_before_encoder_ready(void) { return request_wake_barriers >> ENCODER_BARRIER_SHIFT; }
 bool connection_before_driver_wake(void) { return (request_wake_barriers & BEFORE_DRIVER_WAKE) != 0; }
 static bool creates_subscription(uint8_t command)
 {
@@ -469,7 +469,7 @@ void connection_receive(connection_t *c, const uint8_t *data, size_t length)
     connection_receive_queued(c, data, length, false);
 }
 
-void connection_receive_queued(connection_t *c, const uint8_t *data, size_t length, uint8_t wake_barriers)
+void connection_receive_queued(connection_t *c, const uint8_t *data, size_t length, uint16_t wake_barriers)
 {
     (void)check_heartbeat(c);
     if (!connection_board_idle()) resume_subscriptions(c);

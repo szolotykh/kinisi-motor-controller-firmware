@@ -103,12 +103,25 @@ static bool platform_feedback_ready(const hw_encoder_interface_t *encoder)
 
 #if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
 static uint8_t monitored_encoders, bad_encoders;
-static void (*encoder_ingress_fence)(uint8_t);
-static uint8_t (*dequeued_encoder_barriers)(void);
+// Low four bits name shafts, the next four name motor endpoints, and bit 8
+// names the chassis. Motion requests name an endpoint whose shafts can change.
+#define MOTOR_ENDPOINT(i) (1U << (4U+(i)))
+#define PLATFORM_ENDPOINT (1U << 8)
+static uint16_t unavailable_endpoints[4];
+static void (*encoder_ingress_fence)(uint16_t);
+static uint16_t (*dequeued_encoder_barriers)(void);
+
+static uint16_t affected_endpoints(uint8_t shaft)
+{
+    uint16_t endpoints=platform_owns_motor(shaft) ? PLATFORM_ENDPOINT : 0;
+    for (unsigned i=0;i<NUMBER_MOTORS;i++)
+        if (controllers_manager_encoder_mask(i) & (1U<<shaft)) endpoints|=MOTOR_ENDPOINT(i);
+    return endpoints;
+}
 
 bool feedback_counters_available(void) { return !__atomic_load_n(&bad_encoders,__ATOMIC_ACQUIRE); }
 
-void feedback_install_encoder_fence(void (*fence)(uint8_t),uint8_t (*dequeued)(void))
+void feedback_install_encoder_fence(void (*fence)(uint16_t),uint16_t (*dequeued)(void))
 {
     encoder_ingress_fence=fence;
     dequeued_encoder_barriers=dequeued;
@@ -127,28 +140,39 @@ void feedback_guard_platform_control(void)
     // The recovery edge fences commands submitted while unavailable, even after
     // the controller was stopped and no further invalid target was dispatched.
     if (changed) {
-        if (encoder_ingress_fence) encoder_ingress_fence(changed);
+        uint16_t barriers=changed;
+        for (unsigned i=0;i<NUMBER_ENCODERS;i++) if (changed & (1U<<i)) {
+            if (bad & (1U<<i)) {
+                uint16_t endpoints=affected_endpoints(i);
+                __atomic_fetch_or(&unavailable_endpoints[i],endpoints,__ATOMIC_ACQ_REL);
+                barriers|=endpoints;
+            } else {
+                barriers|=__atomic_exchange_n(&unavailable_endpoints[i],0,__ATOMIC_ACQ_REL);
+            }
+        }
+        if (encoder_ingress_fence) encoder_ingress_fence(barriers);
         odometry_counter_transition(changed);
     }
     if (platform_is_controller_running() && (bad & platform.motor_mask)) platform_stop_velocity_controller();
     for (uint8_t i=0;i<NUMBER_ENCODERS;i++) if (bad & (1U<<i)) controllers_manager_stop_encoder(i);
 }
 
-static uint8_t guarded_encoders(const controller_command_t *cmd)
+static uint16_t guarded_encoders(const controller_command_t *cmd)
 {
     uint8_t motor;
     switch (cmd->commandType) {
     case START_PLATFORM_CONTROLLER: case SET_PLATFORM_TARGET_VELOCITY:
     case INITIALIZE_PLATFORM_POSITION_CONTROLLER: case INITIALIZE_PLATFORM_POSITION_PID_CONTROLLER:
-    case SET_PLATFORM_POSITION: return platform.motor_mask;
-    case INITIALIZE_MOTOR_CONTROLLER: return 1U<<cmd->properties.initialize_motor_controller.encoder_index;
+    case SET_PLATFORM_POSITION: return PLATFORM_ENDPOINT | platform.motor_mask;
+    case INITIALIZE_MOTOR_CONTROLLER: return MOTOR_ENDPOINT(cmd->properties.initialize_motor_controller.motor_index) |
+        (1U<<cmd->properties.initialize_motor_controller.encoder_index);
     case SET_MOTOR_TARGET_SPEED: motor=cmd->properties.set_motor_target_speed.motor_index;break;
     case INITIALIZE_MOTOR_POSITION_CONTROLLER: motor=cmd->properties.initialize_motor_position_controller.motor_index;break;
     case INITIALIZE_MOTOR_POSITION_PID_CONTROLLER: motor=cmd->properties.initialize_motor_position_pid_controller.motor_index;break;
     case SET_MOTOR_POSITION: motor=cmd->properties.set_motor_position.motor_index;break;
     default: return 0;
     }
-    return controllers_manager_encoder_mask(motor);
+    return MOTOR_ENDPOINT(motor) | controllers_manager_encoder_mask(motor);
 }
 #endif
 
@@ -185,9 +209,9 @@ static uint8_t dispatch_controller_command(controller_command_t* cmd, void (*com
     uint8_t prerequisite = command_requirements_check(cmd, &resources);
     if (prerequisite != RESPONSE_OK) return prerequisite;
 #if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
-    uint8_t required=guarded_encoders(cmd);
+    uint16_t required=guarded_encoders(cmd);
     if (required & __atomic_load_n(&bad_encoders,__ATOMIC_ACQUIRE)) return RESPONSE_ENCODER_NOT_INITIALIZED;
-    uint8_t blocked=connection_before_encoder_ready();
+    uint16_t blocked=connection_before_encoder_ready();
     if (dequeued_encoder_barriers) blocked|=dequeued_encoder_barriers();
     if (required & blocked) return RESPONSE_SAMPLE_NOT_AVAILABLE;
 #endif
@@ -875,12 +899,34 @@ uint8_t command_handler(controller_command_t *cmd, void (*reply)(uint8_t *,uint8
     // A higher-priority observer can report loss and repair after the initial
     // admission test while this request is waiting for a controller mutex.
     if (result==RESPONSE_OK && dequeued_encoder_barriers) {
-        uint8_t crossed=guarded_encoders(cmd) & dequeued_encoder_barriers();
+        uint16_t crossed=guarded_encoders(cmd) & dequeued_encoder_barriers();
         if (crossed) {
-            if (platform_is_controller_running() && (crossed & platform.motor_mask))
+            if (platform_is_controller_running() && (crossed & (PLATFORM_ENDPOINT | platform.motor_mask)))
                 platform_stop_velocity_controller();
             for (uint8_t i=0;i<NUMBER_ENCODERS;i++) if (crossed & (1U<<i)) controllers_manager_stop_encoder(i);
+            for (uint8_t i=0;i<NUMBER_MOTORS;i++) if (crossed & MOTOR_ENDPOINT(i))
+                controllers_manager_stop_controller_multiple(1U<<i);
             return RESPONSE_SAMPLE_NOT_AVAILABLE;
+        }
+
+        // Rebinding off a still-failed shaft closes this endpoint's old
+        // lifetime before the successful configuration ACK. New commands for
+        // this healthy binding need not wait for the unrelated shaft to repair.
+        uint16_t renewed=0;
+        uint8_t required=0;
+        if (cmd->commandType==INITIALIZE_MOTOR_CONTROLLER) {
+            renewed=MOTOR_ENDPOINT(cmd->properties.initialize_motor_controller.motor_index);
+            required=1U<<cmd->properties.initialize_motor_controller.encoder_index;
+        } else if (cmd->commandType==INITIALIZE_DIFFERENTIAL_PLATFORM ||
+                   cmd->commandType==INITIALIZE_OMNI_PLATFORM || cmd->commandType==INITIALIZE_MECANUM_PLATFORM) {
+            renewed=PLATFORM_ENDPOINT;
+            required=platform.motor_mask;
+        }
+        if (renewed) {
+            uint16_t transition=0;
+            for (uint8_t i=0;i<NUMBER_ENCODERS;i++) if (!(required & (1U<<i)))
+                transition|=__atomic_fetch_and(&unavailable_endpoints[i],(uint16_t)~renewed,__ATOMIC_ACQ_REL) & renewed;
+            if (transition && encoder_ingress_fence) encoder_ingress_fence(transition);
         }
     }
 #endif

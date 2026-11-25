@@ -48,7 +48,7 @@ void feedback_health_power_transition(void);
 void odometry_counter_transition(uint8_t changed);
 bool feedback_counters_available(void);
 void feedback_guard_platform_control(void);
-void feedback_install_encoder_fence(void (*fence)(uint8_t),uint8_t (*dequeued)(void));
+void feedback_install_encoder_fence(void (*fence)(uint16_t),uint16_t (*dequeued)(void));
 void feedback_health_reset_comparison(void);
 void feedback_health_counter_edge(bool owned);
 void passive_health_counter_edge(bool owned);

@@ -192,3 +192,58 @@ static void live_fused_outage(bool position)
     assert(diagnostic().health==FUSION_HEALTH_HEALTHY);
     request(target,RESPONSE_OK);run_task(controller_task);assert(!hw_motor_outputs_stopped());
 }
+
+static uint16_t captured_endpoints;
+static void capture_endpoint_fence(uint16_t edges) { captured_endpoints|=edges; }
+static uint16_t no_inflight_changes(void) { return 0; }
+static void buffered_request(controller_command_t cmd,uint16_t barriers,uint8_t expected)
+{
+    cmd.message_id=++next_id;reply_len=0;
+    connection_receive_queued(&session,(uint8_t *)&cmd,command_request_size(cmd.commandType),barriers<<ENCODER_BARRIER_SHIFT);
+    connection_poll(&session);
+    if ((expected && reply[5]!=expected) || reply[1]!=(expected?KINISI_MESSAGE_ERROR:cmd.commandType)) fprintf(stderr,"buffered cmd=%u barrier=%x reply=%u error=%u expected=%u\n",cmd.commandType,barriers,reply[1],reply[5],expected);
+    assert(reply_len>=4 && (expected ? (reply[1]==KINISI_MESSAGE_ERROR && reply[5]==expected) : reply[1]==cmd.commandType));
+}
+
+static void binding_recovery(bool chassis)
+{
+    feedback_health_install(hw_imu_read_observation,sampling_enabled);
+    feedback_install_encoder_fence(capture_endpoint_fence,no_inflight_changes);
+    configure(chassis?PLATFORM_MECANUM:PLATFORM_DIFFERENTIAL);
+    controller_command_t setup={.commandType=INITIALIZE_MOTOR_CONTROLLER,
+        .properties.initialize_motor_controller={.motor_index=3,.encoder_index=2,.encoder_resolution=800,.kp=8,.integral_limit=100}};
+    controller_command_t speed={.commandType=SET_MOTOR_TARGET_SPEED,.properties.set_motor_target_speed={.motor_index=3,.speed=2}};
+    controller_command_t init_position={.commandType=INITIALIZE_MOTOR_POSITION_CONTROLLER,
+        .properties.initialize_motor_position_controller={.motor_index=3,.kp=1,.max_speed=.3,.tolerance=.01}};
+    controller_command_t position={.commandType=SET_MOTOR_POSITION,.properties.set_motor_position={.motor_index=3,.position=.2}};
+    if (chassis) {
+        setup=(controller_command_t){.commandType=START_PLATFORM_CONTROLLER,.properties.start_platform_controller={8,0,0,100}};
+        speed=(controller_command_t){.commandType=SET_PLATFORM_TARGET_VELOCITY,.properties.set_platform_target_velocity={.x=.2}};
+        init_position=(controller_command_t){.commandType=INITIALIZE_PLATFORM_POSITION_CONTROLLER,
+            .properties.initialize_platform_position_controller={.linear_kp=1,.angular_kp=1,.position_tolerance=.01,.heading_tolerance=.01,.max_linear_speed=.3,.max_angular_speed=.6}};
+        position=(controller_command_t){.commandType=SET_PLATFORM_POSITION,.properties.set_platform_position={.x=.2}};
+    } else {
+        controller_command_t other=setup;
+        other.properties.initialize_motor_controller.motor_index=2;other.properties.initialize_motor_controller.encoder_index=1;
+        request(other,RESPONSE_OK);
+    }
+    request(setup,RESPONSE_OK);request(speed,RESPONSE_OK);run_task(controller_task);
+    stopped_counter=chassis?3:2;feedback_guard_platform_control();assert_coasting();
+    captured_endpoints=0;stopped_counter=-1;feedback_guard_platform_control();
+    const uint16_t old=captured_endpoints;
+    if (chassis) {
+        configure(PLATFORM_DIFFERENTIAL);
+        request((controller_command_t){.commandType=START_PLATFORM_ODOMETRY},RESPONSE_OK);
+        sample_ticks(3,true);
+    } else setup.properties.initialize_motor_controller.encoder_index=3;
+    request(setup,RESPONSE_OK);
+    request(init_position,RESPONSE_OK);
+    buffered_request(speed,old,RESPONSE_SAMPLE_NOT_AVAILABLE);
+    buffered_request(position,old,RESPONSE_SAMPLE_NOT_AVAILABLE);
+    run_task(controller_task);assert_coasting();
+    if (!chassis) {
+        controller_command_t unrelated=speed;unrelated.properties.set_motor_target_speed.motor_index=2;
+        buffered_request(unrelated,old,RESPONSE_OK);
+    }
+    request(speed,RESPONSE_OK);run_task(controller_task);assert(!hw_motor_outputs_stopped());
+}

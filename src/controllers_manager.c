@@ -31,6 +31,7 @@ typedef struct controller_info_t
     encoder_index_t eIndex;
     pid_controller_t controller;
     bool feedback_hold;
+    bool binding_assigned;
     uint8_t position_initialized;
     uint8_t position_active;
     position_settings_t position_settings;
@@ -240,6 +241,7 @@ uint8_t controllers_manager_initialize_controller(uint8_t motor_index, uint8_t e
 
     controller_info_t controller_info = {0};
     controller_info.state = RUN;
+    controller_info.binding_assigned=true;
     controller_info.controller = controller;
     controller_info.mIndex = motor_index;
     controller_info.eIndex = encoder_index;
@@ -312,6 +314,7 @@ void controllers_manager_initialize_controller_multiple(uint8_t motor_selection,
                 // Building controller info
                 controller_info_t controller_info = {0};
                 controller_info.state = RUN;
+                controller_info.binding_assigned=true;
 #if BOARD_HAS_FUSION_EXPERIMENT
                 controller_info.feedback_hold = platform_fusion_epoch() != 0;
                 if (controller_info.feedback_hold) motor->stop(motor_index);
@@ -607,7 +610,8 @@ uint8_t controllers_manager_encoder_mask(uint8_t i)
 {
     SemaphoreHandle_t lock=controllers_manager.state.controller_state_mutex;
     if (i>=NUMBER_MOTORS || !lock || !xSemaphoreTake(lock,portMAX_DELAY)) return 0;
-    uint8_t mask=1U<<controllers_manager.state.Controller_info[i].eIndex;
+    controller_info_t *info=&controllers_manager.state.Controller_info[i];
+    uint8_t mask=info->binding_assigned ? 1U<<info->eIndex : 0;
     xSemaphoreGive(lock);
     return mask;
 }
