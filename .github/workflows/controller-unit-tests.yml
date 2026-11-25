@@ -20,12 +20,36 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install STM32Cube headers for the register-model suite
-        if: ${{ hashFiles('test/test_encoder_hardware/run_tests.py') != '' }}
+      - name: Install PlatformIO
         run: |
           python3 -m venv "$RUNNER_TEMP/pio"
           "$RUNNER_TEMP/pio/bin/pip" install platformio==6.1.18
-          "$RUNNER_TEMP/pio/bin/pio" pkg install --global --tool platformio/framework-stm32cubef4@1.28.1
+          echo "$RUNNER_TEMP/pio/bin" >> "$GITHUB_PATH"
+
+      - name: Run native Unity suites
+        run: |
+          pio test -e test_native -e test_platforms --junit-output-path "$RUNNER_TEMP/unity.xml"
+          python3 - "$RUNNER_TEMP/unity.xml" <<'PY'
+          import sys
+          from xml.etree import ElementTree
+
+          expected = {
+              "test_native:test_utils", "test_native:test_commands", "test_native:test_controller",
+              "test_platforms:test_platform_differential", "test_platforms:test_platform_mecanum",
+              "test_platforms:test_platform_odometry", "test_platforms:test_platform_omni",
+          }
+          exercised = {
+              suite.get("name") for suite in ElementTree.parse(sys.argv[1]).findall("testsuite")
+              if suite.find("testcase[@status='PASSED']") is not None
+          }
+          missing = expected - exercised
+          if missing:
+              sys.exit("No passing Unity test cases in: " + ", ".join(sorted(missing)))
+          PY
+
+      - name: Install STM32Cube headers for the register-model suite
+        if: ${{ hashFiles('test/test_encoder_hardware/run_tests.py') != '' }}
+        run: pio pkg install --global --tool platformio/framework-stm32cubef4@1.28.1
 
       - name: Run all native firmware suites
         shell: bash
