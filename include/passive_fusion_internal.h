@@ -182,6 +182,17 @@ void passive_fusion_sample(feedback_snapshot_t *out)
 }
 
 #if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
+void passive_health_counter_edge(bool owned)
+{
+    if (!passive_fusion_epoch() || !xSemaphoreTake(passive.lock,portMAX_DELAY)) return;
+    if (passive_fusion_epoch()) {
+        if (owned) passive_reject(FEEDBACK_REASON_UNAVAILABLE,FUSION_FAULT_ENCODER_UNAVAILABLE);
+        else if (!passive.estimator.calibrated)
+            passive_reject(FEEDBACK_REASON_CALIBRATING,FUSION_FAULT_BIAS_NOT_READY);
+    }
+    xSemaphoreGive(passive.lock);
+}
+
 void passive_health_fault(uint8_t reason,uint8_t detail)
 {
     if (!passive_fusion_epoch() || !xSemaphoreTake(passive.lock,portMAX_DELAY)) return;

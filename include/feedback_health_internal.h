@@ -82,6 +82,13 @@ void feedback_health_reset_comparison(void)
     xSemaphoreGive(health_lock);
 }
 
+void feedback_health_counter_edge(bool owned)
+{
+    if (!health_lock || !xSemaphoreTake(health_lock,portMAX_DELAY)) return;
+    if (owned || !comparison.calibrated) reset_comparison_locked();
+    xSemaphoreGive(health_lock);
+}
+
 void feedback_health_mount(double yaw)
 {
     if (!health_lock || !xSemaphoreTake(health_lock,portMAX_DELAY)) return;

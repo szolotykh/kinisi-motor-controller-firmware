@@ -50,6 +50,8 @@ bool feedback_counters_available(void);
 void feedback_guard_platform_control(void);
 void feedback_install_encoder_fence(void (*fence)(uint8_t),uint8_t (*dequeued)(void));
 void feedback_health_reset_comparison(void);
+void feedback_health_counter_edge(bool owned);
+void passive_health_counter_edge(bool owned);
 void feedback_health_mount(double yaw);
 void feedback_health_observe(uint64_t at, uint64_t previous, platform_odometry_t delta, bool valid, bool stationary);
 bool feedback_encoder_sampling(uint8_t index);

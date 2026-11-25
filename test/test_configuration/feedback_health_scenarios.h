@@ -63,6 +63,15 @@ static void source_health_scenario(unsigned preset)
     injected.acceleration_x=0;sample_ticks(33,true);
     select_source(2,RESPONSE_OK);sample_ticks(35,true);
     assert(health_status(2).health==FEEDBACK_HEALTH_HEALTHY && selected_status().valid);
+    if (preset!=PLATFORM_MECANUM) {
+        feedback_source_status before=selected_status();
+        stopped_counter=3;sample_ticks(1,true);
+        assert(health_status(0).health==FEEDBACK_HEALTH_HEALTHY && health_status(2).health==FEEDBACK_HEALTH_HEALTHY);
+        assert(selected_status().valid && selected_status().origin_id==before.origin_id);
+        set_mount(0,RESPONSE_SOURCE_SWITCH_UNSAFE);
+        stopped_counter=-1;sample_ticks(1,true);
+        assert(selected_status().origin_id==before.origin_id && health_status(2).health==FEEDBACK_HEALTH_HEALTHY);
+    }
     feedback_source_status frame=selected_status();
     i=health_status(1);
     uint64_t a=injected_accel;

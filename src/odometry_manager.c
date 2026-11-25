@@ -687,9 +687,10 @@ void odometry_counter_transition(uint8_t changed)
     if (!s->odometry_mutex || !xSemaphoreTake(s->odometry_mutex,portMAX_DELAY)) return;
     for (unsigned i=0;i<NUMBER_ENCODERS;i++) if (changed & (1U<<i)) discard_invalid_counter(s,i);
     xSemaphoreGive(s->odometry_mutex);
-    feedback_health_reset_comparison();
-    // An invalid independent shaft also invalidates evidence of observed rest.
-    passive_health_fault(FEEDBACK_REASON_UNAVAILABLE,FUSION_FAULT_ENCODER_UNAVAILABLE);
+    bool owned=false;
+    for (unsigned i=0;i<NUMBER_ENCODERS;i++) if ((changed & (1U<<i)) && platform_owns_motor(i)) owned=true;
+    feedback_health_counter_edge(owned);
+    passive_health_counter_edge(owned);
 }
 
 static bool owned_counters_valid(odometry_manager_state_t *s)
