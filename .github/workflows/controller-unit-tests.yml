@@ -1,0 +1,44 @@
+name: Firmware pre-merge tests
+
+on:
+  pull_request:
+  merge_group:
+    types: [checks_requested]
+
+permissions:
+  contents: read
+
+jobs:
+  unit-tests:
+    name: Controller unit tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      CC: gcc
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Install STM32Cube headers for the register-model suite
+        if: ${{ hashFiles('test/test_encoder_hardware/run_tests.py') != '' }}
+        run: |
+          python3 -m venv "$RUNNER_TEMP/pio"
+          "$RUNNER_TEMP/pio/bin/pip" install platformio==6.1.18
+          "$RUNNER_TEMP/pio/bin/pio" pkg install --global --tool platformio/framework-stm32cubef4@1.28.1
+
+      - name: Run all native firmware suites
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          suites=(test/test_*/run_tests.py)
+          if (( ${#suites[@]} == 0 )); then
+            echo "::error::No native firmware test suites were found"
+            exit 1
+          fi
+          for suite in "${suites[@]}"; do
+            echo "::group::$suite"
+            python3 "$suite"
+            echo "::endgroup::"
+          done
