@@ -1,6 +1,6 @@
 # Kinisi motor controller commands
 
-**Protocol 2.22.0** · Generated from [commands.json](commands.json)
+**Protocol 2.23.0** · Generated from [commands.json](commands.json)
 
 [Command index](#command-index) · [Wire format](#wire-format) · [Error codes](#error-codes)
 
@@ -108,6 +108,8 @@
 | [`GET_FEEDBACK_FUSION_MOUNT`](#get_feedback_fusion_mount-0x6b) | `0x6b` | Client → controller | `feedback_fusion_mount` |
 | [`GET_FEEDBACK_SOURCE_HEALTH`](#get_feedback_source_health-0x6c) | `0x6c` | Client → controller | `feedback_source_health` |
 | [`GET_FEEDBACK_IMU_CHANNELS`](#get_feedback_imu_channels-0x6d) | `0x6d` | Client → controller | `feedback_imu_channels` |
+| [`SET_IMU_MOUNT`](#set_imu_mount-0x6e) | `0x6e` | Client → controller | ACK |
+| [`GET_IMU_MOUNT`](#get_imu_mount-0x6f) | `0x6f` | Client → controller | `imu_mount_configuration` |
 
 ## Command lifecycle
 
@@ -2355,7 +2357,7 @@ Applied board-wide PWM frequency in hertz.
 
 **Client → controller** · **Payload:** 0 bytes
 
-Save the complete running platform setup and motor PWM frequency to onboard FRAM. Available on v0.4 with protocol 2.14 or later. ACK confirms a durable save. A subsequent boot restores the setup with outputs stopped.
+Save the complete running platform setup and motor PWM frequency to onboard FRAM. Available on v0.4 with protocol 2.14 or later. ACK confirms a durable save. A subsequent boot restores the setup with outputs stopped. Protocol 2.23+ also saves the applied physical IMU mount and accepts an explicitly configured mount before platform commissioning.
 
 #### Parameters
 
@@ -2512,14 +2514,14 @@ No payload parameters.
 
 **Client → controller** · **Payload:** 9 bytes
 
-Configure the volatile v0.4 experiment only while motion is stopped and all commanded targets and motor outputs are zero; initialized controllers with idle zero targets are allowed. Mode 0 retains the legacy encoder path (boot default), 1 uses encoder feedback with the common chassis correction, and 2 uses fused feedback with that same correction. No IMU-only mode. For modes 1/2 the caller declares a rigid, level board with component side up, IMU at the chassis reference point, and mounting_yaw_rad as the angle of board +X expressed in chassis XY, counterclockwise about chassis +Z. Sensor-to-board axes are (-x,-y,+z); chassis axes are forward/left/up. Reject nonfinite or out-of-range yaw, any observed configured encoder movement in the preceding 100 ms, or a counter change since a fresh sample. Stopped cold setup may ACK in WAITING; ACK does not establish readiness. Both experimental modes require 100 ms of observed unchanged configured counters for initial rest arming before accepting a motion target; once armed, ordinary target updates remain accepted while moving; fused bias calibration may run within that window. Reconfiguration cancels old targets. Sources may requalify automatically after an ordinary sensor fault, but healthy inputs and a fresh target are required before control resumes. Does not save to FRAM or start motion. Requires READY, exact v0.4.0 fusion capability and protocol 2.19.
+Configure the volatile v0.4 experiment only while motion is stopped and all commanded targets and motor outputs are zero; initialized controllers with idle zero targets are allowed. Mode 0 retains the legacy encoder path (boot default), 1 uses encoder feedback with the common chassis correction, and 2 uses fused feedback with that same correction. No IMU-only mode. Without a configured physical mount, modes 1/2 require a rigid, level board with component side up, IMU at the chassis reference point, and mounting_yaw_rad as the angle of board +X expressed in chassis XY, counterclockwise about chassis +Z. Sensor-to-board axes are (-x,-y,+z); chassis axes are forward/left/up. Reject nonfinite or out-of-range yaw, any observed configured encoder movement in the preceding 100 ms, or a counter change since a fresh sample. Stopped cold setup may ACK in WAITING; ACK does not establish readiness. Both experimental modes require 100 ms of observed unchanged configured counters for initial rest arming before accepting a motion target; once armed, ordinary target updates remain accepted while moving; fused bias calibration may run within that window. Reconfiguration cancels old targets. Sources may requalify automatically after an ordinary sensor fault, but healthy inputs and a fresh target are required before control resumes. Does not save to FRAM or start motion. Requires READY, exact v0.4.0 fusion capability and protocol 2.19. On protocol 2.23+, a configured physical mount takes precedence over legacy yaw. Read GET_IMU_MOUNT for the applied geometry.
 
 #### Parameters
 
 | Parameter | Type | Bytes | Range | Description |
 | --- | --- | ---: | --- | --- |
 | `mode` | `uint8_t` | 1 | 0 to 2 | FusionMode value. |
-| `mounting_yaw_rad` | `double` | 8 | -3.141592653589793 to 3.141592653589793 | Declared level centered mounting yaw in radians. |
+| `mounting_yaw_rad` | `double` | 8 | -3.141592653589793 to 3.141592653589793 | Legacy board yaw in radians for a centered, level installation. A configured physical mount takes precedence. |
 
 #### Response
 
@@ -2606,7 +2608,7 @@ Packed little-endian diagnostic snapshot.
 
 **Client → controller** · **Payload:** 0 bytes
 
-Read the volatile experiment mode and declared mounting yaw without changing state. Reset selects legacy encoder mode; SAVE_CONFIGURATION does not persist this experiment. Requires READY, exact v0.4.0 fusion capability and protocol 2.19.
+Read the volatile experiment mode and declared mounting yaw without changing state. Reset selects legacy encoder mode; SAVE_CONFIGURATION does not persist this experiment. Requires READY, exact v0.4.0 fusion capability and protocol 2.19. On protocol 2.23+, a configured physical mount takes precedence over legacy yaw. Read GET_IMU_MOUNT for the applied geometry.
 
 #### Parameters
 
@@ -2635,15 +2637,15 @@ Packed little-endian diagnostic snapshot.
 
 **Client → controller** · **Payload:** 10 bytes
 
-Control volatile IMU-only relative tracking. START=0, RESET=2 and RECALIBRATE=3 are accepted from any state with stationary_mount_confirmed=1 and finite yaw in [-pi,pi]; all discard prior bias and pose and begin full cold stationary calibration at a new relative origin. The caller confirms true zero velocity, rigid level sensor-+Z-up mounting with IMU at the chassis reference point. Yaw is the angle of sensor +X in chassis XY, counterclockwise about chassis +Z. Sensor-to-chassis transform is Rz(yaw)*(x,y,z), axes forward/left/up. IMU stationarity checks cannot establish zero constant velocity. STOP=1 requires confirmation=0 and yaw=0 and stops integration. ACK confirms the action, not a valid estimate. Fault, expiry or interruption requires deliberate restart; no automatic recovery. Not saved to FRAM. Requires READY, exact model 1 hardware 0.4.0 with imu_tracking capability and protocol 2.20+. Independent of platform, encoders and fusion; never commands motion or changes control feedback.
+Control volatile IMU-only relative tracking. START=0, RESET=2 and RECALIBRATE=3 are accepted from any state with stationary_mount_confirmed=1 and finite yaw in [-pi,pi]; all discard prior bias and pose and begin full cold stationary calibration at a new relative origin. The caller confirms true zero velocity and the actual rigid installation. Without a configured physical mount, use a level sensor with +Z up at the tracking origin. Legacy yaw is the angle of sensor +X in chassis XY, counterclockwise about chassis +Z. The legacy sensor-to-chassis transform is Rz(yaw)*(x,y,z), axes forward/left/up. IMU stationarity checks cannot establish zero constant velocity. STOP=1 requires confirmation=0 and yaw=0 and stops integration. ACK confirms the action, not a valid estimate. Fault, expiry or interruption requires deliberate restart; no automatic recovery. Not saved to FRAM. Requires READY, exact model 1 hardware 0.4.0 with imu_tracking capability and protocol 2.20+. Independent of platform, encoders and fusion; never commands motion or changes control feedback. On protocol 2.23+, a configured physical mount takes precedence over legacy yaw. Read GET_IMU_MOUNT for the applied geometry.
 
 #### Parameters
 
 | Parameter | Type | Bytes | Range | Description |
 | --- | --- | ---: | --- | --- |
 | `action` | `uint8_t` | 1 | 0 to 3 | ImuTrackingAction value. |
-| `stationary_mount_confirmed` | `uint8_t` | 1 | 0 to 1 | Explicit caller confirmation of stationary zero velocity and the supported rigid level centered mount; 0 or 1. |
-| `mounting_yaw_rad` | `double` | 8 | -3.141592653589793 to 3.141592653589793 | Angle of sensor +X in chassis XY, counterclockwise about chassis +Z; sensor +Z up. Finite radians. |
+| `stationary_mount_confirmed` | `uint8_t` | 1 | 0 to 1 | Explicit caller confirmation of zero velocity and the declared rigid installation, 0 or 1. |
+| `mounting_yaw_rad` | `double` | 8 | -3.141592653589793 to 3.141592653589793 | Legacy sensor +X yaw about chassis +Z in finite radians for a level sensor. A configured physical mount takes precedence. |
 
 #### Response
 
@@ -2730,7 +2732,7 @@ Packed little-endian IMU-only tracking snapshot.
 
 **Client → controller** · **Payload:** 0 bytes
 
-Read mounting yaw and the actual bounded tracking horizon in microseconds. This v0.4 release reports 1000000 us for a one-second motion-onset diagnostic. Always use readback for the connected board horizon. The eligible source interval is [origin, origin + window_us); at 100 Hz it contains 100 source stamps including origin and excluding the end. No estimate at or beyond the source end is published. Reset clears volatile tracking state; reconnect does not start or re-anchor tracking. Requires READY, exact model 1 hardware 0.4.0 with imu_tracking capability and protocol 2.20+. Independent of platform, encoders and fusion; never commands motion or changes control feedback.
+Read mounting yaw and the actual bounded tracking horizon in microseconds. This v0.4 release reports 1000000 us for a one-second motion-onset diagnostic. Always use readback for the connected board horizon. The eligible source interval is [origin, origin + window_us); at 100 Hz it contains 100 source stamps including origin and excluding the end. No estimate at or beyond the source end is published. Reset clears volatile tracking state; reconnect does not start or re-anchor tracking. Requires READY, exact model 1 hardware 0.4.0 with imu_tracking capability and protocol 2.20+. Independent of platform, encoders and fusion; never commands motion or changes control feedback. On protocol 2.23+, a configured physical mount takes precedence over legacy yaw. Read GET_IMU_MOUNT for the applied geometry.
 
 #### Parameters
 
@@ -2855,7 +2857,7 @@ Packed little-endian selector readback.
 
 **Client → controller** · **Payload:** 8 bytes
 
-Confirm a rigid centered level board mount for passive fused telemetry, with finite board yaw in [-pi,pi]. Requires stopped outputs and disarmed controllers. Each successful command discards prior passive calibration and pose; the observer requires fresh stationary observations. This volatile setting applies only to passive telemetry. Requires READY, exact v0.4 and protocol 2.21+.
+Declare the legacy centered, level board orientation for passive fused telemetry, with finite board yaw in [-pi,pi]. Requires stopped outputs and disarmed controllers. Each successful command discards prior passive calibration and pose; the observer requires fresh stationary observations. This volatile setting applies only to passive telemetry. Requires READY, exact v0.4 and protocol 2.21+. On protocol 2.23+, a configured physical mount takes precedence over legacy yaw. Read GET_IMU_MOUNT for the applied geometry.
 
 #### Parameters
 
@@ -2879,7 +2881,7 @@ Confirm a rigid centered level board mount for passive fused telemetry, with fin
 
 **Client → controller** · **Payload:** 0 bytes
 
-Read the explicit volatile passive fusion mounting confirmation and board yaw. Reset clears confirmation. Requires READY, exact v0.4 and protocol 2.21+.
+Read the explicit volatile passive fusion mounting confirmation and board yaw. Reset clears confirmation. Requires READY, exact v0.4 and protocol 2.21+. On protocol 2.23+, a configured physical mount takes precedence over legacy yaw. Read GET_IMU_MOUNT for the applied geometry.
 
 #### Parameters
 
@@ -2964,6 +2966,69 @@ Read independent last observed accelerometer and gyro acquisition times in board
 | `gyro_timestamp_us` | `uint64_t` | 8 | Last observed gyro acquisition time in board uptime microseconds. |
 | `accel_age_us` | `uint32_t` | 4 | Board-derived acquisition age in microseconds, UINT32_MAX if unknown. |
 | `gyro_age_us` | `uint32_t` | 4 | Board-derived acquisition age in microseconds, UINT32_MAX if unknown. |
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6)
+
+[Back to command index](#command-index)
+
+---
+
+### SET_IMU_MOUNT (0x6e)
+
+**Client → controller** · **Payload:** 18 bytes
+
+Set the complete rigid mount for IMU-only and fused tracking on a stopped, disarmed v0.4. The board-to-chassis rotation is Rz(yaw) Ry(pitch) Rx(roll). A changed mount requires fresh tracking initialization. SAVE_CONFIGURATION persists this geometry. Requires READY and protocol 2.23+ with imu_mounting.
+
+#### Parameters
+
+| Parameter | Type | Bytes | Range | Description |
+| --- | --- | ---: | --- | --- |
+| `roll_cdeg` | `int16_t` | 2 | -18000 to 18000 | Board-to-chassis roll in signed hundredths of a degree. |
+| `pitch_cdeg` | `int16_t` | 2 | -9000 to 9000 | Board-to-chassis pitch in signed hundredths of a degree. |
+| `yaw_cdeg` | `int16_t` | 2 | -18000 to 18000 | Board-to-chassis yaw in signed hundredths of a degree. |
+| `x_um` | `int32_t` | 4 | -10000000 to 10000000 | Signed displacement from the tracking origin to the BMI088 chip along chassis +X (forward), in micrometres. |
+| `y_um` | `int32_t` | 4 | -10000000 to 10000000 | Signed displacement from the tracking origin to the BMI088 chip along chassis +Y (left), in micrometres. |
+| `z_um` | `int32_t` | 4 | -10000000 to 10000000 | Signed displacement from the tracking origin to the BMI088 chip along chassis +Z (up), in micrometres. |
+
+#### Response
+
+**ACK** — empty payload; echoes the command and message ID.
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`SOURCE_SWITCH_UNSAFE`](#error-source-switch-unsafe) (21)
+
+[Back to command index](#command-index)
+
+---
+
+### GET_IMU_MOUNT (0x6f)
+
+**Client → controller** · **Payload:** 0 bytes
+
+Read the shared physical mount. When configured is false, IMU-only uses its legacy sensor yaw and fusion its legacy board yaw. Requires READY and protocol 2.23+ with imu_mounting.
+
+#### Parameters
+
+No payload parameters.
+
+#### Response
+
+**Controller → client** · `imu_mount_configuration` · **Payload:** 19 bytes
+
+Applied board-to-chassis geometry and configuration state.
+
+| Parameter | Type | Bytes | Range | Description |
+| --- | --- | ---: | --- | --- |
+| `roll_cdeg` | `int16_t` | 2 | -18000 to 18000 | Board-to-chassis roll in signed hundredths of a degree. |
+| `pitch_cdeg` | `int16_t` | 2 | -9000 to 9000 | Board-to-chassis pitch in signed hundredths of a degree. |
+| `yaw_cdeg` | `int16_t` | 2 | -18000 to 18000 | Board-to-chassis yaw in signed hundredths of a degree. |
+| `x_um` | `int32_t` | 4 | -10000000 to 10000000 | Signed displacement from the tracking origin to the BMI088 chip along chassis +X (forward), in micrometres. |
+| `y_um` | `int32_t` | 4 | -10000000 to 10000000 | Signed displacement from the tracking origin to the BMI088 chip along chassis +Y (left), in micrometres. |
+| `z_um` | `int32_t` | 4 | -10000000 to 10000000 | Signed displacement from the tracking origin to the BMI088 chip along chassis +Z (up), in micrometres. |
+| `configured` | `bool` | 1 | — | True after explicit mount setup or restore. False selects legacy per-mode yaw. |
 
 #### Errors
 

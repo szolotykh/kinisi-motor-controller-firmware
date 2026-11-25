@@ -11,7 +11,7 @@ enum { FUSION_EST_CALIBRATING = 1, FUSION_EST_OK = 0,
        FUSION_EST_TIME = 2, FUSION_EST_IMU = 3, FUSION_EST_MOTION = 4 };
 typedef struct {
     uint64_t accel_us, gyro_us;
-    double ax, ay, az, gz; // chassis SI; level, centered mount required by caller
+    double ax, ay, az, gz; // Chassis SI at the tracking origin, including gravity along +Z.
     bool valid;
 } fusion_imu_t;
 typedef struct {
@@ -50,8 +50,8 @@ static inline void fusion_estimator_init(fusion_estimator_t *s)
 // Encoder twist covers (previous_us, now]. IMU timestamps are acquisition times,
 // not SPI completion times. A held sample is usable for at most 35 ms; calibration
 // counts only samples for which BOTH channels advanced. No auto reset on failure.
-static inline bool fusion_estimator_step(fusion_estimator_t *s, uint64_t now,
-                                         const double wheel[3], const fusion_imu_t *imu)
+static inline bool fusion_estimator_interval(fusion_estimator_t *s, uint64_t now,
+        const double wheel[3], const fusion_imu_t *imu, bool source_aligned, double wheel_age)
 {
     s->status = FUSION_EST_TIME;
     if (!now || (s->previous_us && (now <= s->previous_us || now - s->previous_us > 60000))) return false;
@@ -75,7 +75,7 @@ static inline bool fusion_estimator_step(fusion_estimator_t *s, uint64_t now,
         double accel_dt=(imu->accel_us-s->last_accel_us)*1e-6;
         double gyro_dt=(imu->gyro_us-s->last_gyro_us)*1e-6;
         double accel_ahead=fmax(0.,(now-imu->accel_us)*1e-6-dt*.5);
-        double gyro_ahead=fmax(0.,(now-imu->gyro_us)*1e-6-dt*.5);
+        double gyro_ahead=fmax(0.,(now-imu->gyro_us)*1e-6-(source_aligned ? 0. : dt*.5));
         if (accel_dt >= .005 && accel_dt <= .035) { ax+=(imu->ax-s->last_ax)*accel_ahead/accel_dt; ay+=(imu->ay-s->last_ay)*accel_ahead/accel_dt; }
         if (gyro_dt >= .005 && gyro_dt <= .035) gz+=(imu->gz-s->last_gz)*gyro_ahead/gyro_dt;
     }
@@ -117,8 +117,18 @@ static inline bool fusion_estimator_step(fusion_estimator_t *s, uint64_t now,
     }
     s->wheel_yaw_filtered += dt/(s->wheel_tau+dt)*(wheel[2]-s->wheel_yaw_filtered);
     double old_vx = s->vx, old_vy = s->vy;
+    double previous_wz = s->wz;
     s->wz = gz - s->bias[2];
-    double angle = s->wz * dt, c = cos(angle), sn = sin(angle);
+    double interval_wz = source_aligned ? .5*(previous_wz+s->wz) : s->wz;
+    double angle = interval_wz * dt, c = cos(angle), sn = sin(angle);
+    if (source_aligned) {
+        // The shaft observation is an interval mean. Carry its midpoint
+        // estimate to the source watermark before forming an innovation.
+        // The complementary innovation below already rejects wheel noise.
+        double wc=cos(s->wz*wheel_age), ws=sin(s->wz*wheel_age);
+        measured[0]=wc*wheel[0]+ws*wheel[1]+(ax-s->bias[0])*wheel_age;
+        measured[1]=-ws*wheel[0]+wc*wheel[1]+(ay-s->bias[1])*wheel_age;
+    }
     // d(v_body)/dt = a_body - omega cross v_body. Rotate old body velocity
     // into the new body axes, then integrate the measured specific force.
     s->vx = c*old_vx + sn*old_vy + (ax - s->bias[0])*dt;
@@ -157,10 +167,17 @@ static inline bool fusion_estimator_step(fusion_estimator_t *s, uint64_t now,
         s->vx=state[0]; s->vy=state[1]; s->bias[0]=state[2]; s->bias[1]=state[3];
         memcpy(s->covariance,p,sizeof(p));
     }
-    double heading = s->yaw + angle*0.5;
-    // Interval-average output twist is the current filter's body estimate.
-    s->x += (s->vx*cos(heading)-s->vy*sin(heading))*dt;
-    s->y += (s->vx*sin(heading)+s->vy*cos(heading))*dt;
+    if (source_aligned) {
+        // Integrate adjacent endpoint velocities in the same world frame.
+        double c0=cos(s->yaw), s0=sin(s->yaw);
+        double c1=c0*c-s0*sn, s1=s0*c+c0*sn;
+        s->x+=.5*dt*(old_vx*c0-old_vy*s0+s->vx*c1-s->vy*s1);
+        s->y+=.5*dt*(old_vx*s0+old_vy*c0+s->vx*s1+s->vy*c1);
+    } else {
+        double heading = s->yaw + angle*0.5;
+        s->x += (s->vx*cos(heading)-s->vy*sin(heading))*dt;
+        s->y += (s->vx*sin(heading)+s->vy*cos(heading))*dt;
+    }
     s->yaw += angle;
     if (!isfinite(s->x) || !isfinite(s->y) || !isfinite(s->yaw) ||
         !isfinite(s->vx) || !isfinite(s->vy) || !isfinite(s->wz)) {
@@ -170,5 +187,11 @@ static inline bool fusion_estimator_step(fusion_estimator_t *s, uint64_t now,
     s->sample_us = now;
     s->status = FUSION_EST_OK;
     return true;
+}
+
+static inline bool fusion_estimator_step(fusion_estimator_t *s, uint64_t now,
+                                         const double wheel[3], const fusion_imu_t *imu)
+{
+    return fusion_estimator_interval(s,now,wheel,imu,false,0.);
 }
 #endif

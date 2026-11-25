@@ -16,6 +16,21 @@ static void calibrate(fusion_estimator_t *s, unsigned family)
 }
 int main(void)
 {
+    // A published endpoint rate belongs at the end of its source interval.
+    // Ramps integrate to half the final rate times the elapsed time.
+    for (int turning=0; turning<=1; ++turning) {
+        fusion_estimator_t s; calibrate(&s,0);
+        for (unsigned i=1; i<=25; ++i) {
+            double elapsed=.02*i;
+            uint64_t t=1600000+20000*i;
+            double wheel[3]={turning ? 0 : elapsed-.01,0,turning ? 10*(elapsed-.01) : 0};
+            fusion_imu_t imu={t,t,turning ? .02 : 1.02,-.01,9.80665,
+                              .003+(turning ? 10*elapsed : 0),true};
+            assert(fusion_estimator_interval(&s,t,wheel,&imu,true,.01));
+        }
+        if (turning) assert(fabs(s.wz-5)<1e-10 && fabs(s.yaw-1.25)<1e-10);
+        else assert(fabs(s.vx-.5)<1e-10 && fabs(s.x-.125)<1e-10);
+    }
     for(unsigned family=0;family<2;++family) {
         fusion_estimator_t s; calibrate(&s,family);
         double wheel[3]={0};

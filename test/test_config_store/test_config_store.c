@@ -38,6 +38,28 @@ int main(void)
     assert(config_store_save(&second, sizeof(second)));
     memcpy(baseline, fram, sizeof(fram));
 
+    // A longer replacement must preserve the newest shorter legacy slot at
+    // every interruption, including when that legacy slot is slot zero.
+    const uint32_t extended[] = {401, 402, 403};
+    for (int newest_slot = 1; newest_slot >= 0; --newest_slot) {
+        uint8_t legacy_image[sizeof(fram)];
+        memcpy(fram, baseline, sizeof(fram));
+        if (newest_slot == 0) assert(config_store_save(&third, sizeof(third)));
+        memcpy(legacy_image, fram, sizeof(fram));
+        bool committed = false;
+        for (int bytes = 0; bytes <= 255 && !committed; ++bytes) {
+            memcpy(fram, legacy_image, sizeof(fram));
+            write_budget = bytes;
+            committed = config_store_save(extended, sizeof(extended));
+            uint32_t actual[3] = {0};
+            uint16_t size = config_store_load_latest(actual, sizeof(actual));
+            if (committed) assert(size == sizeof(extended) && !memcmp(extended, actual, size));
+            else assert(size == sizeof(first) && actual[0] == (newest_slot ? second : third));
+        }
+        assert(committed);
+        write_budget = -1;
+    }
+
     // Cut after every possible byte, including when replacing a previously
     // committed slot. Only the prior setup is selectable until commit.
     int cut = 0;

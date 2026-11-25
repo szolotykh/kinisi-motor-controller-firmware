@@ -38,7 +38,7 @@ static uint32_t checksum(const record_t *record)
 
 // Distinguish invalid records from a failed bus transaction. An unreadable
 // slot might contain the newest setup and must never be selected for overwrite.
-static bool find_current(uint16_t length, int *current, uint32_t *generation)
+static bool find_current(int *current, uint32_t *generation)
 {
     *current = -1;
     *generation = 0;
@@ -48,7 +48,8 @@ static bool find_current(uint16_t length, int *current, uint32_t *generation)
         if (!hw_fram_read(base + MARKER_OFFSET, &marker, 1)) return false;
         if (marker != COMMITTED) continue;
         if (!hw_fram_read(base, &readback, sizeof(readback))) return false;
-        if (readback.magic != magic || readback.version != 1 || readback.length != length ||
+        if (readback.magic != magic || readback.version != 1 || !readback.length ||
+            readback.length > CONFIG_STORE_MAX_PAYLOAD ||
             readback.model != KINISI_BOARD_MODEL || readback.major != KINISI_BOARD_VERSION_MAJOR ||
             readback.minor != KINISI_BOARD_VERSION_MINOR || readback.patch != KINISI_BOARD_VERSION_PATCH ||
             readback.crc != checksum(&readback)) continue;
@@ -62,14 +63,25 @@ static bool find_current(uint16_t length, int *current, uint32_t *generation)
     return true;
 }
 
-bool config_store_load(void *data, uint16_t length)
+static uint16_t load_record(void *data, uint16_t capacity, bool exact)
 {
     int current;
     uint32_t generation;
-    if (!data || !length || length > CONFIG_STORE_MAX_PAYLOAD ||
-        !find_current(length, &current, &generation) || current < 0) return false;
-    memcpy(data, candidate.payload, length);
-    return true;
+    if (!data || !capacity || capacity > CONFIG_STORE_MAX_PAYLOAD ||
+        !find_current(&current, &generation) || current < 0 || candidate.length > capacity ||
+        (exact && candidate.length != capacity)) return 0;
+    memcpy(data, candidate.payload, candidate.length);
+    return candidate.length;
+}
+
+bool config_store_load(void *data, uint16_t length)
+{
+    return load_record(data, length, true) != 0;
+}
+
+uint16_t config_store_load_latest(void *data, uint16_t capacity)
+{
+    return load_record(data, capacity, false);
 }
 
 static bool set_marker(uint16_t base, uint8_t value)
@@ -84,7 +96,7 @@ bool config_store_save(const void *data, uint16_t length)
     int current;
     uint32_t generation;
     if (!data || !length || length > CONFIG_STORE_MAX_PAYLOAD ||
-        !find_current(length, &current, &generation)) return false;
+        !find_current(&current, &generation)) return false;
     const uint16_t target = current == 0 ? SLOT_SIZE : 0;
     memset(&candidate, 0, sizeof(candidate));
     candidate.magic = magic;
@@ -104,6 +116,7 @@ bool config_store_save(const void *data, uint16_t length)
            set_marker(target, COMMITTED);
 }
 #else
+uint16_t config_store_load_latest(void *data, uint16_t capacity) { (void)data; (void)capacity; return 0; }
 bool config_store_load(void *data, uint16_t length) { (void)data; (void)length; return false; }
 bool config_store_save(const void *data, uint16_t length) { (void)data; (void)length; return false; }
 #endif

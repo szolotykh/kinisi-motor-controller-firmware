@@ -2,6 +2,7 @@
 // Included once by the command dispatcher, also compiled by the native board.
 #include "imu_tracking.h"
 #include "imu_only_estimator.h"
+#include "imu_mount_math.h"
 #include "hw_clock.h"
 #include "hw_imu.h"
 #include "commands.h"
@@ -15,6 +16,8 @@
 static feedback_frame_t tracking_frame;
 #endif
 static imu_only_state_t tracker;
+static imu_mount_frame_t tracking_mount;
+static imu_mount_history_t tracking_history;
 static SemaphoreHandle_t tracking_mutex;
 static osThreadId_t tracking_worker;
 static bool (*tracking_start_producer)(void);
@@ -72,6 +75,20 @@ static void tracking_update(void)
     uint64_t now = hw_clock_microseconds();
     tracking_deadline(now);
     if (result == HW_IMU_OK) {
+        if (tracking_mount.enabled) {
+            if (!a || !g || a>now || g>now || a<tracking_history.a || g<tracking_history.g) {imu_only_fail(&tracker,IMU_ONLY_TIMESTAMP); goto done;}
+            if (a<=tracker.started_us || g<=tracker.started_us) goto done;
+            if (now-a>IMU_ONLY_MAX_AGE_US || now-g>IMU_ONLY_MAX_AGE_US) {
+                imu_only_fail(&tracker,IMU_ONLY_STALE); goto done;
+            }
+            imu_mount_result_t mr=imu_mount_observe(&tracking_mount,&tracking_history,&raw,a,g,tracker.bias_gz,IMU_ONLY_MAX_AGE_US,&raw);
+            if (mr==MOUNT_NEED_HISTORY) goto done;
+            if (mr!=MOUNT_SAMPLE_OK) {
+                uint8_t reason=mr==MOUNT_BAD_TIME?IMU_ONLY_TIMESTAMP:mr==MOUNT_GAP?IMU_ONLY_STALE:
+                    mr==MOUNT_SATURATED?IMU_ONLY_SATURATION:mr==MOUNT_OFF_PLANE?IMU_ONLY_MOUNT_INVALID:IMU_ONLY_UNAVAILABLE;
+                imu_only_fail(&tracker,reason); goto done;
+            }
+        }
         imu_only_sample_t sample = {a,
                                     g,
                                     raw.acceleration_x,
@@ -119,6 +136,7 @@ static void tracking_update(void)
     } else if (result != HW_IMU_NOT_READY) {
         imu_only_fail(&tracker, result == HW_IMU_STALE ? IMU_ONLY_STALE : IMU_ONLY_UNAVAILABLE);
     }
+done:
     tracking_publish_active();
 }
 
@@ -175,7 +193,9 @@ static uint8_t tracking_configure(uint8_t action, uint8_t confirmed, double yaw,
         tracking_generation = (tracking_generation + 1u) | UINT32_C(0x80000000);
         if (tracking_begin)
             tracking_begin(tracking_generation);
+        tracking_history=(imu_mount_history_t){0};
         imu_only_start(&tracker, hw_clock_microseconds(), yaw, true);
+        if (tracking_mount.enabled) { tracker.cosine=1; tracker.sine=0; }
         tracking_origin = published_sample = 0;
         tracking_elapsed = 0;
     }

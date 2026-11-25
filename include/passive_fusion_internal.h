@@ -9,10 +9,17 @@ static struct {
     SemaphoreHandle_t lock;
     feedback_fusion_mount mount;
     double c, s;
+    imu_mount_frame_t mounting;
+    imu_mount_history_t history;
     fusion_estimator_t estimator;
     feedback_frame_t frame;
     uint32_t epoch, generation, sequence;
     uint64_t start, encoder, accel, gyro, last_good;
+    struct {
+        uint64_t start, end;
+        double twist[3];
+        bool stationary;
+    } previous_wheels;
     uint8_t reason, fault;
 } passive;
 
@@ -30,6 +37,8 @@ uint32_t passive_fusion_acquisition_epoch(void)
 
 static void passive_restart(bool enabled)
 {
+    passive.history=(imu_mount_history_t){0};
+    passive.previous_wheels.end=0;
     fusion_estimator_init(&passive.estimator);
     passive.last_good = 0;
     passive.start = hw_clock_microseconds();
@@ -54,7 +63,7 @@ static uint8_t passive_configure(bool enable, const double *yaw)
 {
     if (!passive.lock) passive.lock = xSemaphoreCreateMutex();
     if (!passive.lock || !xSemaphoreTake(passive.lock,portMAX_DELAY)) return RESPONSE_INTERNAL_ERROR;
-    bool run = enable && (yaw || passive.mount.confirmed);
+    bool run = enable && (yaw || passive.mount.confirmed || passive.mounting.enabled);
     uint8_t result = RESPONSE_OK;
     if (run && start_physical_reader && !start_physical_reader()) result = RESPONSE_INTERNAL_ERROR;
     else {
@@ -83,8 +92,37 @@ uint8_t passive_fusion_mount(double yaw)
 
 feedback_fusion_mount passive_fusion_get_mount(void) { return passive.mount; } // Serialized command dispatcher.
 
+// Command/boot thread is the only configuration writer. Prepare all resources
+// before publishing either transform. Observers hold their own episode mutex.
+uint8_t platform_fusion_set_mount(const imu_mount_frame_t *frame)
+{
+    bool enabled=feedback_requested()==FEEDBACK_SOURCE_FUSED && (frame->enabled || passive.mount.confirmed);
+    if (!passive.lock) passive.lock=xSemaphoreCreateMutex();
+    if (!mutex) mutex=xSemaphoreCreateMutex();
+    if (!passive.lock || !mutex || (enabled && start_physical_reader && !start_physical_reader()))
+        return RESPONSE_INTERNAL_ERROR;
+    if (!xSemaphoreTake(mutex,portMAX_DELAY)) return RESPONSE_INTERNAL_ERROR;
+    if (!xSemaphoreTake(passive.lock,portMAX_DELAY)) {
+        xSemaphoreGive(mutex);
+        return RESPONSE_INTERNAL_ERROR;
+    }
+    experiment_mount=*frame;
+    if (experiment.mode==FUSION_MODE_FUSED) {
+        restart_batch(true);
+        experiment.health=FUSION_HEALTH_WAITING;
+        experiment.fault=FUSION_FAULT_BIAS_NOT_READY;
+    }
+    passive.mounting=*frame;
+    passive_restart(enabled);
+    xSemaphoreGive(passive.lock);
+    xSemaphoreGive(mutex);
+    return RESPONSE_OK;
+}
+
 static void passive_reject(uint8_t reason, uint8_t fault)
 {
+    passive.history=(imu_mount_history_t){0};
+    passive.previous_wheels.end=0;
     if (passive.reason == FEEDBACK_REASON_OK) feedback_invalidate(FEEDBACK_SOURCE_FUSED);
     fusion_estimator_init(&passive.estimator);
     passive.reason=reason;
@@ -126,7 +164,7 @@ void passive_fusion_observe(uint32_t epoch, uint64_t previous, uint64_t at, plat
         goto done;
     }
     passive.encoder=at;
-    uint8_t fault=imu_problem(status,&raw,at,a,g,passive.accel,passive.gyro);
+    uint8_t fault=imu_problem(status,&raw,at,a,g,passive.accel,passive.gyro,!passive.mounting.enabled);
     if (fault) {
         uint8_t reason=fault==FUSION_FAULT_STALE ? FEEDBACK_REASON_STALE :
             fault==FUSION_FAULT_IMU_UNAVAILABLE ? FEEDBACK_REASON_UNAVAILABLE : FEEDBACK_REASON_FAULT;
@@ -140,14 +178,47 @@ void passive_fusion_observe(uint32_t epoch, uint64_t previous, uint64_t at, plat
         passive_reject(FEEDBACK_REASON_UNAVAILABLE,FUSION_FAULT_ENCODER_UNAVAILABLE);
         goto done;
     }
-    if (!passive.estimator.calibrated && (!stationary || moved)) {
+    bool at_rest=stationary && !moved;
+    uint64_t watermark=at;
+    double wheel_age=0.;
+    if (passive.mounting.enabled) {
+        // Physical IMU delivery lags the newest wheel boundary. Retain the
+        // current interval for the next update; consuming it now would pull
+        // a later shaft observation into an earlier inertial estimate.
+        uint64_t begin=passive.previous_wheels.start, end=passive.previous_wheels.end;
+        bool previous_rest=passive.previous_wheels.stationary;
+        for (unsigned i=0;i<3;++i) {
+            double current=wheel[i];
+            wheel[i]=passive.previous_wheels.twist[i];
+            passive.previous_wheels.twist[i]=current;
+        }
+        passive.previous_wheels.start=previous;
+        passive.previous_wheels.end=at;
+        passive.previous_wheels.stationary=at_rest;
+        if (end!=previous || end<=begin) goto done;
+        watermark=a>g?a:g;
+        if (watermark<end) watermark=end;
+        uint64_t midpoint=begin+(end-begin)/2;
+        wheel_age=(watermark-midpoint)*1e-6;
+        at_rest=previous_rest;
+    }
+    if (!passive.estimator.calibrated && !at_rest) {
         passive_reject(FEEDBACK_REASON_CALIBRATING,FUSION_FAULT_BIAS_NOT_READY);
         goto done;
     }
     passive.accel=a; passive.gyro=g;
-    fusion_imu_t imu=body_imu(&raw,a,g,passive.c,passive.s);
     fusion_estimator_t *e=&passive.estimator;
-    if (fusion_estimator_step(e,at,wheel,&imu)) {
+    fusion_imu_t imu;
+    fault=origin_imu(&passive.mounting,&passive.history,&raw,a,g,passive.c,passive.s,e->bias[2],&imu);
+    if (fault==FUSION_FAULT_BIAS_NOT_READY) goto done;
+    if (fault) {
+        passive_reject(fault==FUSION_FAULT_STALE?FEEDBACK_REASON_STALE:FEEDBACK_REASON_FAULT,fault);
+        goto done;
+    }
+    // An encoder tick can catch up to the die timestamps that we already
+    // published. Retain its interval, but never re-integrate that watermark.
+    if (passive.mounting.enabled && watermark==e->previous_us) goto done;
+    if (fusion_estimator_interval(e,watermark,wheel,&imu,passive.mounting.enabled,wheel_age)) {
         passive.reason=FEEDBACK_REASON_OK;
         passive.fault=0;
         ++passive.sequence;
@@ -164,9 +235,10 @@ done:
 
 void passive_fusion_sample(feedback_snapshot_t *out)
 {
-    if (!passive.mount.confirmed) { out->reason=FEEDBACK_REASON_MOUNT_REQUIRED; return; }
+    if (!passive.lock) { out->reason=FEEDBACK_REASON_MOUNT_REQUIRED; return; }
     if (!xSemaphoreTake(passive.lock,portMAX_DELAY)) { out->reason=FEEDBACK_REASON_UNAVAILABLE; return; }
-    if (hw_motor_drivers_sleeping()) { out->reason=FEEDBACK_REASON_INHIBITED; out->detail=FUSION_FAULT_INHIBITED; }
+    if (!passive.mount.confirmed && !passive.mounting.enabled) out->reason=FEEDBACK_REASON_MOUNT_REQUIRED;
+    else if (hw_motor_drivers_sleeping()) { out->reason=FEEDBACK_REASON_INHIBITED; out->detail=FUSION_FAULT_INHIBITED; }
     else if (!platform_is_odometry_enabled()) { out->reason=FEEDBACK_REASON_NOT_STARTED; out->detail=FUSION_FAULT_ENCODER_UNAVAILABLE; }
     else {
         if (passive.reason == FEEDBACK_REASON_OK && passive_late(hw_clock_microseconds()))
@@ -209,7 +281,7 @@ void passive_health_read(feedback_source_health *out)
     out->timestamp_us=passive.last_good;
     out->sequence=passive.last_good?passive.sequence:0;
     if (feedback_requested()==FEEDBACK_SOURCE_FUSED) {
-        if (!passive.mount.confirmed) out->reason=FEEDBACK_REASON_MOUNT_REQUIRED;
+        if (!passive.mount.confirmed && !passive.mounting.enabled) out->reason=FEEDBACK_REASON_MOUNT_REQUIRED;
         else if (hw_motor_drivers_sleeping()) {out->reason=FEEDBACK_REASON_INHIBITED;out->detail=FUSION_FAULT_INHIBITED;}
         else if (platform_is_odometry_enabled()) {
             if (passive.reason==FEEDBACK_REASON_OK && passive_late(hw_clock_microseconds()))

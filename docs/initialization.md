@@ -145,6 +145,14 @@ INIT handshake on a running board preserves edits made since the last Save.
 Read the running geometry and directions with `GET_CONFIGURATION_FIELD` and
 the applied frequency with `GET_PWM_FREQUENCY`.
 
+Protocol 2.23 also saves the explicit IMU installation and allows a mount to
+be saved before platform initialization. Use `GET_IMU_MOUNT` to read the
+geometry restored from the revision 3 payload. Revision 1 and 2 payloads
+restore their existing settings with the physical mount unconfigured. Read
+the setup guide before converting older client-side yaw values. A fresh
+stationary initialization establishes the tracking origin after reboot.
+[IMU installation and yaw conversion](imu-mounting.md)
+
 The journal occupies the first 512 bytes of the 8 KiB FRAM. Each 256-byte
 slot has its own commit marker. Save invalidates the older slot, writes and
 reads back the complete replacement, then writes and verifies its marker.

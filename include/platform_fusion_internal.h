@@ -6,6 +6,10 @@
 #include "fusion_estimator.h"
 #include "commands.h"
 #include <limits.h>
+#include "imu_mount_math.h"
+
+static imu_mount_frame_t experiment_mount;
+static imu_mount_history_t experiment_history;
 
 static struct {
     uint8_t mode, health, fault;
@@ -83,6 +87,7 @@ static void clear_target(void)
 
 static void restart_estimator(void)
 {
+    experiment_history = (imu_mount_history_t){0};
     fusion_estimator_init(&experiment.estimator);
     experiment.accel_us = experiment.gyro_us = 0;
 }
@@ -179,6 +184,7 @@ static bool inhibited(void)
 
 static void reject_feedback(uint8_t reason)
 {
+    experiment_history = (imu_mount_history_t){0};
     experiment.rebase_pose = true;
     experiment.health = FUSION_HEALTH_FAULT;
     experiment.fault = reason;
@@ -250,7 +256,7 @@ static void qualify_pose(fusion_estimator_t *e, platform_odometry_t pose)
 }
 
 static uint8_t imu_problem(hw_imu_status_t status, const hw_imu_sample_t *raw,
-                           uint64_t at, uint64_t accel, uint64_t gyro, uint64_t previous_accel, uint64_t previous_gyro)
+                           uint64_t at, uint64_t accel, uint64_t gyro, uint64_t previous_accel, uint64_t previous_gyro, bool legacy)
 {
     if (status == HW_IMU_STALE) return FUSION_FAULT_STALE;
     if (status != HW_IMU_OK || !accel || !gyro) return FUSION_FAULT_IMU_UNAVAILABLE;
@@ -266,8 +272,8 @@ static uint8_t imu_problem(hw_imu_status_t status, const hw_imu_sample_t *raw,
         fabs(raw->angular_velocity_y) >= 8 || fabs(raw->angular_velocity_z) >= 8) return FUSION_FAULT_SATURATION;
     // The experiment supports a centered, level mount. Off-plane rotation or a
     // grossly tilted gravity vector invalidates planar acceleration feedback.
-    if (fabs(raw->angular_velocity_x) > 0.35 || fabs(raw->angular_velocity_y) > 0.35 ||
-        fabs(raw->acceleration_z - 9.80665) > 1.0) return FUSION_FAULT_MOUNT_INVALID;
+    if (legacy && (fabs(raw->angular_velocity_x) > 0.35 || fabs(raw->angular_velocity_y) > 0.35 ||
+        fabs(raw->acceleration_z - 9.80665) > 1.0)) return FUSION_FAULT_MOUNT_INVALID;
     return FUSION_FAULT_NONE;
 }
 
@@ -276,6 +282,35 @@ static fusion_imu_t body_imu(const hw_imu_sample_t *raw, uint64_t accel, uint64_
     return (fusion_imu_t){.accel_us=accel, .gyro_us=gyro, .valid=true,
         .ax=-c*raw->acceleration_x+s*raw->acceleration_y, .ay=-s*raw->acceleration_x-c*raw->acceleration_y,
         .az=raw->acceleration_z, .gz=raw->angular_velocity_z};
+}
+
+static uint8_t mounted_imu_fault(imu_mount_result_t result)
+{
+    switch (result) {
+    case MOUNT_SAMPLE_OK: return FUSION_FAULT_NONE;
+    case MOUNT_NEED_HISTORY: return FUSION_FAULT_BIAS_NOT_READY;
+    case MOUNT_BAD_TIME: return FUSION_FAULT_TIMESTAMP;
+    case MOUNT_GAP: return FUSION_FAULT_STALE;
+    case MOUNT_SATURATED: return FUSION_FAULT_SATURATION;
+    case MOUNT_OFF_PLANE: return FUSION_FAULT_MOUNT_INVALID;
+    default: return FUSION_FAULT_IMU_UNAVAILABLE;
+    }
+}
+
+static uint8_t origin_imu(const imu_mount_frame_t *frame, imu_mount_history_t *history,
+                          const hw_imu_sample_t *raw,uint64_t a,uint64_t g,
+                          double c,double s,double bias,fusion_imu_t *imu)
+{
+    if (!frame->enabled) {
+        *imu=body_imu(raw,a,g,c,s);
+        return FUSION_FAULT_NONE;
+    }
+    hw_imu_sample_t origin;
+    imu_mount_result_t result=imu_mount_observe(frame,history,raw,a,g,bias,60000,&origin);
+    if (result==MOUNT_SAMPLE_OK)
+        *imu=(fusion_imu_t){.accel_us=a,.gyro_us=g,.valid=true,.ax=origin.acceleration_x,
+            .ay=origin.acceleration_y,.az=origin.acceleration_z,.gz=origin.angular_velocity_z};
+    return mounted_imu_fault(result);
 }
 
 void platform_fusion_observe(uint32_t epoch, uint64_t previous, uint64_t at,
@@ -316,7 +351,7 @@ void platform_fusion_observe(uint32_t epoch, uint64_t previous, uint64_t at,
     experiment.twist = (platform_odometry_t){wheel[0], wheel[1], wheel[2]};
     experiment.encoder_valid = true;
     if (need_imu) {
-        uint8_t problem = imu_problem(status, &raw, at, accel, gyro, experiment.accel_us, experiment.gyro_us);
+        uint8_t problem = imu_problem(status, &raw, at, accel, gyro, experiment.accel_us, experiment.gyro_us, !experiment_mount.enabled);
         if (problem) {
             reject_feedback(problem);
             goto reset;
@@ -328,7 +363,16 @@ void platform_fusion_observe(uint32_t epoch, uint64_t previous, uint64_t at,
         experiment.accel_us = accel;
         experiment.gyro_us = gyro;
         fusion_estimator_t *e = &experiment.estimator;
-        fusion_imu_t imu = body_imu(&raw, accel, gyro, experiment.cosine, experiment.sine);
+        fusion_imu_t imu;
+        problem=origin_imu(&experiment_mount,&experiment_history,&raw,accel,gyro,
+                           experiment.cosine,experiment.sine,e->bias[2],&imu);
+        if (problem==FUSION_FAULT_BIAS_NOT_READY) {
+            experiment.health=FUSION_HEALTH_WAITING;
+            experiment.fault=problem;
+            clear_target();
+            goto done;
+        }
+        if (problem) { reject_feedback(problem); goto reset; }
         if (!e->calibrated && moved) {
             fusion_estimator_init(e);
             experiment.health = FUSION_HEALTH_WAITING;

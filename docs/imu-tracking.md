@@ -33,12 +33,27 @@ Other consumers can read the same sensor cache independently.
 
 ## Deliberate stationary origin
 
-Use a rigid, level mount with **sensor +Z up** and the IMU centered at the chassis
-reference point. Chassis axes are forward, left, up. Declare `mounting_yaw_rad`
-as the angle of **sensor +X**, counterclockwise about chassis +Z, in [-pi, pi].
-The transform is `Rz(yaw) * (sensor_x, sensor_y, sensor_z)`. This declaration uses
-sensor axes, not the board outline or the fusion experiment's board-axis angle.
-A backwards sensor requires pi radians. Tilt and lever-arm compensation are unsupported.
+On firmware with `capabilities.imu_mounting`, set the board orientation and the
+signed displacement from the chassis tracking origin to the BMI088. Both
+tracking modes then use that installation, including on side or inverted
+mounts. The reported pose and velocity describe the chassis origin. The
+chassis must move in a horizontal plane. [Installation and axis diagram](imu-mounting.md)
+
+If `GET_IMU_MOUNT.configured` is false, or on older firmware, use the original
+centered, level installation with **sensor +Z up**. In that mode,
+`mounting_yaw_rad` is the angle of **sensor +X** about chassis +Z in [-pi, pi].
+A rearward-facing sensor requires pi radians. With an explicit installation
+the same argument is still validated for wire compatibility and the stored
+board-to-chassis transform supplies the orientation.
+
+For an offset chip, the first fresh gyro observation starts angular-rate history.
+Two distinct rates determine tangential acceleration. The firmware evaluates
+the rate at the accelerometer acquisition time for centripetal compensation.
+It uses a linear rate over this short interval and allows up to 15 ms of
+accel/gyro skew. Standalone tracking faults on a source gap exceeding 35 ms
+during the episode. Correcting a held accelerometer value once preserves its
+original acquisition time. Rapid changes in angular acceleration between reads
+and flex in the mount limit compensation accuracy.
 
 `SET_IMU_TRACKING(action, stationary_mount_confirmed, mounting_yaw_rad)` supports:
 
@@ -53,7 +68,8 @@ An ACK confirms the action, not a valid estimate. IMU stationarity checks cannot
 distinguish true rest from constant velocity. Caller confirmation is a deliberate
 attestation of rest and the supported mounting, not a measured guarantee.
 Faults, interruptions and expiry require an explicit restart; reconnect and reads
-never start or re-anchor tracking. Nothing is persisted by SAVE_CONFIGURATION.
+never start or re-anchor tracking. `SAVE_CONFIGURATION` can retain explicit mounting
+geometry. A boot requires fresh stationary confirmation, bias calibration and origin.
 
 ## Diagnostics and freshness
 

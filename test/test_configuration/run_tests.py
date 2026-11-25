@@ -27,6 +27,11 @@ sources = ['test/test_configuration/test_idle_hook.c', 'test/test_configuration/
 
 with tempfile.TemporaryDirectory() as folder:
     out = Path(folder)
+    mount_test = out / 'mount_math.exe'
+    subprocess.run([compiler, '-std=c11', '-O2', '-Wall', '-Wextra', '-Werror', '-Iinclude',
+                    '-Ilib/hardware', 'test/test_configuration/test_mount_math.c', '-lm', '-o', str(mount_test)],
+                   cwd=root, check=True)
+    subprocess.run([str(mount_test)], check=True)
     imu_test = out / 'imu_only.exe'
     subprocess.run([compiler, '-std=c11', '-O2', '-Wall', '-Wextra', '-Werror', '-Iinclude',
                     'test/test_imu_only/test_imu_only.c', '-lm', '-o', str(imu_test)], cwd=root, check=True)
@@ -60,6 +65,23 @@ with tempfile.TemporaryDirectory() as folder:
             subprocess.run([str(binary), mode, str(image), str(platform)], check=True, timeout=10)
 
         if revision == 4:
+            for displaced in (0, 1):
+                run("mounted-slow", out/"unconfigured.fram", displaced)
+            for scenario in ("mounted-imu", "mounted-fusion", "mounted-fast"):
+                run(scenario, out/"unconfigured.fram", 0)
+            print("PASS mounted tracking, active/passive fusion, comparison and physical faults")
+            for preset in (0, 1, 2, 3):
+                image = out / f'mounted-{preset}.fram'
+                run('mount-save', image, preset)
+                run('mount-restore', image, preset)
+            run('mounted-boot-fail', out/'mounted-0.fram', 0)
+            migrated = out / 'migrated-mount.fram'
+            run('selector-save', migrated, 2)
+            run('mount-cut', migrated, 3)
+            run('selector-restore', migrated, 2)
+            run('mount-save', migrated, 3)
+            run('mount-restore', migrated, 3)
+            print('PASS physical mount frame, atomic v2 migration, fresh cold boot and standalone IMU setup')
             for preset in (1,2,3):
                 run('source-health',out/'unconfigured.fram',preset)
             for bus in (0,1):

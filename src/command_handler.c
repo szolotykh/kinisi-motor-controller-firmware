@@ -25,6 +25,9 @@
 #include "platform_position.h"
 #include "platform_fusion.h"
 #include "hw_config.h"
+#if BOARD_HAS_IMU_MOUNTING
+#include "imu_mount_wire.h"
+#endif
 #if BOARD_HAS_IMU_TRACKING
 #include "imu_tracking_internal.h"
 #endif
@@ -680,6 +683,33 @@ static uint8_t dispatch_controller_command(controller_command_t* cmd, void (*com
                 cmd->properties.set_platform_position.x,
                 cmd->properties.set_platform_position.y,
                 cmd->properties.set_platform_position.t});
+        case SET_IMU_MOUNT:
+#if BOARD_HAS_IMU_MOUNTING
+        {
+            imu_mount_config_t mount = {
+                .roll_cdeg = cmd->properties.set_imu_mount.roll_cdeg,
+                .pitch_cdeg = cmd->properties.set_imu_mount.pitch_cdeg,
+                .yaw_cdeg = cmd->properties.set_imu_mount.yaw_cdeg,
+                .x_um = cmd->properties.set_imu_mount.x_um,
+                .y_um = cmd->properties.set_imu_mount.y_um,
+                .z_um = cmd->properties.set_imu_mount.z_um,
+                .configured = true
+            };
+            return imu_mount_set(&mount);
+        }
+#else
+            return RESPONSE_SENSOR_NOT_AVAILABLE;
+#endif
+        case GET_IMU_MOUNT:
+#if BOARD_HAS_IMU_MOUNTING
+        {
+            imu_mount_configuration mount = imu_mount_pack(imu_mount_get());
+            command_callback((uint8_t *)&mount, sizeof(mount));
+            return RESPONSE_OK;
+        }
+#else
+            return RESPONSE_SENSOR_NOT_AVAILABLE;
+#endif
         case GET_FEEDBACK_SOURCE_HEALTH: case GET_FEEDBACK_IMU_CHANNELS:
 #if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
             return feedback_health_read(cmd->commandType,cmd->commandType==GET_FEEDBACK_SOURCE_HEALTH ?

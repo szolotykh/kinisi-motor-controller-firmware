@@ -27,13 +27,27 @@ mode 0 retains the release path. This is not a general odometry-source selector
 and has no IMU-only mode. Comparative accuracy and physical performance remain
 unmeasured until separately reported.
 
-The caller must declare a rigid, level mount, component side up, with the IMU
-at the chassis reference point. Tilted or offset installations are unsupported.
-Chassis axes are +X forward, +Y left, +Z up. `mounting_yaw_rad` is the angle of
-board +X expressed in chassis XY, counterclockwise about chassis +Z, in [-pi, pi].
-The transform is `Rz(yaw) * (-sensor_x, -sensor_y, sensor_z)`. Gravity cannot
-establish mounting yaw. Supply it from the known installation; do not infer it
-from a stationary reading.
+On a v0.4 controller with `capabilities.imu_mounting`, configure the physical
+board orientation and the offset from the chassis tracking origin to the IMU.
+Active fusion, passive fused telemetry and encoder/IMU comparison share that
+installation. The passive observer accepts the installation as its mounting
+declaration. The chassis +X axis points forward, +Y points left and +Z points
+up. The chassis must move in a horizontal plane. [Installation and axis diagram](imu-mounting.md)
+
+With an unconfigured physical mount, the legacy yaw convention still applies.
+Install the board level and component side up, centered at the reference point.
+`mounting_yaw_rad` is the signed angle of board +X about chassis +Z in [-pi, pi].
+Gravity cannot determine yaw. A saved physical mount survives reboot. Control
+mode, estimates and bias calibration start fresh.
+
+The mounted consumers rotate all three acceleration and angular-rate axes into
+the chassis frame. At a displaced chip they subtract tangential and centripetal
+acceleration at the accelerometer source time. Two distinct gyro observations
+are required after a reset. The fusion and comparison tasks allow up to 60 ms
+between samples for this angular-rate slope, consistent with their maximum
+encoder interval. Each input pair still requires both dies within 35 ms of the
+encoder sample and at most 15 ms apart. An explicit centered installation does
+not require an angular-rate slope.
 
 Configure only with motion stopped and every commanded target and motor output
 zero; initialized controllers at idle zero targets are allowed. Firmware rejects

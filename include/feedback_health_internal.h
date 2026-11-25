@@ -15,6 +15,9 @@ static struct {
 typedef struct { double x,y,w; } motion3_t;
 static struct {
     bool mount,calibrated,have_window,conflict;
+    imu_mount_frame_t mounting;
+    imu_mount_history_t history;
+    uint64_t mounting_boundary;
     double c,s;
     uint32_t calibration_count, agreements, disagreements;
     uint64_t calibration_start,previous_a,previous_g,window,compared,last_encoder;
@@ -69,6 +72,7 @@ static void health_forget_window(void)
 
 static void reset_comparison_locked(void)
 {
+    comparison.history=(imu_mount_history_t){0};
     health_forget_window();
     comparison.calibrated=false;
     comparison.calibration_start=comparison.calibration_count=0;
@@ -97,8 +101,67 @@ void feedback_health_mount(double yaw)
     xSemaphoreGive(health_lock);
 }
 
+#if BOARD_HAS_IMU_MOUNTING
+uint8_t platform_fusion_set_mount(const imu_mount_frame_t *frame);
+static imu_mount_config_t installation;
+
+imu_mount_config_t imu_mount_get(void) { return installation; } // Serialized command/restore thread.
+
+static uint8_t apply_mount(const imu_mount_config_t *mount)
+{
+    health_init();
+    if (!tracking_mutex) tracking_mutex=xSemaphoreCreateMutex();
+    if (!tracking_mutex || !health_lock) return RESPONSE_INTERNAL_ERROR;
+    imu_mount_frame_t frame=imu_mount_frame(mount);
+    // Reserve every mutable observer before changing the first. Normal polling
+    // releases the health lock before calling fusion, and tracking never takes
+    // the health or fusion locks. No source estimate spans installations.
+    if (!xSemaphoreTake(tracking_mutex,portMAX_DELAY)) return RESPONSE_INTERNAL_ERROR;
+    if (!xSemaphoreTake(health_lock,portMAX_DELAY)) {
+        xSemaphoreGive(tracking_mutex);
+        return RESPONSE_INTERNAL_ERROR;
+    }
+    uint8_t result=platform_fusion_set_mount(&frame);
+    if (result!=RESPONSE_OK) {
+        xSemaphoreGive(health_lock);
+        xSemaphoreGive(tracking_mutex);
+        return result;
+    }
+    imu_only_stop(&tracker);
+    tracking_mount=frame;
+    tracking_history=(imu_mount_history_t){0};
+    tracking_origin=published_sample=tracking_elapsed=0;
+    tracking_publish_active();
+    feedback_invalidate(FEEDBACK_SOURCE_IMU_ONLY);
+    comparison.mounting=frame;
+    comparison.mounting_boundary=hw_clock_microseconds();
+    reset_comparison_locked();
+    installation=*mount;
+    xSemaphoreGive(health_lock);
+    xSemaphoreGive(tracking_mutex);
+    return RESPONSE_OK;
+}
+
+uint8_t imu_mount_set(const imu_mount_config_t *mount)
+{
+    if (!imu_mount_valid(mount)) return RESPONSE_INVALID_ARGUMENT;
+    if (!feedback_switch_safe()) return RESPONSE_SOURCE_SWITCH_UNSAFE;
+    if (mount->configured==installation.configured && mount->roll_cdeg==installation.roll_cdeg &&
+        mount->pitch_cdeg==installation.pitch_cdeg && mount->yaw_cdeg==installation.yaw_cdeg &&
+        mount->x_um==installation.x_um && mount->y_um==installation.y_um && mount->z_um==installation.z_um)
+        return RESPONSE_OK;
+    return apply_mount(mount);
+}
+
+bool imu_mount_restore(const imu_mount_config_t *mount)
+{
+    return imu_mount_valid(mount) && apply_mount(mount)==RESPONSE_OK;
+}
+#endif
+
 static void health_imu_failed(uint8_t reason,uint8_t detail)
 {
+    comparison.history=(imu_mount_history_t){0};
     physical_imu.reason=reason; physical_imu.detail=detail;
     physical_imu.recovering=physical_imu.good_a!=0;
     physical_imu.barrier_a=physical_imu.a;
@@ -166,7 +229,7 @@ void feedback_health_poll(void)
 static void health_compare(uint64_t at,uint64_t previous,platform_odometry_t delta,bool valid,bool stationary)
 {
     uint64_t a=physical_imu.good_a,g=physical_imu.good_g;
-    if (!comparison.mount || !valid || physical_imu.reason!=FEEDBACK_REASON_OK ||
+    if ((!comparison.mount && !comparison.mounting.enabled) || !valid || physical_imu.reason!=FEEDBACK_REASON_OK ||
         !previous || at<=previous || at-previous>60000 || a>at || g>at ||
         tracking_age(at,a)>35000 || tracking_age(at,g)>35000) {
         health_forget_window();
@@ -176,6 +239,15 @@ static void health_compare(uint64_t at,uint64_t previous,platform_odometry_t del
     if (comparison.last_encoder && comparison.last_encoder!=previous) health_forget_window();
     comparison.last_encoder=at;
     hw_imu_sample_t r=physical_imu.raw;
+    if (comparison.mounting.enabled) {
+        if (a<=comparison.mounting_boundary || g<=comparison.mounting_boundary) return;
+        imu_mount_result_t mr=imu_mount_observe(&comparison.mounting,&comparison.history,&r,a,g,comparison.calibrated?comparison.bias.w:0,60000,&r);
+        if (mr==MOUNT_NEED_HISTORY) return;
+        if (mr!=MOUNT_SAMPLE_OK) {
+            reset_comparison_locked();
+            return;
+        }
+    }
     if (fabs(r.acceleration_z-9.80665)>1.0 || fabs(r.angular_velocity_x)>.35 || fabs(r.angular_velocity_y)>.35) {
         if (!comparison.calibrated) reset_comparison_locked();
         else health_forget_window();
@@ -183,6 +255,7 @@ static void health_compare(uint64_t at,uint64_t previous,platform_odometry_t del
     }
     motion3_t f={-comparison.c*r.acceleration_x+comparison.s*r.acceleration_y,
                  -comparison.s*r.acceleration_x-comparison.c*r.acceleration_y,r.angular_velocity_z};
+    if (comparison.mounting.enabled) f=(motion3_t){r.acceleration_x,r.acceleration_y,r.angular_velocity_z};
     if (!comparison.calibrated) {
         if (!stationary || hypot(f.x,f.y)>.8 || fabs(f.w)>.08) {
             comparison.calibration_count=0;comparison.calibration_start=0;comparison.sum=(motion3_t){0};
@@ -239,7 +312,7 @@ static void health_compare(uint64_t at,uint64_t previous,platform_odometry_t del
 void feedback_health_observe(uint64_t at,uint64_t previous,platform_odometry_t delta,bool valid,bool stationary)
 {
     if (!health_lock || !xSemaphoreTake(health_lock,portMAX_DELAY)) return;
-    bool sampled=comparison.mount;
+    bool sampled=comparison.mount || comparison.mounting.enabled;
     if (sampled) health_poll_locked();
     health_compare(at,previous,delta,valid,stationary);
     uint8_t reason=physical_imu.reason,detail=physical_imu.detail;

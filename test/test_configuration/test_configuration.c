@@ -177,8 +177,21 @@ static void run_task(task_t task)
     if (!setjmp(task_end)) task.fn(task.arg);
 }
 #endif
-SemaphoreHandle_t xSemaphoreCreateMutex(void) { static unsigned locks[12], n; assert(n < 12); return &locks[n++]; }
-int xSemaphoreTake(SemaphoreHandle_t m, uint32_t timeout) { assert(m && !*(unsigned *)m); *(unsigned *)m = 1; return 1; }
+static unsigned fail_mutex_create, fail_mutex_take;
+SemaphoreHandle_t xSemaphoreCreateMutex(void)
+{
+    static unsigned locks[12], n;
+    if (fail_mutex_create && --fail_mutex_create==0) return NULL;
+    assert(n<12);
+    return &locks[n++];
+}
+int xSemaphoreTake(SemaphoreHandle_t m, uint32_t timeout)
+{
+    if (fail_mutex_take && --fail_mutex_take==0) return 0;
+    assert(m && !*(unsigned *)m);
+    *(unsigned *)m=1;
+    return 1;
+}
 void xSemaphoreGive(SemaphoreHandle_t m) { assert(m && *(unsigned *)m); *(unsigned *)m = 0; }
 
 static connection_t session;
@@ -422,6 +435,10 @@ static void fresh_brake_commands(void)
 #include "feedback_source_scenarios.h"
 #if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
 #include "feedback_health_scenarios.h"
+#if BOARD_HAS_IMU_MOUNTING
+#include "imu_mount_scenarios.h"
+#include "mounted_estimator_scenarios.h"
+#endif
 #endif
 #endif
 int main(int argc, char **argv)
@@ -446,10 +463,33 @@ int main(int argc, char **argv)
     if (file) { assert(fread(fram, 1, sizeof(fram), file) == sizeof(fram)); fclose(file); }
     if (!strcmp(mode, "driver-fault")) failed_motor = 1;
     if (!strcmp(mode, "encoder-fault")) failed_encoder = 2;
+    if (!strcmp(mode,"mounted-boot-fail")) fail_mutex_create=1;
     controller_configuration_restore(); // same cold-boot entry point used before transport initialization
     assert(!tasks_started && !motion_writes && !fram_writes);
     for (int i = 0; i < 4; ++i) assert(output[i] == 0);
     connect();
+#if BOARD_HAS_IMU_MOUNTING
+    if (!strcmp(mode,"mounted-boot-fail")) {
+        assert(!fail_mutex_create && !read_mount().configured && !platform.is_initialized);
+        assert(feedback_requested()==FEEDBACK_SOURCE_ENCODER && !motion_writes && !tasks_started);
+        controller_configuration_restore(); // a subsequent resource-successful cold setup reads the intact journal
+        assert(read_mount().configured && !motion_writes && !tasks_started);
+        return 0;
+    }
+    if (!strcmp(mode,"mounted-imu")) { mounted_imu_case(); return 0; }
+    if (!strcmp(mode,"mounted-slow")) { mounted_slow_case(type!=0); return 0; }
+    if (!strcmp(mode,"mounted-fast")) { mounted_fast_case(); return 0; }
+    if (!strcmp(mode,"mounted-fusion")) { mounted_fusion_case(); return 0; }
+    if (!strncmp(mode, "mount-", 6)) {
+        mount_storage_case(mode, type);
+        if (strcmp(mode, "mount-restore")) {
+            file = fopen(path, "wb");
+            assert(file && fwrite(fram, 1, sizeof(fram), file) == sizeof(fram));
+            fclose(file);
+        }
+        return 0;
+    }
+#endif
 #if BOARD_HAS_IMU_TRACKING
 #if BOARD_HAS_FEEDBACK_SOURCE_SELECTOR
 #if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
@@ -462,7 +502,11 @@ int main(int argc, char **argv)
     if (!strcmp(mode,"selector-slow")) { selector_slow(type); return 0; }
     if (!strcmp(mode,"selector-imu")) { selector_imu(); return 0; }
     if (!strcmp(mode,"selector-platform")) { selector_platform(); return 0; }
-    if (!strncmp(mode,"selector-v1-",12)) { selector_legacy(!strcmp(mode,"selector-v1-factory")); return 0; }
+    if (!strncmp(mode,"selector-v1-",12)) {
+        assert(!read_mount().configured);
+        selector_legacy(!strcmp(mode,"selector-v1-factory"));
+        return 0;
+    }
     if (!strcmp(mode,"selector-save")) {
         select_source(type,RESPONSE_OK);
         configure(PLATFORM_MECANUM);
@@ -471,6 +515,7 @@ int main(int argc, char **argv)
         return 0;
     }
     if (!strcmp(mode,"selector-restore")) {
+        assert(!read_mount().configured);
         feedback_source_status s=selected_status();
         assert(s.requested==type && s.reason==(type==2 ? FEEDBACK_REASON_MOUNT_REQUIRED : FEEDBACK_REASON_NOT_STARTED));
         invalid_vector(); verify(PLATFORM_MECANUM);
@@ -492,6 +537,8 @@ int main(int argc, char **argv)
     }
     if (!strcmp(mode, "brake-policy")) { fresh_brake_commands(); return 0; }
     if (!strcmp(mode, "unsupported")) {
+        request((controller_command_t){.commandType=GET_IMU_MOUNT}, RESPONSE_SENSOR_NOT_AVAILABLE);
+        request((controller_command_t){.commandType=SET_IMU_MOUNT}, RESPONSE_SENSOR_NOT_AVAILABLE);
         request((controller_command_t){.commandType=GET_FEEDBACK_SOURCE_HEALTH},RESPONSE_SENSOR_NOT_AVAILABLE);
         request((controller_command_t){.commandType=GET_FEEDBACK_IMU_CHANNELS},RESPONSE_SENSOR_NOT_AVAILABLE);
         request((controller_command_t){.commandType=SET_FEEDBACK_SOURCE},RESPONSE_SENSOR_NOT_AVAILABLE);

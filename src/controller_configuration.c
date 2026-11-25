@@ -10,6 +10,8 @@
 #include "platform_common.h"
 #include <math.h>
 #include "feedback_source.h"
+#include "imu_mount_wire.h"
+#include <stddef.h>
 
 // Fixed-size payload for the v0.4 STM32, little-endian with binary64 geometry.
 // Explicit padding and masks keep timers, outputs and runtime objects out of FRAM.
@@ -22,6 +24,14 @@ typedef struct {
     uint8_t reserved[5];
 } saved_setup_t;
 _Static_assert(sizeof(saved_setup_t) == 72 && sizeof(double) == 8, "v1 configuration payload layout");
+typedef struct {
+    saved_setup_t base;
+    imu_mount_configuration mount;
+} mounted_setup_t;
+// Store only defined bytes. Keep the old prefix and avoid trailing ABI padding.
+enum { MOUNTED_LENGTH = sizeof(saved_setup_t) + sizeof(imu_mount_configuration) };
+_Static_assert(offsetof(mounted_setup_t, mount) == 72 && MOUNTED_LENGTH == 91,
+               "v3 configuration payload layout");
 
 static uint8_t bit(uint8_t mask, unsigned index)
 {
@@ -89,30 +99,42 @@ static uint8_t platform_motors(uint8_t type)
 
 static bool valid(const saved_setup_t *s)
 {
+    if (s->payload_revision == 0) {
+        if (s->feedback_preference != FEEDBACK_SOURCE_ENCODER) return false;
+    } else if ((s->payload_revision != 2 && s->payload_revision != 3) ||
+               s->feedback_preference > FEEDBACK_SOURCE_FUSED) return false;
+    for (unsigned i = 0; i < sizeof(s->reserved); ++i) if (s->reserved[i]) return false;
+    if (!hw_motor_pwm_frequency_allowed(s->frequency)) return false;
     uint8_t wheels = platform_motors(s->type);
-    if (!wheels || (s->motors & wheels) != wheels ||
+    if ((s->motors & wheels) != wheels ||
         (s->motors | s->encoders) > 15 || (s->motor_reverse & ~s->motors) ||
-        (s->encoder_reverse & ~(s->encoders | wheels)) ||
-        !positive(s->diameter) || !hw_motor_pwm_frequency_allowed(s->frequency)) return false;
-    if (s->type == PLATFORM_OMNI ? s->track_or_length != 0 : !positive(s->track_or_length)) return false;
-    if (s->type == PLATFORM_DIFFERENTIAL ? s->width_or_radius != 0 : !positive(s->width_or_radius)) return false;
+        (s->encoder_reverse & ~(s->encoders | wheels))) return false;
     for (unsigned i = 0; i < 4; ++i) {
         if (bit(s->encoders, i) ? !positive(s->resolution[i]) : s->resolution[i] != 0) return false;
     }
-    if (s->payload_revision == 0) {
-        if (s->feedback_preference != FEEDBACK_SOURCE_ENCODER) return false; // Strict original v1 padding.
-    } else if (s->payload_revision != 2 || s->feedback_preference > FEEDBACK_SOURCE_FUSED) return false;
-    for (unsigned i = 0; i < sizeof(s->reserved); ++i) if (s->reserved[i]) return false;
-    return true;
+    if (s->type == PLATFORM_NONE)
+        return s->payload_revision == 3 && s->diameter == 0 && s->track_or_length == 0 &&
+               s->width_or_radius == 0;
+    return wheels && positive(s->diameter) &&
+        (s->type == PLATFORM_OMNI ? s->track_or_length == 0 : positive(s->track_or_length)) &&
+        (s->type == PLATFORM_DIFFERENTIAL ? s->width_or_radius == 0 : positive(s->width_or_radius));
 }
 
 uint8_t controller_configuration_save(void)
 {
-    if (!platform.is_initialized) return RESPONSE_PLATFORM_NOT_INITIALIZED;
-    saved_setup_t setup;
-    capture(&setup);
-    if (!valid(&setup)) return RESPONSE_INVALID_ARGUMENT;
-    return config_store_save(&setup, sizeof(setup)) ? RESPONSE_OK : RESPONSE_INTERNAL_ERROR;
+    imu_mount_config_t mount = imu_mount_get();
+    if (!platform.is_initialized && !mount.configured) return RESPONSE_PLATFORM_NOT_INITIALIZED;
+    mounted_setup_t setup = {0};
+    capture(&setup.base);
+    uint16_t length = sizeof(setup.base);
+    if (mount.configured) {
+        if (!imu_mount_valid(&mount)) return RESPONSE_INVALID_ARGUMENT;
+        setup.base.payload_revision = 3;
+        setup.mount = imu_mount_pack(mount);
+        length = MOUNTED_LENGTH;
+    }
+    if (!valid(&setup.base)) return RESPONSE_INVALID_ARGUMENT;
+    return config_store_save(&setup, length) ? RESPONSE_OK : RESPONSE_INTERNAL_ERROR;
 }
 
 uint8_t controller_configuration_read(uint8_t field, uint8_t index, double *value)
@@ -135,8 +157,15 @@ uint8_t controller_configuration_read(uint8_t field, uint8_t index, double *valu
 
 void controller_configuration_restore(void)
 {
-    saved_setup_t s;
-    if (!config_store_load(&s, sizeof(s)) || !valid(&s)) return;
+    mounted_setup_t record = {0};
+    uint16_t length = config_store_load_latest(&record, MOUNTED_LENGTH);
+    saved_setup_t s = record.base;
+    imu_mount_config_t mount = {0};
+    if (length == MOUNTED_LENGTH && s.payload_revision == 3) {
+        mount = imu_mount_unpack(record.mount);
+        if (record.mount.configured != 1 || !imu_mount_valid(&mount)) return;
+    } else if (length != sizeof(s) || s.payload_revision == 3) return;
+    if (!valid(&s)) return;
     const hw_motor_interface_t *motor = get_motor_interface();
     uint8_t wheels = platform_motors(s.type);
     // Validate standalone motor drivers first. Wheel initialization itself
@@ -164,7 +193,8 @@ void controller_configuration_restore(void)
             bit(e,0), bit(e,1), bit(e,2), bit(e,3), s.track_or_length, s.width_or_radius, s.diameter, 0);
         break;
     }
-    if (!platform.is_initialized || !hw_motor_set_pwm_frequency(s.frequency)) goto rollback;
+    if ((s.type != PLATFORM_NONE && !platform.is_initialized) ||
+        !hw_motor_set_pwm_frequency(s.frequency)) goto rollback;
     const hw_encoder_interface_t *encoder = get_encoder_interface();
     for (unsigned i = 0; i < 4; ++i) {
         if (!bit(s.encoders, i)) continue;
@@ -175,8 +205,12 @@ void controller_configuration_restore(void)
 #if BOARD_HAS_FEEDBACK_SOURCE_SELECTOR
     feedback_restore_preference(s.feedback_preference);
 #endif
+    if (mount.configured && !imu_mount_restore(&mount)) goto rollback;
     return;
 rollback:
+#if BOARD_HAS_FEEDBACK_SOURCE_SELECTOR
+    feedback_restore_preference(FEEDBACK_SOURCE_ENCODER);
+#endif
     hw_motor_discard_restored_setup();
     hw_encoder_discard_restored_setup();
     platform = (platform_t){0};
