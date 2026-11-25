@@ -6,6 +6,12 @@
 void platform_fusion_install_ingress_fence(void (*fence)(uint32_t *)) { (void)fence; }
 void platform_fusion_dequeued(void) {}
 #endif
+#if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
+// This fixture invokes the synchronous disconnect callback directly.
+void feedback_install_encoder_fence(void (*fence)(uint8_t),uint8_t (*dequeued)(void))
+{ (void)fence; (void)dequeued; }
+void feedback_guard_platform_control(void) { assert(!"command loop unused in disconnect fixture"); }
+#endif
 message_queue_t CommandQueue, I2CCommandQueue;
 unsigned losses;
 static uint32_t global_mask;
