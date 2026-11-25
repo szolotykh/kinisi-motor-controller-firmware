@@ -516,7 +516,7 @@ This command sets the controller for the specified motor. Rejected with MOTOR_OW
 
 #### Errors
 
-[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`MOTOR_OWNED`](#error-motor-owned) (5) · [`INIT_REQUIRED`](#error-init-required) (15)
+[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`MOTOR_OWNED`](#error-motor-owned) (5) · [`INIT_REQUIRED`](#error-init-required) (15) · [`ENCODER_NOT_INITIALIZED`](#error-encoder-not-initialized) (11) · [`SAMPLE_NOT_AVAILABLE`](#error-sample-not-available) (10)
 
 [Back to command index](#command-index)
 
@@ -541,7 +541,7 @@ This command sets the target speed for the specified motor in radians. Rejected 
 
 #### Errors
 
-[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`MOTOR_OWNED`](#error-motor-owned) (5) · [`CONTROLLER_NOT_INITIALIZED`](#error-controller-not-initialized) (14) · [`INIT_REQUIRED`](#error-init-required) (15)
+[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`MOTOR_OWNED`](#error-motor-owned) (5) · [`CONTROLLER_NOT_INITIALIZED`](#error-controller-not-initialized) (14) · [`INIT_REQUIRED`](#error-init-required) (15) · [`ENCODER_NOT_INITIALIZED`](#error-encoder-not-initialized) (11) · [`SAMPLE_NOT_AVAILABLE`](#error-sample-not-available) (10)
 
 [Back to command index](#command-index)
 
@@ -1191,7 +1191,7 @@ This command sets the controller for the platform. Firmware 2.3.1 uses direct P+
 
 #### Errors
 
-[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`ENCODER_NOT_INITIALIZED`](#error-encoder-not-initialized) (11) · [`PLATFORM_NOT_INITIALIZED`](#error-platform-not-initialized) (12) · [`INIT_REQUIRED`](#error-init-required) (15)
+[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`ENCODER_NOT_INITIALIZED`](#error-encoder-not-initialized) (11) · [`PLATFORM_NOT_INITIALIZED`](#error-platform-not-initialized) (12) · [`INIT_REQUIRED`](#error-init-required) (15) · [`SAMPLE_NOT_AVAILABLE`](#error-sample-not-available) (10)
 
 [Back to command index](#command-index)
 
@@ -1217,7 +1217,7 @@ This command set the target velocity for the platform in meters per second. Canc
 
 #### Errors
 
-[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`PLATFORM_NOT_INITIALIZED`](#error-platform-not-initialized) (12) · [`CONTROLLER_NOT_INITIALIZED`](#error-controller-not-initialized) (14) · [`INIT_REQUIRED`](#error-init-required) (15) · [`SAMPLE_NOT_AVAILABLE`](#error-sample-not-available) (10)
+[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`PLATFORM_NOT_INITIALIZED`](#error-platform-not-initialized) (12) · [`CONTROLLER_NOT_INITIALIZED`](#error-controller-not-initialized) (14) · [`INIT_REQUIRED`](#error-init-required) (15) · [`SAMPLE_NOT_AVAILABLE`](#error-sample-not-available) (10) · [`ENCODER_NOT_INITIALIZED`](#error-encoder-not-initialized) (11)
 
 [Back to command index](#command-index)
 
@@ -1833,7 +1833,7 @@ Initialize a bounded proportional position loop over an already running motor ve
 
 #### Errors
 
-[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CONTROLLER_NOT_INITIALIZED`](#error-controller-not-initialized) (14) · [`MOTOR_OWNED`](#error-motor-owned) (5)
+[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CONTROLLER_NOT_INITIALIZED`](#error-controller-not-initialized) (14) · [`MOTOR_OWNED`](#error-motor-owned) (5) · [`ENCODER_NOT_INITIALIZED`](#error-encoder-not-initialized) (11) · [`SAMPLE_NOT_AVAILABLE`](#error-sample-not-available) (10)
 
 [Back to command index](#command-index)
 
@@ -1882,7 +1882,7 @@ Set an absolute multi-turn angle in radians relative to the last position initia
 
 #### Errors
 
-[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CONTROLLER_NOT_INITIALIZED`](#error-controller-not-initialized) (14) · [`MOTOR_OWNED`](#error-motor-owned) (5)
+[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CONTROLLER_NOT_INITIALIZED`](#error-controller-not-initialized) (14) · [`MOTOR_OWNED`](#error-motor-owned) (5) · [`ENCODER_NOT_INITIALIZED`](#error-encoder-not-initialized) (11) · [`SAMPLE_NOT_AVAILABLE`](#error-sample-not-available) (10)
 
 [Back to command index](#command-index)
 
@@ -1941,7 +1941,7 @@ Initialize bounded pose control after START_PLATFORM_CONTROLLER. Starts odometry
 
 #### Errors
 
-[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CONTROLLER_NOT_INITIALIZED`](#error-controller-not-initialized) (14) · [`PLATFORM_NOT_INITIALIZED`](#error-platform-not-initialized) (12) · [`ENCODER_NOT_INITIALIZED`](#error-encoder-not-initialized) (11)
+[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CONTROLLER_NOT_INITIALIZED`](#error-controller-not-initialized) (14) · [`PLATFORM_NOT_INITIALIZED`](#error-platform-not-initialized) (12) · [`ENCODER_NOT_INITIALIZED`](#error-encoder-not-initialized) (11) · [`SAMPLE_NOT_AVAILABLE`](#error-sample-not-available) (10)
 
 [Back to command index](#command-index)
 
@@ -1989,7 +1989,7 @@ Set absolute (x,y,t) in the current odometry world frame: meters, meters, radian
 
 #### Errors
 
-[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CONTROLLER_NOT_INITIALIZED`](#error-controller-not-initialized) (14) · [`PLATFORM_NOT_INITIALIZED`](#error-platform-not-initialized) (12) · [`ODOMETRY_NOT_INITIALIZED`](#error-odometry-not-initialized) (9) · [`SAMPLE_NOT_AVAILABLE`](#error-sample-not-available) (10)
+[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CONTROLLER_NOT_INITIALIZED`](#error-controller-not-initialized) (14) · [`PLATFORM_NOT_INITIALIZED`](#error-platform-not-initialized) (12) · [`ODOMETRY_NOT_INITIALIZED`](#error-odometry-not-initialized) (9) · [`SAMPLE_NOT_AVAILABLE`](#error-sample-not-available) (10) · [`ENCODER_NOT_INITIALIZED`](#error-encoder-not-initialized) (11)
 
 [Back to command index](#command-index)
 
@@ -2019,7 +2019,7 @@ Initialize a position PID over the existing velocity controller. Initialize a bo
 
 #### Errors
 
-[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CONTROLLER_NOT_INITIALIZED`](#error-controller-not-initialized) (14) · [`MOTOR_OWNED`](#error-motor-owned) (5)
+[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CONTROLLER_NOT_INITIALIZED`](#error-controller-not-initialized) (14) · [`MOTOR_OWNED`](#error-motor-owned) (5) · [`ENCODER_NOT_INITIALIZED`](#error-encoder-not-initialized) (11) · [`SAMPLE_NOT_AVAILABLE`](#error-sample-not-available) (10)
 
 [Back to command index](#command-index)
 
@@ -2054,7 +2054,7 @@ Initialize a position PID over the existing velocity controller. Initialize boun
 
 #### Errors
 
-[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CONTROLLER_NOT_INITIALIZED`](#error-controller-not-initialized) (14) · [`PLATFORM_NOT_INITIALIZED`](#error-platform-not-initialized) (12) · [`ENCODER_NOT_INITIALIZED`](#error-encoder-not-initialized) (11)
+[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CONTROLLER_NOT_INITIALIZED`](#error-controller-not-initialized) (14) · [`PLATFORM_NOT_INITIALIZED`](#error-platform-not-initialized) (12) · [`ENCODER_NOT_INITIALIZED`](#error-encoder-not-initialized) (11) · [`SAMPLE_NOT_AVAILABLE`](#error-sample-not-available) (10)
 
 [Back to command index](#command-index)
 
