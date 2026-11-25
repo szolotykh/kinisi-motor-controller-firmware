@@ -5,6 +5,7 @@
 #include "loop_frequency.h"
 
 #include <limits.h>
+#include <math.h>
 
 typedef struct {
     double motor0;
@@ -26,14 +27,14 @@ mecanum_velocity_t get_mecanum_velocities(double vx, double vy, double vt) {
     }
 
     // Normalize input
-    int l = abs(vx) + abs(vy) + abs(vt);
+    const double magnitude = fabs(vx) + fabs(vy) + fabs(vt);
     double sing_x = (vx > 0) - (vx < 0);
     double sing_y = (vy > 0) - (vy < 0);
     double sing_t = (vt > 0) - (vt < 0);
 
-    vx = sing_x * vx * vx / l;
-    vy = sing_y * vy * vy / l;
-    vt = sing_t * vt * vt / l;
+    vx = sing_x * vx * vx / magnitude;
+    vy = sing_y * vy * vy / magnitude;
+    vt = sing_t * vt * vt / magnitude;
 
     velocities.motor0 = vx + vy + vt;
     velocities.motor1 = vx - vy + vt;
@@ -54,34 +55,43 @@ void tearDown(void) {
 void test_Velocity_X_100(void)
 {
     mecanum_velocity_t velocities = get_mecanum_velocities(100, 0, 0);
-    TEST_ASSERT_EQUAL_INT(velocities.motor0, 100);
-    TEST_ASSERT_EQUAL_INT(velocities.motor1, 100);
-    TEST_ASSERT_EQUAL_INT(velocities.motor2, 100);
-    TEST_ASSERT_EQUAL_INT(velocities.motor3, 100);
+    TEST_ASSERT_DOUBLE_WITHIN(0.0, 100.0, velocities.motor0);
+    TEST_ASSERT_DOUBLE_WITHIN(0.0, 100.0, velocities.motor1);
+    TEST_ASSERT_DOUBLE_WITHIN(0.0, 100.0, velocities.motor2);
+    TEST_ASSERT_DOUBLE_WITHIN(0.0, 100.0, velocities.motor3);
 }
 
 void test_Velocity_Y_100() {
     mecanum_velocity_t velocities = get_mecanum_velocities(0, 100, 0);
-    TEST_ASSERT_EQUAL_INT(velocities.motor0, 100);
-    TEST_ASSERT_EQUAL_INT(velocities.motor1, -100);
-    TEST_ASSERT_EQUAL_INT(velocities.motor2, 100);
-    TEST_ASSERT_EQUAL_INT(velocities.motor3, -100);
+    TEST_ASSERT_DOUBLE_WITHIN(0.0, 100.0, velocities.motor0);
+    TEST_ASSERT_DOUBLE_WITHIN(0.0, -100.0, velocities.motor1);
+    TEST_ASSERT_DOUBLE_WITHIN(0.0, 100.0, velocities.motor2);
+    TEST_ASSERT_DOUBLE_WITHIN(0.0, -100.0, velocities.motor3);
 }
 
 void test_Velocity_T_100() {
     mecanum_velocity_t velocities = get_mecanum_velocities(0, 0, 100);
-    TEST_ASSERT_EQUAL_INT(velocities.motor0, 100);
-    TEST_ASSERT_EQUAL_INT(velocities.motor1, 100);
-    TEST_ASSERT_EQUAL_INT(velocities.motor2, -100);
-    TEST_ASSERT_EQUAL_INT(velocities.motor3, -100);
+    TEST_ASSERT_DOUBLE_WITHIN(0.0, 100.0, velocities.motor0);
+    TEST_ASSERT_DOUBLE_WITHIN(0.0, 100.0, velocities.motor1);
+    TEST_ASSERT_DOUBLE_WITHIN(0.0, -100.0, velocities.motor2);
+    TEST_ASSERT_DOUBLE_WITHIN(0.0, -100.0, velocities.motor3);
 }
 
 void test_Velocity_Zero() {
     mecanum_velocity_t velocities = get_mecanum_velocities(0, 0, 0);
-    TEST_ASSERT_EQUAL_INT(velocities.motor0, 0);
-    TEST_ASSERT_EQUAL_INT(velocities.motor1, 0);
-    TEST_ASSERT_EQUAL_INT(velocities.motor2, 0);
-    TEST_ASSERT_EQUAL_INT(velocities.motor3, 0);
+    TEST_ASSERT_DOUBLE_WITHIN(0.0, 0.0, velocities.motor0);
+    TEST_ASSERT_DOUBLE_WITHIN(0.0, 0.0, velocities.motor1);
+    TEST_ASSERT_DOUBLE_WITHIN(0.0, 0.0, velocities.motor2);
+    TEST_ASSERT_DOUBLE_WITHIN(0.0, 0.0, velocities.motor3);
+}
+
+void test_Velocity_Fractional_Mixed_Axes(void)
+{
+    mecanum_velocity_t velocities = get_mecanum_velocities(0.5, -0.5, 0.0);
+    TEST_ASSERT_DOUBLE_WITHIN(0.0, 0.0, velocities.motor0);
+    TEST_ASSERT_DOUBLE_WITHIN(0.0, 0.5, velocities.motor1);
+    TEST_ASSERT_DOUBLE_WITHIN(0.0, 0.0, velocities.motor2);
+    TEST_ASSERT_DOUBLE_WITHIN(0.0, 0.5, velocities.motor3);
 }
 
 void test_encoder1(void)
@@ -225,6 +235,7 @@ int main(void) {
     RUN_TEST(test_Velocity_Y_100);
     RUN_TEST(test_Velocity_T_100);
     RUN_TEST(test_Velocity_Zero);
+    RUN_TEST(test_Velocity_Fractional_Mixed_Axes);
     RUN_TEST(test_encoder1);
     RUN_TEST(test_encoder2);
     RUN_TEST(test_Pid_Zero_Target_Forces_Stop);
