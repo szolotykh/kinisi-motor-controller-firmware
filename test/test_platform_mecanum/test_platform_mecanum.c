@@ -1,5 +1,5 @@
 #include "unity.h"
-#include "unity.h"
+#include "commands.h"
 #include "platform_mecanum.h"
 #include "controllers_manager.h"
 #include "mock_platform_mecanum.h"
@@ -37,11 +37,6 @@ void test_initialize_mecanum_platform(void) {
     TEST_ASSERT_EQUAL(1000.0, mock_get_last_encoder_resolution());
 }
 
-void test_set_mecanum_platform_velocity(void) {
-    // TODO: Implement this test case
-    TEST_IGNORE_MESSAGE("Test not implemented yet.");
-}
-
 void test_initialize_mecanum_platform_odometry(void) {
     mecanum_platform_start_odometry();  // Changed from initialize_mecanum_platform_odometry
 
@@ -72,11 +67,6 @@ void test_mecanum_platform_stop_velocity_controller(void) {
 
     TEST_ASSERT_EQUAL(1, mock_get_controller_stop_calls());
     TEST_ASSERT_EQUAL(BMOTOR0 | BMOTOR1 | BMOTOR2 | BMOTOR3, mock_get_last_motor_selection());
-}
-
-void test_mecanum_platform_set_target_velocity(void) {
-    // TODO: Implement this test case
-    TEST_IGNORE_MESSAGE("Test not implemented yet.");
 }
 
 void test_mecanum_platform_update_odometry(void) {
@@ -114,25 +104,57 @@ void test_mecanum_platform_update_odometry_insufficient_motors(void) {
     TEST_ASSERT_EQUAL_DOUBLE(0.0, odometry.t);
 }
 
-void test_mecanum_platform_set_velocity(void) {
-    // TODO: Implement this test case
-    TEST_IGNORE_MESSAGE("Test not implemented yet.");
+// Derive rolling speed from the rigid-body velocity at each actual wheel
+// center, independently of the production mixer and its inverse.
+static void check_roller_layout(double length, double width, uint8_t layout)
+{
+    initialize_mecanum_platform_oriented(0,0,0,0,0,0,0,0, length,width,0.1,100,layout);
+    const double x[] = {length/2, -length/2, -length/2, length/2};
+    const double y[] = {-width/2, -width/2, width/2, width/2};
+    const double standard[] = {1,-1,1,-1};
+    const platform_velocity_t targets[] = {{.x=1},{.y=1},{.t=1},{.x=-0.2,.y=0.3,.t=-0.9},{0}};
+    for (unsigned n=0; n<sizeof(targets)/sizeof(targets[0]); ++n) {
+        platform_velocity_t v=targets[n];
+        uint8_t ids[4];
+        double controlled[4], expected[4];
+        int count=0;
+        mecanum_platform_set_target_velocity(v);
+        mock_get_last_target_speeds(ids,controlled,&count);
+        TEST_ASSERT_EQUAL_INT(4,count);
+        for (unsigned i=0;i<4;i++) {
+            double slope=layout==MECANUM_ROLLER_STANDARD ? standard[i] : -standard[i];
+            expected[i]=((v.x-y[i]*v.t)+slope*(v.y+x[i]*v.t))/0.05;
+            TEST_ASSERT_EQUAL_UINT8(i,ids[i]);
+            TEST_ASSERT_DOUBLE_WITHIN(1e-10,expected[i],controlled[i]);
+        }
+        platform_odometry_t odom=mecanum_platform_update_odometry(ids,expected,4);
+        TEST_ASSERT_DOUBLE_WITHIN(1e-10,v.x,odom.x);
+        TEST_ASSERT_DOUBLE_WITHIN(1e-10,v.y,odom.y);
+        TEST_ASSERT_DOUBLE_WITHIN(1e-10,v.t,odom.t);
+        if (n == 3) continue; // Open-loop input uses PWM percent per axis.
+        mecaunm_platform_set_velocity((platform_velocity_t){.x=v.x*40,.y=v.y*40,.t=v.t*40});
+        for (unsigned i=0;i<4;i++) {
+            double expected_duty=expected[i]>0 ? 40 : expected[i]<0 ? -40 : 0;
+            TEST_ASSERT_DOUBLE_WITHIN(1e-10, expected_duty, mock_motor_duty(i));
+        }
+    }
 }
 
-void test_mecanum_platform_set_velocity_zero(void) {
-    // TODO: Implement this test case
-    TEST_IGNORE_MESSAGE("Test not implemented yet.");
+void test_motor_and_encoder_geometry(void)
+{
+    check_roller_layout(.4,.3,MECANUM_ROLLER_STANDARD);
+    check_roller_layout(.3,.4,MECANUM_ROLLER_STANDARD);
+    check_roller_layout(.4,.3,MECANUM_ROLLER_MIRRORED);
+    check_roller_layout(.3,.4,MECANUM_ROLLER_MIRRORED);
 }
 
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_initialize_mecanum_platform);
-    RUN_TEST(test_mecanum_platform_set_velocity);
-    RUN_TEST(test_mecanum_platform_set_velocity_zero);
+    RUN_TEST(test_motor_and_encoder_geometry);
     RUN_TEST(test_initialize_mecanum_platform_odometry);
     RUN_TEST(test_mecanum_platform_start_velocity_controller);
     RUN_TEST(test_mecanum_platform_stop_velocity_controller);
-    RUN_TEST(test_mecanum_platform_set_target_velocity);
     RUN_TEST(test_mecanum_platform_update_odometry);
     RUN_TEST(test_mecanum_platform_update_odometry_insufficient_motors);
     return UNITY_END();

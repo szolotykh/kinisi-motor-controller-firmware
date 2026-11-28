@@ -19,6 +19,25 @@ contribution limits and position tolerances. It runs at the shared controller fr
 - Platform velocity limits: translation magnitude in m/s and rotation in rad/s.
   Limits apply to requested velocity, not measured overshoot or acceleration.
 
+## Mecanum roller orientation
+
+Protocol 2.25 supports both 45° layouts through `INITIALIZE_MECANUM_PLATFORM_ORIENTED`.
+Use motor and encoder indices 0 (front right), 1 (rear right), 2 (rear left), and 3 (front left).
+In STANDARD, a leftward command drives wheels 0 and 2 forward and 1 and 3 backward. In MIRRORED
+all four roller slopes and those lateral contributions reverse. Configure motor and encoder polarity
+separately. The legacy `INITIALIZE_MECANUM_PLATFORM` always selects STANDARD.
+
+Measure length and width between wheel centers in meters. The signed yaw lever for wheel 0 is
+`(width + length)/2` in STANDARD and `(width - length)/2` in MIRRORED. Equal spacing gives
+MIRRORED zero yaw authority. The oriented command rejects that setup before stopping or replacing
+the current platform. Near-equal spacing reduces yaw authority and magnifies encoder yaw error.
+Velocity control and encoder odometry use the same lever. Open-loop yaw uses its sign for the
+requested duty direction.
+
+Read the running layout with `GET_CONFIGURATION_FIELD(7, 0)` on any protocol 2.25 board with a
+configured mecanum platform. An explicit `SAVE_CONFIGURATION` on v0.4 also saves the layout.
+Configurations saved by earlier firmware restore as STANDARD.
+
 ## Motor commands
 
 | Command | ID | Payload in order |

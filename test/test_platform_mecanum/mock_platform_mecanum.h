@@ -27,6 +27,7 @@ platform_odometry_t mock_mecanum_platform_update_odometry(uint8_t* motor_indexes
 int mock_get_initialize_motor_calls(void);
 int mock_get_set_speed_calls(void);
 double mock_get_last_speed(void);
+double mock_motor_duty(unsigned index);
 int mock_get_initialize_encoder_calls(void);
 int mock_get_start_odometry_calls(void);
 int mock_get_controller_init_calls(void);

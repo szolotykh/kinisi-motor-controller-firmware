@@ -265,9 +265,45 @@ static void configure(int type)
     }
     request((controller_command_t){.commandType=SET_PWM_FREQUENCY, .properties.set_pwm_frequency={25000}}, RESPONSE_OK);
 }
+static controller_command_t oriented_mecanum(double length, double width)
+{
+    return (controller_command_t){.commandType=INITIALIZE_MECANUM_PLATFORM_ORIENTED,
+        .properties.initialize_mecanum_platform_oriented={
+            1,0,1,0,0,1,0,1,length,width,0.11,720,MECANUM_ROLLER_MIRRORED}};
+}
+
+static void roller_policy(void)
+{
+    controller_command_t read={.commandType=GET_CONFIGURATION_FIELD,.properties.get_configuration_field={7,0}};
+    request(read, RESPONSE_PLATFORM_NOT_INITIALIZED);
+    read.properties.get_configuration_field.index=1;
+    request(read, RESPONSE_INVALID_ARGUMENT);
+    controller_command_t c=oriented_mecanum(.4,.29);
+    assert(command_request_size(c.commandType)==44 && command_request_size(INITIALIZE_MECANUM_PLATFORM)==43);
+    request(c,RESPONSE_OK);
+    assert(field(7,0)==MECANUM_ROLLER_MIRRORED);
+    request((controller_command_t){.commandType=START_PLATFORM_CONTROLLER,
+        .properties.start_platform_controller={.kp=1,.integral_limit=10}},RESPONSE_OK);
+    request((controller_command_t){.commandType=START_PLATFORM_ODOMETRY},RESPONSE_OK);
+    unsigned started=tasks_started;
+    c.properties.initialize_mecanum_platform_oriented.width=.4;
+    request(c,RESPONSE_INVALID_ARGUMENT);
+    c.properties.initialize_mecanum_platform_oriented.roller_orientation=2;
+    request(c,RESPONSE_INVALID_ARGUMENT);
+    c=oriented_mecanum(-1,.29);
+    request(c,RESPONSE_INVALID_ARGUMENT);
+    assert(field(7,0)==MECANUM_ROLLER_MIRRORED && platform.properties.mecanum.width==.29 &&
+        platform_is_controller_running() && platform_is_odometry_enabled() && tasks_started==started);
+    controller_command_t legacy={.commandType=INITIALIZE_MECANUM_PLATFORM,
+        .properties.initialize_mecanum_platform={0,0,0,0,0,0,0,0,.4,.4,.11,720}};
+    request(legacy,RESPONSE_OK);
+    assert(field(7,0)==MECANUM_ROLLER_STANDARD);
+}
+
 static void verify(int type)
 {
     assert(field(0,0) == type);
+    if (type==PLATFORM_MECANUM) assert(field(7,0)==MECANUM_ROLLER_STANDARD);
     assert(field(1,0) == (type == 3 ? 0.11 : 0.09));
     assert(field(2,0) == (type == 1 ? 0.25 : type == 2 ? 0 : 0.4));
     assert(field(3,0) == (type == 1 ? 0 : type == 2 ? 0.155 : 0.29));
@@ -341,6 +377,7 @@ static void sleep_policy(bool board)
         INITIALIZE_MOTOR, SET_MOTOR_SPEED, BRAKE_MOTOR, INITIALIZE_MOTOR_CONTROLLER, SET_MOTOR_TARGET_SPEED,
         INITIALIZE_MOTOR_POSITION_CONTROLLER, INITIALIZE_MOTOR_POSITION_PID_CONTROLLER, SET_MOTOR_POSITION,
         INITIALIZE_DIFFERENTIAL_PLATFORM, INITIALIZE_OMNI_PLATFORM, INITIALIZE_MECANUM_PLATFORM,
+        INITIALIZE_MECANUM_PLATFORM_ORIENTED,
         SET_PLATFORM_VELOCITY, START_PLATFORM_CONTROLLER, BRAKE_PLATFORM, SET_PLATFORM_TARGET_VELOCITY,
         INITIALIZE_PLATFORM_POSITION_CONTROLLER, INITIALIZE_PLATFORM_POSITION_PID_CONTROLLER, SET_PLATFORM_POSITION,
         GET_MOTOR_CURRENT_LIMIT, SET_MOTOR_CURRENT_LIMIT, CLEAR_MOTOR_FAULTS,
@@ -468,7 +505,31 @@ int main(int argc, char **argv)
     assert(!tasks_started && !motion_writes && !fram_writes);
     for (int i = 0; i < 4; ++i) assert(output[i] == 0);
     connect();
+    if (!strcmp(mode,"roller-policy")) { roller_policy(); return 0; }
 #if BOARD_HAS_IMU_MOUNTING
+    if (!strcmp(mode,"roller-save")) {
+        if (type) {
+            controller_command_t mount = {.commandType = type == 1 ? SET_IMU_MOUNT : SET_BOARD_MOUNT};
+            if (type == 1) mount.properties.set_imu_mount.x_um = 12345;
+            else mount.properties.set_board_mount.x_um = 12345;
+            request(mount,RESPONSE_OK);
+        }
+        request(oriented_mecanum(.4,.29),RESPONSE_OK);
+        request((controller_command_t){.commandType=SAVE_CONFIGURATION},RESPONSE_OK);
+        uint8_t record[CONFIG_STORE_MAX_PAYLOAD];
+        assert(config_store_load_latest(record,sizeof(record)) == (type ? 91 : 72));
+        assert(record[66]==5 && record[67]==MECANUM_ROLLER_MIRRORED && record[68]==type);
+        assert(field(7,0)==MECANUM_ROLLER_MIRRORED);
+        file=fopen(path,"wb"); assert(file && fwrite(fram,1,sizeof(fram),file)==sizeof(fram)); fclose(file);
+        return 0;
+    }
+    if (!strcmp(mode,"roller-restore")) {
+        assert(field(7,0)==MECANUM_ROLLER_MIRRORED && field(2,0)==.4 && field(3,0)==.29);
+        assert(field(5,1)==1 && field(6,0)==1 && !platform_is_controller_running());
+        if (type==1) assert(read_mount().configured && read_mount().x_um==12345);
+        if (type==2) assert(read_board_mount().configured && read_board_mount().x_um==12345);
+        return 0;
+    }
     if (!strcmp(mode,"mounted-boot-fail")) {
         assert(!fail_mutex_create && !read_mount().configured && !platform.is_initialized);
         assert(feedback_requested()==FEEDBACK_SOURCE_ENCODER && !motion_writes && !tasks_started);
@@ -508,6 +569,7 @@ int main(int argc, char **argv)
     if (!strncmp(mode,"selector-v1-",12)) {
         assert(!read_mount().configured);
         selector_legacy(!strcmp(mode,"selector-v1-factory"));
+        if (!strcmp(mode,"selector-v1-mecanum")) assert(field(7,0)==MECANUM_ROLLER_STANDARD);
         return 0;
     }
     if (!strcmp(mode,"selector-save")) {

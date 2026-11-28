@@ -471,9 +471,20 @@ static uint8_t dispatch_controller_command(controller_command_t* cmd, void (*com
 
         // Platform commands
         case INITIALIZE_MECANUM_PLATFORM:
+        case INITIALIZE_MECANUM_PLATFORM_ORIENTED: {
+            // The command union members have an identical common initial sequence.
+            uint8_t orientation = MECANUM_ROLLER_STANDARD;
+            if (cmd->commandType == INITIALIZE_MECANUM_PLATFORM_ORIENTED) {
+                orientation = cmd->properties.initialize_mecanum_platform_oriented.roller_orientation;
+                if (!mecanum_geometry_valid(cmd->properties.initialize_mecanum_platform.length,
+                    cmd->properties.initialize_mecanum_platform.width,
+                    cmd->properties.initialize_mecanum_platform.wheels_diameter,
+                    cmd->properties.initialize_mecanum_platform.encoder_resolution,
+                    orientation)) return RESPONSE_INVALID_ARGUMENT;
+            }
             platform_stop_velocity_controller();
             platform_stop_odometry();
-            initialize_mecanum_platform(
+            initialize_mecanum_platform_oriented(
                 cmd->properties.initialize_mecanum_platform.is_reversed_0,
                 cmd->properties.initialize_mecanum_platform.is_reversed_1,
                 cmd->properties.initialize_mecanum_platform.is_reversed_2,
@@ -485,10 +496,11 @@ static uint8_t dispatch_controller_command(controller_command_t* cmd, void (*com
                 cmd->properties.initialize_mecanum_platform.length,
                 cmd->properties.initialize_mecanum_platform.width,
                 cmd->properties.initialize_mecanum_platform.wheels_diameter,
-                cmd->properties.initialize_mecanum_platform.encoder_resolution
+                cmd->properties.initialize_mecanum_platform.encoder_resolution, orientation
             );
             if (!platform_is_initialized()) return RESPONSE_INTERNAL_ERROR;
         break;
+        }
 
         case INITIALIZE_OMNI_PLATFORM:
             platform_stop_velocity_controller();
@@ -977,7 +989,8 @@ uint8_t command_handler(controller_command_t *cmd, void (*reply)(uint8_t *,uint8
             renewed=MOTOR_ENDPOINT(cmd->properties.initialize_motor_controller.motor_index);
             required=1U<<cmd->properties.initialize_motor_controller.encoder_index;
         } else if (cmd->commandType==INITIALIZE_DIFFERENTIAL_PLATFORM ||
-                   cmd->commandType==INITIALIZE_OMNI_PLATFORM || cmd->commandType==INITIALIZE_MECANUM_PLATFORM) {
+                   cmd->commandType==INITIALIZE_OMNI_PLATFORM || cmd->commandType==INITIALIZE_MECANUM_PLATFORM ||
+                   cmd->commandType==INITIALIZE_MECANUM_PLATFORM_ORIENTED) {
             renewed=PLATFORM_ENDPOINT;
             required=platform.motor_mask;
         }

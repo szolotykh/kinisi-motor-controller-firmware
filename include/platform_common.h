@@ -8,6 +8,7 @@ typedef struct {
     double wheel_diameter;
     double length;
     double width;
+    uint8_t roller_orientation;
 } mecanum_platform_settings_t;
 
 typedef struct {
