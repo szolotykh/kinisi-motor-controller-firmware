@@ -129,3 +129,39 @@ See [time sync](time-sync.md) for packet layouts, failure behavior, and uptime m
 Test with `python test/test_initialization/run_tests.py` (set `CC` if needed),
 then build with `pio run -e genericSTM32F405RG`. Hardware exchange validation
 over USB/I2C remains required. Client SDK integration is separate work.
+
+## v0.4 configuration at startup
+
+On v0.4, protocol 2.14 adds `SAVE_CONFIGURATION` and
+`GET_CONFIGURATION_FIELD`. Initialize the platform, apply the desired settings,
+and issue Save after READY. The empty success reply confirms a durable record.
+A storage error returns `INTERNAL_ERROR`. A timeout leaves the outcome unknown.
+Reconnect, check the running setup and repeat Save if it is still the intended setup.
+
+At cold startup the command task reads the FM24CL64B before starting either
+transport. A valid record restores platform geometry, configured motors and
+encoders, direction flags and PWM frequency. Outputs start stopped. The usual
+INIT handshake on a running board preserves edits made since the last Save.
+Read the running geometry and directions with `GET_CONFIGURATION_FIELD` and
+the applied frequency with `GET_PWM_FREQUENCY`.
+
+Protocol 2.23 also saves the explicit IMU installation and allows a mount to
+be saved before platform initialization. Use `GET_BOARD_MOUNT` on protocol 2.24+ to read the PCB underside center.
+The revision 4 payload retains those operator-entered board coordinates. The
+revision 3 payload retains coordinates entered through the 2.23 chip-reference
+command. Both formats restore the same physical installation in 2.24. Revision
+1 and 2 payloads restore their settings with the mounting unconfigured. Read
+the setup guide before converting older client-side yaw values. A fresh
+stationary initialization establishes the tracking origin after reboot.
+[IMU installation and yaw conversion](imu-mounting.md)
+
+The journal occupies the first 512 bytes of the 8 KiB FRAM. Each 256-byte
+slot has its own commit marker. Save invalidates the older slot, writes and
+reads back the complete replacement, then writes and verifies its marker.
+Boot checks board identity, format version, payload length, CRC and generation.
+It validates the chosen record's configuration before applying any of it.
+An empty or incompatible store allows ordinary manual setup.
+
+Run `python test/test_config_store/run_tests.py` to inject an interruption at
+every transferred write byte. The sensor bus and FRAM address checks run with
+`python test/test_temperature/run_tests.py`.

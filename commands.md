@@ -1,6 +1,6 @@
 # Kinisi motor controller commands
 
-**Protocol 2.13.0** · Generated from [commands.json](commands.json)
+**Protocol 2.26.0** · Generated from [commands.json](commands.json)
 
 [Command index](#command-index) · [Wire format](#wire-format) · [Error codes](#error-codes)
 
@@ -87,6 +87,33 @@
 | [`SUBSCRIBE_CONFIGURED`](#subscribe_configured-0x84) | `0x84` | Client → controller | ACK |
 | [`GET_PWM_FREQUENCY`](#get_pwm_frequency-0x57) | `0x57` | Client → controller | `uint32_t` |
 | [`SET_PWM_FREQUENCY`](#set_pwm_frequency-0x58) | `0x58` | Client → controller | `uint32_t` |
+| [`SAVE_CONFIGURATION`](#save_configuration-0x59) | `0x59` | Client → controller | ACK |
+| [`GET_CONFIGURATION_FIELD`](#get_configuration_field-0x5a) | `0x5A` | Client → controller | `double` |
+| [`SET_DRIVER_SLEEP`](#set_driver_sleep-0x5b) | `0x5B` | Client → controller | ACK |
+| [`GET_DRIVER_SLEEP`](#get_driver_sleep-0x5c) | `0x5C` | Client → controller | `uint8_t` |
+| [`SET_BOARD_IDLE`](#set_board_idle-0x5d) | `0x5D` | Client → controller | ACK |
+| [`GET_BOARD_IDLE`](#get_board_idle-0x5e) | `0x5E` | Client → controller | `uint8_t` |
+| [`SET_FUSION_EXPERIMENT`](#set_fusion_experiment-0x5f) | `0x5f` | Client → controller | ACK |
+| [`GET_FUSION_STATUS`](#get_fusion_status-0x60) | `0x60` | Client → controller | `fusion_status` |
+| [`GET_FUSION_VECTOR`](#get_fusion_vector-0x61) | `0x61` | Client → controller | `fusion_vector` |
+| [`GET_FUSION_CONFIGURATION`](#get_fusion_configuration-0x62) | `0x62` | Client → controller | `fusion_configuration` |
+| [`SET_IMU_TRACKING`](#set_imu_tracking-0x63) | `0x63` | Client → controller | ACK |
+| [`GET_IMU_TRACKING_STATUS`](#get_imu_tracking_status-0x64) | `0x64` | Client → controller | `imu_tracking_status` |
+| [`GET_IMU_TRACKING_VECTOR`](#get_imu_tracking_vector-0x65) | `0x65` | Client → controller | `imu_tracking_vector` |
+| [`GET_IMU_TRACKING_CONFIGURATION`](#get_imu_tracking_configuration-0x66) | `0x66` | Client → controller | `imu_tracking_configuration` |
+| [`SET_FEEDBACK_SOURCE`](#set_feedback_source-0x67) | `0x67` | Client → controller | ACK |
+| [`GET_FEEDBACK_SOURCE_STATUS`](#get_feedback_source_status-0x68) | `0x68` | Client → controller | `feedback_source_status` |
+| [`GET_FEEDBACK_SOURCE_VECTOR`](#get_feedback_source_vector-0x69) | `0x69` | Client → controller | `feedback_source_vector` |
+| [`SET_FEEDBACK_FUSION_MOUNT`](#set_feedback_fusion_mount-0x6a) | `0x6a` | Client → controller | ACK |
+| [`GET_FEEDBACK_FUSION_MOUNT`](#get_feedback_fusion_mount-0x6b) | `0x6b` | Client → controller | `feedback_fusion_mount` |
+| [`GET_FEEDBACK_SOURCE_HEALTH`](#get_feedback_source_health-0x6c) | `0x6c` | Client → controller | `feedback_source_health` |
+| [`GET_FEEDBACK_IMU_CHANNELS`](#get_feedback_imu_channels-0x6d) | `0x6d` | Client → controller | `feedback_imu_channels` |
+| [`SET_IMU_MOUNT`](#set_imu_mount-0x6e) | `0x6e` | Client → controller | ACK |
+| [`GET_IMU_MOUNT`](#get_imu_mount-0x6f) | `0x6f` | Client → controller | `imu_mount_configuration` |
+| [`SET_BOARD_MOUNT`](#set_board_mount-0x85) | `0x85` | Client → controller | ACK |
+| [`GET_BOARD_MOUNT`](#get_board_mount-0x86) | `0x86` | Client → controller | `board_mount_configuration` |
+| [`INITIALIZE_MECANUM_PLATFORM_ORIENTED`](#initialize_mecanum_platform_oriented-0x87) | `0x87` | Client → controller | ACK |
+| [`INITIALIZE_OMNI_PLATFORM_ORIENTED`](#initialize_omni_platform_oriented-0x88) | `0x88` | Client → controller | ACK |
 
 ## Command lifecycle
 
@@ -390,7 +417,7 @@ This command initializes a motor and prepares it for use. Rejected with MOTOR_OW
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`MOTOR_OWNED`](#error-motor-owned) (5) · [`INIT_REQUIRED`](#error-init-required) (15)
+[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`MOTOR_OWNED`](#error-motor-owned) (5) · [`INIT_REQUIRED`](#error-init-required) (15)
 
 [Back to command index](#command-index)
 
@@ -415,7 +442,7 @@ This command sets the speed of the specified motor in PWM. Rejected with MOTOR_O
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`MOTOR_OWNED`](#error-motor-owned) (5) · [`MOTOR_NOT_INITIALIZED`](#error-motor-not-initialized) (13) · [`INIT_REQUIRED`](#error-init-required) (15)
+[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`MOTOR_OWNED`](#error-motor-owned) (5) · [`MOTOR_NOT_INITIALIZED`](#error-motor-not-initialized) (13) · [`INIT_REQUIRED`](#error-init-required) (15)
 
 [Back to command index](#command-index)
 
@@ -463,7 +490,7 @@ Stops the motor's velocity and position controllers and applies a short brake, c
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`MOTOR_OWNED`](#error-motor-owned) (5)
+[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`MOTOR_OWNED`](#error-motor-owned) (5)
 
 [Back to command index](#command-index)
 
@@ -495,7 +522,7 @@ This command sets the controller for the specified motor. Rejected with MOTOR_OW
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`MOTOR_OWNED`](#error-motor-owned) (5) · [`INIT_REQUIRED`](#error-init-required) (15)
+[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`MOTOR_OWNED`](#error-motor-owned) (5) · [`INIT_REQUIRED`](#error-init-required) (15) · [`ENCODER_NOT_INITIALIZED`](#error-encoder-not-initialized) (11) · [`SAMPLE_NOT_AVAILABLE`](#error-sample-not-available) (10)
 
 [Back to command index](#command-index)
 
@@ -520,7 +547,7 @@ This command sets the target speed for the specified motor in radians. Rejected 
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`MOTOR_OWNED`](#error-motor-owned) (5) · [`CONTROLLER_NOT_INITIALIZED`](#error-controller-not-initialized) (14) · [`INIT_REQUIRED`](#error-init-required) (15)
+[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`MOTOR_OWNED`](#error-motor-owned) (5) · [`CONTROLLER_NOT_INITIALIZED`](#error-controller-not-initialized) (14) · [`INIT_REQUIRED`](#error-init-required) (15) · [`ENCODER_NOT_INITIALIZED`](#error-encoder-not-initialized) (11) · [`SAMPLE_NOT_AVAILABLE`](#error-sample-not-available) (10)
 
 [Back to command index](#command-index)
 
@@ -1030,7 +1057,7 @@ No payload parameters.
 
 **Client → controller** · **Payload:** 40 bytes
 
-This command initializes a mecanum (4-wheel) platform and prepares it for use. It uses motor and encoder indices 0, 1, 2 and 3 (one per wheel), which correspond to the is_reversed_0..3 and is_encoder_reversed_0..3 parameters. All four motor slots are occupied by this platform.
+This command initializes a mecanum (4-wheel) platform and prepares it for use. It uses motor and encoder indices 0, 1, 2 and 3 (one per wheel), which correspond to the is_reversed_0..3 and is_encoder_reversed_0..3 parameters. All four motor slots are occupied by this platform. Selects the STANDARD roller layout.
 
 #### Parameters
 
@@ -1055,7 +1082,7 @@ This command initializes a mecanum (4-wheel) platform and prepares it for use. I
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15)
+[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15)
 
 [Back to command index](#command-index)
 
@@ -1065,7 +1092,7 @@ This command initializes a mecanum (4-wheel) platform and prepares it for use. I
 
 **Client → controller** · **Payload:** 30 bytes
 
-This command initializes an omni (3-wheel) platform and prepares it for use. It uses motor and encoder indices 0, 1 and 2 (one per wheel), which correspond to the is_reversed_0..2 and is_encoder_reversed_0..2 parameters. Motor index 3 is not used by this platform and stays free for other purposes.
+This command initializes an omni (3-wheel) platform and prepares it for use. It uses motor and encoder indices 0, 1 and 2 (one per wheel), which correspond to the is_reversed_0..2 and is_encoder_reversed_0..2 parameters. Motor index 3 is not used by this platform and stays free for other purposes. Selects the single-rear-wheel (REAR) orientation.
 
 #### Parameters
 
@@ -1077,8 +1104,8 @@ This command initializes an omni (3-wheel) platform and prepares it for use. It 
 | `is_encoder_reversed_0` | `bool` | 1 | Reverses encoder 0 counting direction, independently of motor 0's is_reversed_0. Set so the closed-loop feedback is negative (flip if the wheel runs away when given a target speed). |
 | `is_encoder_reversed_1` | `bool` | 1 | Reverses encoder 1 counting direction, independently of motor 1's is_reversed_1. Set so the closed-loop feedback is negative (flip if the wheel runs away when given a target speed). |
 | `is_encoder_reversed_2` | `bool` | 1 | Reverses encoder 2 counting direction, independently of motor 2's is_reversed_2. Set so the closed-loop feedback is negative (flip if the wheel runs away when given a target speed). |
-| `wheels_diameter` | `double` | 8 | Diameter of the robot wheels in millimeters. |
-| `robot_radius` | `double` | 8 | Distance berween the center of the robot and the center of the wheels in millimeters. |
+| `wheels_diameter` | `double` | 8 | Diameter of the robot wheels in meters. |
+| `robot_radius` | `double` | 8 | Distance from the robot center to each wheel center in meters. |
 | `encoder_resolution` | `double` | 8 | Encoder resolution in ticks per revolution. The value can not be negative. If platform does not have encoders, the value should be set to zero. |
 
 #### Response
@@ -1087,7 +1114,7 @@ This command initializes an omni (3-wheel) platform and prepares it for use. It 
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15)
+[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15)
 
 [Back to command index](#command-index)
 
@@ -1117,7 +1144,7 @@ This command initializes a differential (2-wheel) platform and prepares it for u
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15)
+[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15)
 
 [Back to command index](#command-index)
 
@@ -1143,7 +1170,7 @@ This command sets the velocity for the platform in PWM. Stops platform velocity 
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`PLATFORM_NOT_INITIALIZED`](#error-platform-not-initialized) (12) · [`INIT_REQUIRED`](#error-init-required) (15)
+[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`PLATFORM_NOT_INITIALIZED`](#error-platform-not-initialized) (12) · [`INIT_REQUIRED`](#error-init-required) (15)
 
 [Back to command index](#command-index)
 
@@ -1170,7 +1197,7 @@ This command sets the controller for the platform. Firmware 2.3.1 uses direct P+
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`PLATFORM_NOT_INITIALIZED`](#error-platform-not-initialized) (12) · [`INIT_REQUIRED`](#error-init-required) (15)
+[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`ENCODER_NOT_INITIALIZED`](#error-encoder-not-initialized) (11) · [`PLATFORM_NOT_INITIALIZED`](#error-platform-not-initialized) (12) · [`INIT_REQUIRED`](#error-init-required) (15) · [`SAMPLE_NOT_AVAILABLE`](#error-sample-not-available) (10)
 
 [Back to command index](#command-index)
 
@@ -1180,7 +1207,7 @@ This command sets the controller for the platform. Firmware 2.3.1 uses direct P+
 
 **Client → controller** · **Payload:** 24 bytes
 
-This command set the target velocity for the platform in meters per second. Cancels platform position control; initialize it again before another pose target.
+This command set the target velocity for the platform in meters per second. Cancels platform position control; initialize it again before another pose target. With an active fusion experiment, rejects invalid or stale feedback and targets fenced by an earlier fault with SAMPLE_NOT_AVAILABLE; both experimental modes require 100 ms of observed unchanged configured counters for initial rest arming. Once armed, ordinary target updates remain accepted while moving. Wait for healthy feedback and submit a fresh target; stopped cold configuration can ACK while still WAITING.
 
 #### Parameters
 
@@ -1196,7 +1223,7 @@ This command set the target velocity for the platform in meters per second. Canc
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`PLATFORM_NOT_INITIALIZED`](#error-platform-not-initialized) (12) · [`CONTROLLER_NOT_INITIALIZED`](#error-controller-not-initialized) (14) · [`INIT_REQUIRED`](#error-init-required) (15)
+[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`PLATFORM_NOT_INITIALIZED`](#error-platform-not-initialized) (12) · [`CONTROLLER_NOT_INITIALIZED`](#error-controller-not-initialized) (14) · [`INIT_REQUIRED`](#error-init-required) (15) · [`SAMPLE_NOT_AVAILABLE`](#error-sample-not-available) (10) · [`ENCODER_NOT_INITIALIZED`](#error-encoder-not-initialized) (11)
 
 [Back to command index](#command-index)
 
@@ -1270,7 +1297,7 @@ No payload parameters.
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`PLATFORM_NOT_INITIALIZED`](#error-platform-not-initialized) (12)
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`ENCODER_NOT_INITIALIZED`](#error-encoder-not-initialized) (11) · [`PLATFORM_NOT_INITIALIZED`](#error-platform-not-initialized) (12)
 
 [Back to command index](#command-index)
 
@@ -1369,7 +1396,7 @@ No payload parameters.
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6)
+[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6)
 
 [Back to command index](#command-index)
 
@@ -1684,7 +1711,7 @@ Create or replace this connection's subscription for an odometry source. Require
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`ODOMETRY_NOT_INITIALIZED`](#error-odometry-not-initialized) (9)
+[`BOARD_IDLE`](#error-board-idle) (20) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`ODOMETRY_NOT_INITIALIZED`](#error-odometry-not-initialized) (9)
 
 [Back to command index](#command-index)
 
@@ -1812,7 +1839,7 @@ Initialize a bounded proportional position loop over an already running motor ve
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CONTROLLER_NOT_INITIALIZED`](#error-controller-not-initialized) (14) · [`MOTOR_OWNED`](#error-motor-owned) (5)
+[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CONTROLLER_NOT_INITIALIZED`](#error-controller-not-initialized) (14) · [`MOTOR_OWNED`](#error-motor-owned) (5) · [`ENCODER_NOT_INITIALIZED`](#error-encoder-not-initialized) (11) · [`SAMPLE_NOT_AVAILABLE`](#error-sample-not-available) (10)
 
 [Back to command index](#command-index)
 
@@ -1861,7 +1888,7 @@ Set an absolute multi-turn angle in radians relative to the last position initia
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CONTROLLER_NOT_INITIALIZED`](#error-controller-not-initialized) (14) · [`MOTOR_OWNED`](#error-motor-owned) (5)
+[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CONTROLLER_NOT_INITIALIZED`](#error-controller-not-initialized) (14) · [`MOTOR_OWNED`](#error-motor-owned) (5) · [`ENCODER_NOT_INITIALIZED`](#error-encoder-not-initialized) (11) · [`SAMPLE_NOT_AVAILABLE`](#error-sample-not-available) (10)
 
 [Back to command index](#command-index)
 
@@ -1920,7 +1947,7 @@ Initialize bounded pose control after START_PLATFORM_CONTROLLER. Starts odometry
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CONTROLLER_NOT_INITIALIZED`](#error-controller-not-initialized) (14) · [`PLATFORM_NOT_INITIALIZED`](#error-platform-not-initialized) (12) · [`ENCODER_NOT_INITIALIZED`](#error-encoder-not-initialized) (11)
+[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CONTROLLER_NOT_INITIALIZED`](#error-controller-not-initialized) (14) · [`PLATFORM_NOT_INITIALIZED`](#error-platform-not-initialized) (12) · [`ENCODER_NOT_INITIALIZED`](#error-encoder-not-initialized) (11) · [`SAMPLE_NOT_AVAILABLE`](#error-sample-not-available) (10)
 
 [Back to command index](#command-index)
 
@@ -1968,7 +1995,7 @@ Set absolute (x,y,t) in the current odometry world frame: meters, meters, radian
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CONTROLLER_NOT_INITIALIZED`](#error-controller-not-initialized) (14) · [`PLATFORM_NOT_INITIALIZED`](#error-platform-not-initialized) (12) · [`ODOMETRY_NOT_INITIALIZED`](#error-odometry-not-initialized) (9) · [`SAMPLE_NOT_AVAILABLE`](#error-sample-not-available) (10)
+[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CONTROLLER_NOT_INITIALIZED`](#error-controller-not-initialized) (14) · [`PLATFORM_NOT_INITIALIZED`](#error-platform-not-initialized) (12) · [`ODOMETRY_NOT_INITIALIZED`](#error-odometry-not-initialized) (9) · [`SAMPLE_NOT_AVAILABLE`](#error-sample-not-available) (10) · [`ENCODER_NOT_INITIALIZED`](#error-encoder-not-initialized) (11)
 
 [Back to command index](#command-index)
 
@@ -1998,7 +2025,7 @@ Initialize a position PID over the existing velocity controller. Initialize a bo
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CONTROLLER_NOT_INITIALIZED`](#error-controller-not-initialized) (14) · [`MOTOR_OWNED`](#error-motor-owned) (5)
+[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CONTROLLER_NOT_INITIALIZED`](#error-controller-not-initialized) (14) · [`MOTOR_OWNED`](#error-motor-owned) (5) · [`ENCODER_NOT_INITIALIZED`](#error-encoder-not-initialized) (11) · [`SAMPLE_NOT_AVAILABLE`](#error-sample-not-available) (10)
 
 [Back to command index](#command-index)
 
@@ -2033,7 +2060,7 @@ Initialize a position PID over the existing velocity controller. Initialize boun
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CONTROLLER_NOT_INITIALIZED`](#error-controller-not-initialized) (14) · [`PLATFORM_NOT_INITIALIZED`](#error-platform-not-initialized) (12) · [`ENCODER_NOT_INITIALIZED`](#error-encoder-not-initialized) (11)
+[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CONTROLLER_NOT_INITIALIZED`](#error-controller-not-initialized) (14) · [`PLATFORM_NOT_INITIALIZED`](#error-platform-not-initialized) (12) · [`ENCODER_NOT_INITIALIZED`](#error-encoder-not-initialized) (11) · [`SAMPLE_NOT_AVAILABLE`](#error-sample-not-available) (10)
 
 [Back to command index](#command-index)
 
@@ -2059,7 +2086,7 @@ Create or replace this connection's subscription for a topic and resource. Requi
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`ODOMETRY_NOT_INITIALIZED`](#error-odometry-not-initialized) (9) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`SUBSCRIPTION_LIMIT`](#error-subscription-limit) (17) · [`SAMPLE_OUT_OF_RANGE`](#error-sample-out-of-range) (18)
+[`BOARD_IDLE`](#error-board-idle) (20) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`ODOMETRY_NOT_INITIALIZED`](#error-odometry-not-initialized) (9) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`SUBSCRIPTION_LIMIT`](#error-subscription-limit) (17) · [`SAMPLE_OUT_OF_RANGE`](#error-sample-out-of-range) (18)
 
 [Back to command index](#command-index)
 
@@ -2134,7 +2161,7 @@ Create or replace this connection's subscription with a delivery mode. Requires 
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`ODOMETRY_NOT_INITIALIZED`](#error-odometry-not-initialized) (9) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`SUBSCRIPTION_LIMIT`](#error-subscription-limit) (17) · [`SAMPLE_OUT_OF_RANGE`](#error-sample-out-of-range) (18)
+[`BOARD_IDLE`](#error-board-idle) (20) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`ODOMETRY_NOT_INITIALIZED`](#error-odometry-not-initialized) (9) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`SUBSCRIPTION_LIMIT`](#error-subscription-limit) (17) · [`SAMPLE_OUT_OF_RANGE`](#error-sample-out-of-range) (18)
 
 [Back to command index](#command-index)
 
@@ -2173,7 +2200,7 @@ Driver state and diagnostic flags, encoded as ten one-byte booleans.
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`MOTOR_OWNED`](#error-motor-owned) (5) · [`MOTOR_NOT_INITIALIZED`](#error-motor-not-initialized) (13) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7)
+[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`MOTOR_OWNED`](#error-motor-owned) (5) · [`MOTOR_NOT_INITIALIZED`](#error-motor-not-initialized) (13) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7)
 
 [Back to command index](#command-index)
 
@@ -2204,7 +2231,7 @@ Applied current-regulation setting.
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`MOTOR_NOT_INITIALIZED`](#error-motor-not-initialized) (13) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6)
+[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`MOTOR_NOT_INITIALIZED`](#error-motor-not-initialized) (13) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6)
 
 [Back to command index](#command-index)
 
@@ -2237,7 +2264,7 @@ Applied current-regulation setting.
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`MOTOR_NOT_INITIALIZED`](#error-motor-not-initialized) (13) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`MOTOR_OWNED`](#error-motor-owned) (5)
+[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`MOTOR_NOT_INITIALIZED`](#error-motor-not-initialized) (13) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`MOTOR_OWNED`](#error-motor-owned) (5)
 
 [Back to command index](#command-index)
 
@@ -2266,7 +2293,7 @@ Create or replace a subscription with independent trigger and delivery settings.
 
 #### Errors
 
-[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`ODOMETRY_NOT_INITIALIZED`](#error-odometry-not-initialized) (9) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`SUBSCRIPTION_LIMIT`](#error-subscription-limit) (17) · [`SAMPLE_OUT_OF_RANGE`](#error-sample-out-of-range) (18)
+[`BOARD_IDLE`](#error-board-idle) (20) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`ODOMETRY_NOT_INITIALIZED`](#error-odometry-not-initialized) (9) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`SUBSCRIPTION_LIMIT`](#error-subscription-limit) (17) · [`SAMPLE_OUT_OF_RANGE`](#error-sample-out-of-range) (18)
 
 [Back to command index](#command-index)
 
@@ -2304,7 +2331,7 @@ Applied board-wide PWM frequency in hertz.
 
 **Client → controller** · **Payload:** 4 bytes
 
-Stop all motors and motor/platform controllers, then set the board-wide PWM frequency. All motors remain stopped. The setting survives motor initialization and connection changes; reboot restores the board default.
+Stop all motors and motor/platform controllers, then set the board-wide PWM frequency. All motors remain stopped. The setting survives motor initialization and connection changes. At boot the board uses its default unless it restores an explicitly saved v0.4 configuration.
 
 #### Parameters
 
@@ -2325,6 +2352,823 @@ Applied board-wide PWM frequency in hertz.
 #### Errors
 
 [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`INTERNAL_ERROR`](#error-internal-error) (6)
+
+[Back to command index](#command-index)
+
+---
+
+### SAVE_CONFIGURATION (0x59)
+
+**Client → controller** · **Payload:** 0 bytes
+
+Save the complete running platform setup and motor PWM frequency to onboard FRAM. Available on v0.4 with protocol 2.14 or later. ACK confirms a durable save. A subsequent boot restores the setup with outputs stopped. Protocol 2.23+ also saves the applied physical IMU mount and accepts an explicitly configured mount before platform commissioning.
+
+#### Parameters
+
+No payload parameters.
+
+#### Response
+
+**ACK** — empty payload; echoes the command and message ID.
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`PLATFORM_NOT_INITIALIZED`](#error-platform-not-initialized) (12) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6)
+
+[Back to command index](#command-index)
+
+---
+
+### GET_CONFIGURATION_FIELD (0x5A)
+
+**Client → controller** · **Payload:** 2 bytes
+
+Read a running configuration field. Fields 0 through 6 require v0.4. Field 7 is available on all boards with protocol 2.25 and a configured mecanum platform. Field 8 is available on all boards with protocol 2.26 and a configured Omni platform. Use GET_PWM_FREQUENCY for the board-wide switching frequency.
+
+#### Parameters
+
+| Parameter | Type | Bytes | Description |
+| --- | --- | ---: | --- |
+| `field` | `uint8_t` | 1 | 0 platform type (0 unconfigured, 1 differential, 2 omni, 3 mecanum), 1 wheel diameter, 2 track or length, 3 width or radius, 4 encoder resolution, 5 encoder reversed, 6 motor reversed, 7 mecanum roller orientation (0 STANDARD, 1 MIRRORED), 8 Omni single-wheel orientation (0 REAR, 1 FRONT). |
+| `index` | `uint8_t` | 1 | Zero for platform fields. For fields 4 through 6, use the zero-based channel index. |
+
+#### Response
+
+**Controller → client** · `double` · **Payload:** 8 bytes
+
+Current field value in the units of the corresponding initialization command. Boolean flags are returned as zero or one.
+
+| Parameter | Type | Bytes | Description |
+| --- | --- | ---: | --- |
+| `value` | `double` | 8 | Current field value in the units of the corresponding initialization command. Boolean flags are returned as zero or one. |
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`PLATFORM_NOT_INITIALIZED`](#error-platform-not-initialized) (12)
+
+[Back to command index](#command-index)
+
+---
+
+### SET_DRIVER_SLEEP (0x5B)
+
+**Client → controller** · **Payload:** 1 bytes
+
+Set the board-wide motor inhibit. Entry stops all controllers and blocks new motion. On v0.3 and Nano (protocol 2.17), entry holds each DRV8870 input pair low. Release keeps the inputs low until a fresh drive or explicit short brake. On v0.4 (protocol 2.15+), wake verifies retained settings for initialized drivers and leaves outputs stopped. Failed transitions retain the inhibit for explicit retry. Requires READY and a profile supporting driver sleep.
+
+#### Parameters
+
+| Parameter | Type | Bytes | Range | Description |
+| --- | --- | ---: | --- | --- |
+| `sleeping` | `uint8_t` | 1 | 0 to 1 | 1 to request driver sleep or 0 to wake. |
+
+#### Response
+
+**ACK** — empty payload; echoes the command and message ID.
+
+#### Errors
+
+[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`BOARD_IDLE`](#error-board-idle) (20) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6)
+
+[Back to command index](#command-index)
+
+---
+
+### GET_DRIVER_SLEEP (0x5C)
+
+**Client → controller** · **Payload:** 0 bytes
+
+Read the software motor inhibit across connections. It clears at boot. A zero permits commands and does not establish that each chip is awake. Requires READY and driver sleep support (v0.4 since protocol 2.15, original v0.3 and Nano since 2.17).
+
+#### Parameters
+
+No payload parameters.
+
+#### Response
+
+**Controller → client** · `uint8_t` · **Payload:** 1 bytes
+
+1 when driver sleep is requested or 0 when motor commands are permitted.
+
+| Parameter | Type | Bytes | Description |
+| --- | --- | ---: | --- |
+| `sleeping` | `uint8_t` | 1 | 1 when driver sleep is requested or 0 when motor commands are permitted. |
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16)
+
+[Back to command index](#command-index)
+
+---
+
+### SET_BOARD_IDLE (0x5D)
+
+**Client → controller** · **Payload:** 1 bytes
+
+Set communication-preserving board idle. Entry (1) stops control, inhibits the drivers and permits shallow CPU sleep between tasks. USB traffic, time sync, queries and heartbeat keep using the existing session. Only explicit exit (0) clears idle. Exit preserves a prior independent driver inhibit and leaves outputs stopped. On original v0.3 and Nano both DRV8870 inputs stay low until fresh drive or brake. On v0.4, previously active drivers are verified before release. A failed transition retains idle and inhibit for explicit retry. Requires READY, an idle-capable profile and protocol 2.18 on v0.3 or Nano, or 2.16 on v0.4.
+
+#### Parameters
+
+| Parameter | Type | Bytes | Range | Description |
+| --- | --- | ---: | --- | --- |
+| `idle` | `uint8_t` | 1 | 0 to 1 | 1 to enter board idle or 0 to wake the board. |
+
+#### Response
+
+**ACK** — empty payload; echoes the command and message ID.
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`BOARD_IDLE`](#error-board-idle) (20)
+
+[Back to command index](#command-index)
+
+---
+
+### GET_BOARD_IDLE (0x5E)
+
+**Client → controller** · **Payload:** 0 bytes
+
+Read the shared logical idle request without clearing it. Interrupts can resume the CPU while this request remains set. GET_DRIVER_SLEEP reports the effective driver inhibit. Idle survives reconnect and clears at reset. Requires READY and board idle support (original v0.3 and Nano since protocol 2.18, v0.4 since 2.16).
+
+#### Parameters
+
+No payload parameters.
+
+#### Response
+
+**Controller → client** · `uint8_t` · **Payload:** 1 bytes
+
+1 while the board idle request is active, otherwise 0.
+
+| Parameter | Type | Bytes | Description |
+| --- | --- | ---: | --- |
+| `idle` | `uint8_t` | 1 | 1 while the board idle request is active, otherwise 0. |
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16)
+
+[Back to command index](#command-index)
+
+---
+
+### SET_FUSION_EXPERIMENT (0x5f)
+
+**Client → controller** · **Payload:** 9 bytes
+
+Configure the volatile v0.4 experiment only while motion is stopped and all commanded targets and motor outputs are zero; initialized controllers with idle zero targets are allowed. Mode 0 retains the legacy encoder path (boot default), 1 uses encoder feedback with the common chassis correction, and 2 uses fused feedback with that same correction. No IMU-only mode. Without a configured physical mount, modes 1/2 require a rigid, level board with component side up, IMU at the chassis reference point, and mounting_yaw_rad as the angle of board +X expressed in chassis XY, counterclockwise about chassis +Z. Sensor-to-board axes are (-x,-y,+z); chassis axes are forward/left/up. Reject nonfinite or out-of-range yaw, any observed configured encoder movement in the preceding 100 ms, or a counter change since a fresh sample. Stopped cold setup may ACK in WAITING; ACK does not establish readiness. Both experimental modes require 100 ms of observed unchanged configured counters for initial rest arming before accepting a motion target; once armed, ordinary target updates remain accepted while moving; fused bias calibration may run within that window. Reconfiguration cancels old targets. Sources may requalify automatically after an ordinary sensor fault, but healthy inputs and a fresh target are required before control resumes. Does not save to FRAM or start motion. Requires READY, exact v0.4.0 fusion capability and protocol 2.19. On protocol 2.23+, a configured physical mount takes precedence over legacy yaw. Use GET_BOARD_MOUNT on 2.24+ for PCB underside-center geometry. On 2.23 use GET_IMU_MOUNT for chip-reference geometry.
+
+#### Parameters
+
+| Parameter | Type | Bytes | Range | Description |
+| --- | --- | ---: | --- | --- |
+| `mode` | `uint8_t` | 1 | 0 to 2 | FusionMode value. |
+| `mounting_yaw_rad` | `double` | 8 | -3.141592653589793 to 3.141592653589793 | Legacy board yaw in radians for a centered, level installation. A configured physical mount takes precedence. |
+
+#### Response
+
+**ACK** — empty payload; echoes the command and message ID.
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`BOARD_IDLE`](#error-board-idle) (20) · [`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`PLATFORM_NOT_INITIALIZED`](#error-platform-not-initialized) (12)
+
+[Back to command index](#command-index)
+
+---
+
+### GET_FUSION_STATUS (0x60)
+
+**Client → controller** · **Payload:** 0 bytes
+
+Read experiment mode, health, fault, flags and timestamped sample ages without setting targets or changing configuration. A read may enforce an expired feedback deadline, clear the live target and coast. Health/fault/flag values use the FusionHealth/FusionFault/FusionFlag catalogs. Timestamp uses the monotonic board clock; unavailable ages are UINT32_MAX. The physical IMU producer waits 2 ms between passes, without guaranteeing a 2 ms acquisition cadence, and pairs only acquisition windows entirely preceding the encoder timestamp: each window is at most 5 ms wide, worst-case accel/gyro skew at most 15 ms, and age at most 35 ms. These are software acceptance limits, not a physical timing qualification. ESTIMATE_VALID describes the selected experiment estimate, not physical accuracy. Requires READY, exact v0.4.0 fusion capability and protocol 2.19.
+
+#### Parameters
+
+No payload parameters.
+
+#### Response
+
+**Controller → client** · `fusion_status` · **Payload:** 28 bytes
+
+Packed little-endian diagnostic snapshot.
+
+| Parameter | Type | Bytes | Description |
+| --- | --- | ---: | --- |
+| `mode` | `uint8_t` | 1 | Selected fusion_modes value. |
+| `health` | `uint8_t` | 1 | Current fusion_health value. |
+| `fault` | `uint8_t` | 1 | Current fusion_faults reason, or NONE. |
+| `flags` | `uint8_t` | 1 | Bitmask of fusion_flags; ESTIMATE_VALID is required before using estimates. |
+| `sequence` | `uint32_t` | 4 | Snapshot sequence; compare with each vector before associating this status. |
+| `timestamp_us` | `uint64_t` | 8 | Monotonic board microseconds of this estimate snapshot; not wall time. |
+| `accel_age_us` | `uint32_t` | 4 | UINT32_MAX means unavailable. |
+| `gyro_age_us` | `uint32_t` | 4 | UINT32_MAX means unavailable. |
+| `encoder_age_us` | `uint32_t` | 4 | UINT32_MAX means unavailable. |
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6)
+
+[Back to command index](#command-index)
+
+---
+
+### GET_FUSION_VECTOR (0x61)
+
+**Client → controller** · **Payload:** 1 bytes
+
+Read one compact experiment vector: 0 encoder pose (relative x,y,yaw), 1 encoder body twist (vx,vy,yaw rate), 2 fused pose, 3 fused body twist, 4 estimated bias (ax,ay,gyro z). Units are metres, seconds and radians. On outage recovery, the last fused-from-encoder world transform is reapplied to the current encoder pose. Returns SAMPLE_NOT_AVAILABLE when the requested estimate is invalid. Match sequence with GET_FUSION_STATUS to associate timestamp/health; different sequences are different snapshots. At most 28 payload bytes so the framed reply fits Arduino Wire32. Does not reset state or start motion. Requires READY, exact v0.4.0 fusion capability and protocol 2.19.
+
+#### Parameters
+
+| Parameter | Type | Bytes | Range | Description |
+| --- | --- | ---: | --- | --- |
+| `kind` | `uint8_t` | 1 | 0 to 4 | FusionVectorKind value. |
+
+#### Response
+
+**Controller → client** · `fusion_vector` · **Payload:** 28 bytes
+
+Packed little-endian diagnostic snapshot.
+
+| Parameter | Type | Bytes | Description |
+| --- | --- | ---: | --- |
+| `sequence` | `uint32_t` | 4 | Match GET_FUSION_STATUS sequence before associating its timestamp or health. |
+| `x` | `double` | 8 | Pose X in metres, twist X in metres per second, or X accelerometer bias in metres per second squared, selected by kind. |
+| `y` | `double` | 8 | Pose Y in metres, twist Y in metres per second, or Y accelerometer bias in metres per second squared, selected by kind. |
+| `z` | `double` | 8 | Pose yaw in radians, twist yaw rate in radians per second, or Z gyro bias in radians per second, selected by kind. |
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`SAMPLE_NOT_AVAILABLE`](#error-sample-not-available) (10)
+
+[Back to command index](#command-index)
+
+---
+
+### GET_FUSION_CONFIGURATION (0x62)
+
+**Client → controller** · **Payload:** 0 bytes
+
+Read the volatile experiment mode and declared mounting yaw without changing state. Reset selects legacy encoder mode; SAVE_CONFIGURATION does not persist this experiment. Requires READY, exact v0.4.0 fusion capability and protocol 2.19. On protocol 2.23+, a configured physical mount takes precedence over legacy yaw. Use GET_BOARD_MOUNT on 2.24+ for PCB underside-center geometry. On 2.23 use GET_IMU_MOUNT for chip-reference geometry.
+
+#### Parameters
+
+No payload parameters.
+
+#### Response
+
+**Controller → client** · `fusion_configuration` · **Payload:** 9 bytes
+
+Packed little-endian diagnostic snapshot.
+
+| Parameter | Type | Bytes | Description |
+| --- | --- | ---: | --- |
+| `mode` | `uint8_t` | 1 | Selected fusion_modes value; boot default is LEGACY_ENCODER. |
+| `mounting_yaw_rad` | `double` | 8 | Angle of board +X in the chassis XY plane, counterclockwise about chassis +Z; finite radians in [-pi, pi]. |
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6)
+
+[Back to command index](#command-index)
+
+---
+
+### SET_IMU_TRACKING (0x63)
+
+**Client → controller** · **Payload:** 10 bytes
+
+Control volatile IMU-only relative tracking. START=0, RESET=2 and RECALIBRATE=3 are accepted from any state with stationary_mount_confirmed=1 and finite yaw in [-pi,pi]; all discard prior bias and pose and begin full cold stationary calibration at a new relative origin. The caller confirms true zero velocity and the actual rigid installation. Without a configured physical mount, use a level sensor with +Z up at the tracking origin. Legacy yaw is the angle of sensor +X in chassis XY, counterclockwise about chassis +Z. The legacy sensor-to-chassis transform is Rz(yaw)*(x,y,z), axes forward/left/up. IMU stationarity checks cannot establish zero constant velocity. STOP=1 requires confirmation=0 and yaw=0 and stops integration. ACK confirms the action, not a valid estimate. Fault, expiry or interruption requires deliberate restart; no automatic recovery. Not saved to FRAM. Requires READY, exact model 1 hardware 0.4.0 with imu_tracking capability and protocol 2.20+. Independent of platform, encoders and fusion; never commands motion or changes control feedback. On protocol 2.23+, a configured physical mount takes precedence over legacy yaw. Use GET_BOARD_MOUNT on 2.24+ for PCB underside-center geometry. On 2.23 use GET_IMU_MOUNT for chip-reference geometry.
+
+#### Parameters
+
+| Parameter | Type | Bytes | Range | Description |
+| --- | --- | ---: | --- | --- |
+| `action` | `uint8_t` | 1 | 0 to 3 | ImuTrackingAction value. |
+| `stationary_mount_confirmed` | `uint8_t` | 1 | 0 to 1 | Explicit caller confirmation of zero velocity and the declared rigid installation, 0 or 1. |
+| `mounting_yaw_rad` | `double` | 8 | -3.141592653589793 to 3.141592653589793 | Legacy sensor +X yaw about chassis +Z in finite radians for a level sensor. A configured physical mount takes precedence. |
+
+#### Response
+
+**ACK** — empty payload; echoes the command and message ID.
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`BOARD_IDLE`](#error-board-idle) (20) · [`DRIVERS_ASLEEP`](#error-drivers-asleep) (19)
+
+[Back to command index](#command-index)
+
+---
+
+### GET_IMU_TRACKING_STATUS (0x64)
+
+**Client → controller** · **Payload:** 0 bytes
+
+Read IMU-only tracking state, fault, flags, sequence, last eligible joint sample-watermark timestamp, wall elapsed time since the source origin capped at window_us and separate accel/gyro ages in microseconds. UINT32_MAX age means unavailable. ESTIMATE_VALID is required for usable current estimates; timestamp and health are not physical accuracy guarantees. A delayed in-window source sample may remain readable briefly after the wall clock reaches the source end. Healthy tracking expires upon the first consumed source watermark at or beyond the end, or by the first serviced status/vector/configuration read at or after end + 50000 us. Missing, stale or invalid input may fault earlier. This is a serviced-read guarantee, not a hard real-time scheduling guarantee. Reads never start tracking. Status and vector sequences must match to combine separate reads. Requires READY, exact model 1 hardware 0.4.0 with imu_tracking capability and protocol 2.20+. Independent of platform, encoders and fusion; never commands motion or changes control feedback.
+
+#### Parameters
+
+No payload parameters.
+
+#### Response
+
+**Controller → client** · `imu_tracking_status` · **Payload:** 28 bytes
+
+Packed little-endian IMU-only tracking snapshot.
+
+| Parameter | Type | Bytes | Description |
+| --- | --- | ---: | --- |
+| `state` | `uint8_t` | 1 | ImuTrackingState value. |
+| `fault` | `uint8_t` | 1 | ImuTrackingFault value. |
+| `flags` | `uint8_t` | 1 | ImuTrackingFlag bitmask. |
+| `reserved` | `uint8_t` | 1 | Reserved; must be zero. |
+| `sequence` | `uint32_t` | 4 | Snapshot sequence; match vector reads. |
+| `timestamp_us` | `uint64_t` | 8 | Last eligible monotonic joint accel/gyro source watermark; no published watermark reaches origin + window_us. Zero before the first estimate. |
+| `elapsed_us` | `uint32_t` | 4 | Wall elapsed microseconds since the source origin, capped at window_us; distinct from the retained source watermark. Frozen on fault or expiry; STOP clears it. |
+| `accel_age_us` | `uint32_t` | 4 | Accel age in microseconds; UINT32_MAX if unavailable. |
+| `gyro_age_us` | `uint32_t` | 4 | Gyro age in microseconds; UINT32_MAX if unavailable. |
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6)
+
+[Back to command index](#command-index)
+
+---
+
+### GET_IMU_TRACKING_VECTOR (0x65)
+
+**Client → controller** · **Payload:** 1 bytes
+
+Read a compact IMU-only vector selected by kind: POSE=0 (relative metres,metres,radians), TWIST=1 (body metres/second,metres/second,radians/second), BIAS=2 (accel-X,accel-Y metres/second squared and gyro-Z radians/second). SAMPLE_NOT_AVAILABLE means the requested estimate is invalid. Match sequence with GET_IMU_TRACKING_STATUS; never combine mismatched snapshots. Relative integration drifts and has no absolute position or heading reference. Requires READY, exact model 1 hardware 0.4.0 with imu_tracking capability and protocol 2.20+. Independent of platform, encoders and fusion; never commands motion or changes control feedback.
+
+#### Parameters
+
+| Parameter | Type | Bytes | Range | Description |
+| --- | --- | ---: | --- | --- |
+| `kind` | `uint8_t` | 1 | 0 to 2 | ImuTrackingVectorKind value. |
+
+#### Response
+
+**Controller → client** · `imu_tracking_vector` · **Payload:** 28 bytes
+
+Packed little-endian IMU-only tracking snapshot.
+
+| Parameter | Type | Bytes | Description |
+| --- | --- | ---: | --- |
+| `sequence` | `uint32_t` | 4 | Match status sequence before associating health and time. |
+| `x` | `double` | 8 | Pose X, body velocity X, or acceleration bias X, selected by kind. |
+| `y` | `double` | 8 | Pose Y, body velocity Y, or acceleration bias Y, selected by kind. |
+| `z` | `double` | 8 | Pose yaw, body yaw rate, or gyro Z bias, selected by kind. |
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`SAMPLE_NOT_AVAILABLE`](#error-sample-not-available) (10)
+
+[Back to command index](#command-index)
+
+---
+
+### GET_IMU_TRACKING_CONFIGURATION (0x66)
+
+**Client → controller** · **Payload:** 0 bytes
+
+Read mounting yaw and the actual bounded tracking horizon in microseconds. This v0.4 release reports 1000000 us for a one-second motion-onset diagnostic. Always use readback for the connected board horizon. The eligible source interval is [origin, origin + window_us); at 100 Hz it contains 100 source stamps including origin and excluding the end. No estimate at or beyond the source end is published. Reset clears volatile tracking state; reconnect does not start or re-anchor tracking. Requires READY, exact model 1 hardware 0.4.0 with imu_tracking capability and protocol 2.20+. Independent of platform, encoders and fusion; never commands motion or changes control feedback. On protocol 2.23+, a configured physical mount takes precedence over legacy yaw. Use GET_BOARD_MOUNT on 2.24+ for PCB underside-center geometry. On 2.23 use GET_IMU_MOUNT for chip-reference geometry.
+
+#### Parameters
+
+No payload parameters.
+
+#### Response
+
+**Controller → client** · `imu_tracking_configuration` · **Payload:** 12 bytes
+
+Packed little-endian IMU-only tracking snapshot.
+
+| Parameter | Type | Bytes | Description |
+| --- | --- | ---: | --- |
+| `mounting_yaw_rad` | `double` | 8 | Declared supported mounting yaw in radians. |
+| `window_us` | `uint32_t` | 4 | Actual source tracking horizon in microseconds; 1000000 for this v0.4 release. Eligible source times are [origin, origin + window_us). |
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6)
+
+[Back to command index](#command-index)
+
+---
+
+### SET_FEEDBACK_SOURCE (0x67)
+
+**Client → controller** · **Payload:** 1 bytes
+
+Choose the board-wide telemetry preference. A change requires stopped outputs, disarmed controllers and stationary observed encoders. An unchanged preference is idempotent. The selector never starts motion, wheel odometry, standalone IMU calibration or a controller. FUSED uses an independent passive instance of the release estimator when its explicit mount and encoder odometry are available. It anchors a new relative frame at the first available source sample serviced after a switch or producer restart. The existing SAVE_CONFIGURATION explicitly persists the preference alongside platform setup; cold restore never restores an origin, bias, stationary declaration or motion target. Requires READY and exact model 1 hardware 0.4.0 with feedback_source_selector and protocol 2.21 or newer. Selection only routes tracking telemetry.
+
+#### Parameters
+
+| Parameter | Type | Bytes | Range | Description |
+| --- | --- | ---: | --- | --- |
+| `source` | `uint8_t` | 1 | 0 to 2 | FeedbackSource value (NONE is read-only). |
+
+#### Response
+
+**ACK** — empty payload; echoes the command and message ID.
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`SOURCE_SWITCH_UNSAFE`](#error-source-switch-unsafe) (21)
+
+[Back to command index](#command-index)
+
+---
+
+### GET_FEEDBACK_SOURCE_STATUS (0x68)
+
+**Client → controller** · **Payload:** 0 bytes
+
+Get requested and active source, availability reason and producer detail. Invalid status reports active NONE; no fallback. While valid the sample sequence and monotonic timestamp identify the underlying producer publication. Inspect requested source diagnostics for acquisition ages and fault detail. The standalone IMU is a one-second relative motion-onset diagnostic; fused telemetry uses the existing experimental estimator. Reconnect reads live board state. Requires READY and exact model 1 hardware 0.4.0 with feedback_source_selector and protocol 2.21 or newer. Selection only routes tracking telemetry.
+
+#### Parameters
+
+No payload parameters.
+
+#### Response
+
+**Controller → client** · `feedback_source_status` · **Payload:** 27 bytes
+
+Packed little-endian selector readback.
+
+| Parameter | Type | Bytes | Description |
+| --- | --- | ---: | --- |
+| `requested` | `uint8_t` | 1 | Requested FeedbackSource. |
+| `active` | `uint8_t` | 1 | Active FeedbackSource, NONE while invalid. |
+| `valid` | `uint8_t` | 1 | One when a current source snapshot is available, otherwise zero. |
+| `reason` | `uint8_t` | 1 | FeedbackSourceReason. |
+| `sequence` | `uint32_t` | 4 | Underlying sample sequence when valid; zero when invalid. |
+| `timestamp_us` | `uint64_t` | 8 | Underlying monotonic board sample time; zero when invalid. |
+| `origin_id` | `uint32_t` | 4 | Board-local frame generation. Discard prior coordinates on change or board reboot. |
+| `source_detail` | `uint8_t` | 1 | Native IMU tracking or fusion fault code for the requested source; zero otherwise. |
+| `age_us` | `uint32_t` | 4 | Board-clock sample age in microseconds; UINT32_MAX when unavailable. |
+| `max_age_ms` | `uint16_t` | 2 | Maximum eligible captured sample age in milliseconds for this source, including the configured encoder period. Compare updated original sample age with the smaller of its captured and current limits. |
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6)
+
+[Back to command index](#command-index)
+
+---
+
+### GET_FEEDBACK_SOURCE_VECTOR (0x69)
+
+**Client → controller** · **Payload:** 9 bytes
+
+Get selector-relative pose (metres, metres, unwrapped radians) or body twist (metres/second, metres/second, radians/second), +X forward, +Y left, yaw CCW. Relative XY is rotated into the heading at the new anchor. First capture a valid status, then request both vectors with its exact origin_id and sequence. Eight distinct recent captures are retained for at most 50000 us after capture. Both keys and the current healthy source/frame must match. Selected historical sample age cannot exceed 50000 us for IMU-only, 60000 us for fused, or three configured encoder periods. Expiry or invalidation immediately rejects cached data. A final live status may naturally advance sequence and time; require the same valid requested/active source and origin, match both vector sequences to the original capture and retry on SAMPLE_NOT_AVAILABLE. Compare origins only within the same boot. Requires READY and exact model 1 hardware 0.4.0 with feedback_source_selector and protocol 2.21 or newer. Selection only routes tracking telemetry.
+
+#### Parameters
+
+| Parameter | Type | Bytes | Range | Description |
+| --- | --- | ---: | --- | --- |
+| `kind` | `uint8_t` | 1 | 0 to 1 | FeedbackSourceVectorKind value. |
+| `origin_id` | `uint32_t` | 4 | — | Frame generation captured by GET_FEEDBACK_SOURCE_STATUS. |
+| `sequence` | `uint32_t` | 4 | — | Exact source sample sequence captured by GET_FEEDBACK_SOURCE_STATUS. |
+
+#### Response
+
+**Controller → client** · `feedback_source_vector` · **Payload:** 28 bytes
+
+Packed little-endian selector readback.
+
+| Parameter | Type | Bytes | Description |
+| --- | --- | ---: | --- |
+| `sequence` | `uint32_t` | 4 | Exact producer sequence captured by status and requested by the vector command. |
+| `x` | `double` | 8 | X coordinate or body X velocity. |
+| `y` | `double` | 8 | Y coordinate or body Y velocity. |
+| `z` | `double` | 8 | Continuous relative yaw or body yaw rate. |
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`SAMPLE_NOT_AVAILABLE`](#error-sample-not-available) (10)
+
+[Back to command index](#command-index)
+
+---
+
+### SET_FEEDBACK_FUSION_MOUNT (0x6a)
+
+**Client → controller** · **Payload:** 8 bytes
+
+Declare the legacy centered, level board orientation for passive fused telemetry, with finite board yaw in [-pi,pi]. Requires stopped outputs and disarmed controllers. Each successful command discards prior passive calibration and pose; the observer requires fresh stationary observations. This volatile setting applies only to passive telemetry. Requires READY, exact v0.4 and protocol 2.21+. On protocol 2.23+, a configured physical mount takes precedence over legacy yaw. Use GET_BOARD_MOUNT on 2.24+ for PCB underside-center geometry. On 2.23 use GET_IMU_MOUNT for chip-reference geometry.
+
+#### Parameters
+
+| Parameter | Type | Bytes | Range | Description |
+| --- | --- | ---: | --- | --- |
+| `mounting_yaw_rad` | `double` | 8 | -3.141592653589793 to 3.141592653589793 | Legacy yaw of board +X in chassis XY, counterclockwise about +Z in radians. Centered and level applies only to a yaw-only installation. |
+
+#### Response
+
+**ACK** — empty payload; echoes the command and message ID.
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`SOURCE_SWITCH_UNSAFE`](#error-source-switch-unsafe) (21)
+
+[Back to command index](#command-index)
+
+---
+
+### GET_FEEDBACK_FUSION_MOUNT (0x6b)
+
+**Client → controller** · **Payload:** 0 bytes
+
+Read the explicit volatile passive fusion mounting confirmation and board yaw. Reset clears confirmation. Requires READY, exact v0.4 and protocol 2.21+. On protocol 2.23+, a configured physical mount takes precedence over legacy yaw. Use GET_BOARD_MOUNT on 2.24+ for PCB underside-center geometry. On 2.23 use GET_IMU_MOUNT for chip-reference geometry.
+
+#### Parameters
+
+No payload parameters.
+
+#### Response
+
+**Controller → client** · `feedback_fusion_mount` · **Payload:** 9 bytes
+
+Packed little-endian selector readback.
+
+| Parameter | Type | Bytes | Description |
+| --- | --- | ---: | --- |
+| `confirmed` | `uint8_t` | 1 | One after an explicit mount declaration this boot. |
+| `mounting_yaw_rad` | `double` | 8 | Angle of board +X in chassis XY, counterclockwise about +Z in radians. A centered, level board with +Z up is required only for a yaw-only installation. |
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6)
+
+[Back to command index](#command-index)
+
+---
+
+### GET_FEEDBACK_SOURCE_HEALTH (0x6c)
+
+**Client → controller** · **Payload:** 1 bytes
+
+Read producer health independently of selector and control. ENCODER is the running platform encoder batch, IMU_ONLY is physical BMI088 pair availability independent of the one-second estimate, FUSED is the passive fused estimate. Disagreement indicates conflicting observations without assigning sensor blame. HEALTHY means directly usable data. Comparability is separate. Historical provenance remains readable during failure. Reconnect reads board state. Requires READY, exact v0.4 and protocol 2.22+ with feedback_source_health.
+
+#### Parameters
+
+| Parameter | Type | Bytes | Range | Description |
+| --- | --- | ---: | --- | --- |
+| `source` | `uint8_t` | 1 | 0 to 2 | FeedbackSource value, excluding NONE. |
+
+#### Response
+
+**Controller → client** · `feedback_source_health` · **Payload:** 28 bytes
+
+Read producer health independently of selector and control. ENCODER is the running platform encoder batch, IMU_ONLY is physical BMI088 pair availability independent of the one-second estimate, FUSED is the passive fused estimate. Disagreement indicates conflicting observations without assigning sensor blame. HEALTHY means directly usable data. Comparability is separate. Historical provenance remains readable during failure. Reconnect reads board state.
+
+| Parameter | Type | Bytes | Description |
+| --- | --- | ---: | --- |
+| `source` | `uint8_t` | 1 | Echo of FeedbackSource request. |
+| `health` | `uint8_t` | 1 | FeedbackSourceHealthState. |
+| `reason` | `uint8_t` | 1 | FeedbackSourceReason for current producer availability. |
+| `detail` | `uint8_t` | 1 | FusionFault explanation if present. |
+| `flags` | `uint32_t` | 4 | FeedbackSourceHealthFlag bit mask. |
+| `sequence` | `uint32_t` | 4 | Sequence of the last producer publication or observed distinct raw IMU pair, wrapping modulo 2^32; use PROVENANCE for presence. |
+| `timestamp_us` | `uint64_t` | 8 | Last usable source time in board uptime microseconds. For the BMI088 pair this is its older die timestamp. |
+| `age_us` | `uint32_t` | 4 | Age of that timestamp in board uptime microseconds, UINT32_MAX if absent, future or too old to represent. |
+| `max_age_us` | `uint32_t` | 4 | Source freshness budget in microseconds. |
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6)
+
+[Back to command index](#command-index)
+
+---
+
+### GET_FEEDBACK_IMU_CHANNELS (0x6d)
+
+**Client → controller** · **Payload:** 0 bytes
+
+Read independent last observed accelerometer and gyro acquisition times in board uptime microseconds. A timestamp of zero and age UINT32_MAX indicate no observed acquisition. These are physical source observations, independent of the finite IMU-only tracking window. A pair must meet the 35000 us age and 15000 us skew limits. Requires READY, exact v0.4 and protocol 2.22+ with feedback_source_health.
+
+#### Parameters
+
+No payload parameters.
+
+#### Response
+
+**Controller → client** · `feedback_imu_channels` · **Payload:** 24 bytes
+
+Read independent last observed accelerometer and gyro acquisition times in board uptime microseconds. A timestamp of zero and age UINT32_MAX indicate no observed acquisition. These are physical source observations, independent of the finite IMU-only tracking window. A pair must meet the 35000 us age and 15000 us skew limits.
+
+| Parameter | Type | Bytes | Description |
+| --- | --- | ---: | --- |
+| `accel_timestamp_us` | `uint64_t` | 8 | Last observed accelerometer acquisition time in board uptime microseconds. |
+| `gyro_timestamp_us` | `uint64_t` | 8 | Last observed gyro acquisition time in board uptime microseconds. |
+| `accel_age_us` | `uint32_t` | 4 | Board-derived acquisition age in microseconds, UINT32_MAX if unknown. |
+| `gyro_age_us` | `uint32_t` | 4 | Board-derived acquisition age in microseconds, UINT32_MAX if unknown. |
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6)
+
+[Back to command index](#command-index)
+
+---
+
+### SET_IMU_MOUNT (0x6e)
+
+**Client → controller** · **Payload:** 18 bytes
+
+Legacy chip-reference API, deprecated for new installations. Set the complete rigid mount for IMU-only and fused tracking on a stopped, disarmed v0.4. The board-to-chassis rotation is Rz(yaw) Ry(pitch) Rx(roll). A changed mount requires fresh tracking initialization. SAVE_CONFIGURATION persists this geometry. Requires READY and protocol 2.23+ with imu_mounting. XYZ refers to the BMI088 chip. Use SET_BOARD_MOUNT for the PCB underside center.
+
+#### Parameters
+
+| Parameter | Type | Bytes | Range | Description |
+| --- | --- | ---: | --- | --- |
+| `roll_cdeg` | `int16_t` | 2 | -18000 to 18000 | Board-to-chassis roll in signed hundredths of a degree. |
+| `pitch_cdeg` | `int16_t` | 2 | -9000 to 9000 | Board-to-chassis pitch in signed hundredths of a degree. |
+| `yaw_cdeg` | `int16_t` | 2 | -18000 to 18000 | Board-to-chassis yaw in signed hundredths of a degree. |
+| `x_um` | `int32_t` | 4 | -10000000 to 10000000 | Signed displacement from the tracking origin to the BMI088 chip along chassis +X (forward), in micrometres. |
+| `y_um` | `int32_t` | 4 | -10000000 to 10000000 | Signed displacement from the tracking origin to the BMI088 chip along chassis +Y (left), in micrometres. |
+| `z_um` | `int32_t` | 4 | -10000000 to 10000000 | Signed displacement from the tracking origin to the BMI088 chip along chassis +Z (up), in micrometres. |
+
+#### Response
+
+**ACK** — empty payload; echoes the command and message ID.
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`SOURCE_SWITCH_UNSAFE`](#error-source-switch-unsafe) (21)
+
+[Back to command index](#command-index)
+
+---
+
+### GET_IMU_MOUNT (0x6f)
+
+**Client → controller** · **Payload:** 0 bytes
+
+Legacy chip-reference API, deprecated for new installations. Read the shared physical mount. When configured is false, IMU-only uses its legacy sensor yaw and fusion its legacy board yaw. Requires READY and protocol 2.23+ with imu_mounting. XYZ is the BMI088 chip position, including when derived from a PCB underside-center installation.
+
+#### Parameters
+
+No payload parameters.
+
+#### Response
+
+**Controller → client** · `imu_mount_configuration` · **Payload:** 19 bytes
+
+Applied board-to-chassis geometry and configuration state.
+
+| Parameter | Type | Bytes | Range | Description |
+| --- | --- | ---: | --- | --- |
+| `roll_cdeg` | `int16_t` | 2 | -18000 to 18000 | Board-to-chassis roll in signed hundredths of a degree. |
+| `pitch_cdeg` | `int16_t` | 2 | -9000 to 9000 | Board-to-chassis pitch in signed hundredths of a degree. |
+| `yaw_cdeg` | `int16_t` | 2 | -18000 to 18000 | Board-to-chassis yaw in signed hundredths of a degree. |
+| `x_um` | `int32_t` | 4 | -10031098 to 10031098 | Signed displacement from the tracking origin to the BMI088 chip along chassis +X (forward), in micrometres. A position derived from the other reference can exceed its setter's 10 m input range. |
+| `y_um` | `int32_t` | 4 | -10031098 to 10031098 | Signed displacement from the tracking origin to the BMI088 chip along chassis +Y (left), in micrometres. A position derived from the other reference can exceed its setter's 10 m input range. |
+| `z_um` | `int32_t` | 4 | -10031098 to 10031098 | Signed displacement from the tracking origin to the BMI088 chip along chassis +Z (up), in micrometres. A position derived from the other reference can exceed its setter's 10 m input range. |
+| `configured` | `bool` | 1 | — | True after explicit mount setup or restore. False selects legacy per-mode yaw. |
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6)
+
+[Back to command index](#command-index)
+
+---
+
+### SET_BOARD_MOUNT (0x85)
+
+**Client → controller** · **Payload:** 18 bytes
+
+Set the rigid mount on a stopped, disarmed Mini. XYZ is the displacement in chassis axes from the tracking origin to the geometric center of the PCB underside. Board-to-chassis rotation is Rz(yaw) Ry(pitch) Rx(roll). Firmware derives the chip offset. SAVE_CONFIGURATION persists the entered board pose. Requires READY, exact v0.4 imu_mounting and protocol 2.24+.
+
+#### Parameters
+
+| Parameter | Type | Bytes | Range | Description |
+| --- | --- | ---: | --- | --- |
+| `roll_cdeg` | `int16_t` | 2 | -18000 to 18000 | Board-to-chassis roll in signed hundredths of a degree. |
+| `pitch_cdeg` | `int16_t` | 2 | -9000 to 9000 | Board-to-chassis pitch in signed hundredths of a degree. |
+| `yaw_cdeg` | `int16_t` | 2 | -18000 to 18000 | Board-to-chassis yaw in signed hundredths of a degree. |
+| `x_um` | `int32_t` | 4 | -10000000 to 10000000 | Signed displacement from the tracking origin to the geometric center of the PCB underside along chassis +X (forward), in micrometres. |
+| `y_um` | `int32_t` | 4 | -10000000 to 10000000 | Signed displacement from the tracking origin to the geometric center of the PCB underside along chassis +Y (left), in micrometres. |
+| `z_um` | `int32_t` | 4 | -10000000 to 10000000 | Signed displacement from the tracking origin to the geometric center of the PCB underside along chassis +Z (up), in micrometres. |
+
+#### Response
+
+**ACK** — empty payload; echoes the command and message ID.
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`SOURCE_SWITCH_UNSAFE`](#error-source-switch-unsafe) (21)
+
+[Back to command index](#command-index)
+
+---
+
+### GET_BOARD_MOUNT (0x86)
+
+**Client → controller** · **Payload:** 0 bytes
+
+Read the applied board orientation and geometric PCB underside center in chassis coordinates. Legacy chip mounts are converted. When unconfigured all coordinates and angles are zero. Requires READY, exact v0.4 imu_mounting and protocol 2.24+.
+
+#### Parameters
+
+No payload parameters.
+
+#### Response
+
+**Controller → client** · `board_mount_configuration` · **Payload:** 19 bytes
+
+Applied orientation and chassis-to-PCB underside-center displacement.
+
+| Parameter | Type | Bytes | Range | Description |
+| --- | --- | ---: | --- | --- |
+| `roll_cdeg` | `int16_t` | 2 | -18000 to 18000 | Board-to-chassis roll in signed hundredths of a degree. |
+| `pitch_cdeg` | `int16_t` | 2 | -9000 to 9000 | Board-to-chassis pitch in signed hundredths of a degree. |
+| `yaw_cdeg` | `int16_t` | 2 | -18000 to 18000 | Board-to-chassis yaw in signed hundredths of a degree. |
+| `x_um` | `int32_t` | 4 | -10031098 to 10031098 | Signed displacement from the tracking origin to the geometric center of the PCB underside along chassis +X (forward), in micrometres. A position derived from the other reference can exceed its setter's 10 m input range. |
+| `y_um` | `int32_t` | 4 | -10031098 to 10031098 | Signed displacement from the tracking origin to the geometric center of the PCB underside along chassis +Y (left), in micrometres. A position derived from the other reference can exceed its setter's 10 m input range. |
+| `z_um` | `int32_t` | 4 | -10031098 to 10031098 | Signed displacement from the tracking origin to the geometric center of the PCB underside along chassis +Z (up), in micrometres. A position derived from the other reference can exceed its setter's 10 m input range. |
+| `configured` | `bool` | 1 | — | True after explicit mount setup or restore. False selects legacy per-mode yaw. |
+
+#### Errors
+
+[`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7) · [`SENSOR_NOT_AVAILABLE`](#error-sensor-not-available) (16) · [`INTERNAL_ERROR`](#error-internal-error) (6)
+
+[Back to command index](#command-index)
+
+---
+
+### INITIALIZE_MECANUM_PLATFORM_ORIENTED (0x87)
+
+**Client → controller** · **Payload:** 41 bytes
+
+Initialize four mecanum wheels with an explicit 45-degree roller layout. Requires protocol 2.25 and a READY session. Motor/encoder indices 0, 1, 2, 3 are front right, rear right, rear left, front left. Length and width are positive front-to-rear and side-to-side wheel-center spacings in meters. STANDARD uses yaw lever (width + length)/2. MIRRORED uses (width - length)/2 and requires unequal spacings. Invalid orientation or geometry leaves the running setup unchanged.
+
+#### Parameters
+
+| Parameter | Type | Bytes | Range | Description |
+| --- | --- | ---: | --- | --- |
+| `is_reversed_0` | `bool` | 1 | — | Determines if motor 0 is reversed. |
+| `is_reversed_1` | `bool` | 1 | — | Determines if motor 1 is reversed. |
+| `is_reversed_2` | `bool` | 1 | — | Determines if motor 2 is reversed. |
+| `is_reversed_3` | `bool` | 1 | — | Determines if motor 3 is reversed. |
+| `is_encoder_reversed_0` | `bool` | 1 | — | Reverses encoder 0 counting direction, independently of motor 0's is_reversed_0. Set so the closed-loop feedback is negative (flip if the wheel runs away when given a target speed). |
+| `is_encoder_reversed_1` | `bool` | 1 | — | Reverses encoder 1 counting direction, independently of motor 1's is_reversed_1. Set so the closed-loop feedback is negative (flip if the wheel runs away when given a target speed). |
+| `is_encoder_reversed_2` | `bool` | 1 | — | Reverses encoder 2 counting direction, independently of motor 2's is_reversed_2. Set so the closed-loop feedback is negative (flip if the wheel runs away when given a target speed). |
+| `is_encoder_reversed_3` | `bool` | 1 | — | Reverses encoder 3 counting direction, independently of motor 3's is_reversed_3. Set so the closed-loop feedback is negative (flip if the wheel runs away when given a target speed). |
+| `length` | `double` | 8 | — | Length of the platform in meters. |
+| `width` | `double` | 8 | — | Width of the platform in meters. |
+| `wheels_diameter` | `double` | 8 | — | Diameter of the robot wheels in meters. |
+| `encoder_resolution` | `double` | 8 | — | Encoder resolution in ticks per revolution. The value can not be negative. If platform does not have encoders, the value should be set to zero. |
+| `roller_orientation` | `uint8_t` | 1 | 0 to 1 | 0 STANDARD (legacy), 1 MIRRORED (all four roller slopes reversed). Independent of each motor and encoder reversal. |
+
+#### Response
+
+**ACK** — empty payload; echoes the command and message ID.
+
+#### Errors
+
+[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`BOARD_IDLE`](#error-board-idle) (20) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7)
+
+[Back to command index](#command-index)
+
+---
+
+### INITIALIZE_OMNI_PLATFORM_ORIENTED (0x88)
+
+**Client → controller** · **Payload:** 31 bytes
+
+Initialize a 120-degree, three-wheel Omni platform in the marked chassis frame (+X forward, +Y left, positive yaw counterclockwise). Requires READY and protocol 2.26. REAR places W0 front right, W1 front left and W2 rear. FRONT rotates the complete triangle 180 degrees: W0 rear left, W1 rear right and W2 front. Motor and encoder indices stay attached to those wheels, with independent reversal flags. Dimensions must be positive and encoder resolution nonnegative. Invalid requests leave the running setup unchanged.
+
+#### Parameters
+
+| Parameter | Type | Bytes | Range | Description |
+| --- | --- | ---: | --- | --- |
+| `is_reversed_0` | `bool` | 1 | — | Determines if motor 0 is reversed. |
+| `is_reversed_1` | `bool` | 1 | — | Determines if motor 1 is reversed. |
+| `is_reversed_2` | `bool` | 1 | — | Determines if motor 2 is reversed. |
+| `is_encoder_reversed_0` | `bool` | 1 | — | Reverses encoder 0 counting direction, independently of motor 0's is_reversed_0. Set so the closed-loop feedback is negative (flip if the wheel runs away when given a target speed). |
+| `is_encoder_reversed_1` | `bool` | 1 | — | Reverses encoder 1 counting direction, independently of motor 1's is_reversed_1. Set so the closed-loop feedback is negative (flip if the wheel runs away when given a target speed). |
+| `is_encoder_reversed_2` | `bool` | 1 | — | Reverses encoder 2 counting direction, independently of motor 2's is_reversed_2. Set so the closed-loop feedback is negative (flip if the wheel runs away when given a target speed). |
+| `wheels_diameter` | `double` | 8 | — | Diameter of the robot wheels in meters. |
+| `robot_radius` | `double` | 8 | — | Distance from the robot center to each wheel center in meters. |
+| `encoder_resolution` | `double` | 8 | — | Encoder resolution in ticks per revolution. The value can not be negative. If platform does not have encoders, the value should be set to zero. |
+| `wheel_orientation` | `uint8_t` | 1 | 0 to 1 | Position of single wheel W2: REAR (0) or FRONT (1). |
+
+#### Response
+
+**ACK** — empty payload; echoes the command and message ID.
+
+#### Errors
+
+[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7)
 
 [Back to command index](#command-index)
 
@@ -2354,3 +3198,6 @@ Errors use the shared ERROR message. Each command above links to its possible er
 | 16 | <a id="error-sensor-not-available"></a>`SENSOR_NOT_AVAILABLE` | The selected sensor is not defined on this board. |
 | 17 | <a id="error-subscription-limit"></a>`SUBSCRIPTION_LIMIT` | This connection has no free subscription slots; unsubscribe an existing source first. |
 | 18 | <a id="error-sample-out-of-range"></a>`SAMPLE_OUT_OF_RANGE` | The sensor reading is saturated; no valid measurement can be returned. |
+| 19 | <a id="error-drivers-asleep"></a>`DRIVERS_ASLEEP` | Driver sleep is active. Explicitly wake the drivers before requesting this operation. |
+| 20 | <a id="error-board-idle"></a>`BOARD_IDLE` | Board idle is active. Explicitly wake the board before changing driver sleep or starting a subscription. |
+| 21 | <a id="error-source-switch-unsafe"></a>`SOURCE_SWITCH_UNSAFE` | Stop all motor outputs, disarm all controllers and wait for stationary wheel observations before changing the tracking preference. |

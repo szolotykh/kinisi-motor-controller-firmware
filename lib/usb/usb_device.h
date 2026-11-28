@@ -77,6 +77,10 @@
 
 /** USB Device initialization function. */
 void MX_USB_DEVICE_Init(void);
+/** Poll software VBUS sensing before processing transport commands (1 ms task). */
+void MX_USB_DEVICE_Process(void);
+/** Latch a Nano USB fault until reset; called by the low-level stop path. */
+void MX_USB_DEVICE_Fault(void);
 
 /*
  * -- Insert functions declaration here --

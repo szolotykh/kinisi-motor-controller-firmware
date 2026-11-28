@@ -3,11 +3,39 @@
 // Description: Sequence INIT, clock setup, READY, command replies, and periodic synchronization.
 //------------------------------------------------------------
 #include "connection.h"
+#include "board_revision.h"
+#include "driver_sleep_commands.h"
+#include "wake_barriers.h"
 #include "initialization.h"
 #include <string.h>
 
+// All writers run in the serialized command task. The RTOS idle hook only
+// reads the aligned epoch; odd indicates that the board inhibit is active.
+static volatile uint32_t board_idle_epoch;
+static uint64_t last_board_wake_us;
+bool connection_board_idle(void) { return (board_idle_epoch & 1u) != 0; }
+void connection_set_board_idle(bool idle, uint64_t now_us)
+{
+    if (connection_board_idle() == idle) return;
+    if (!idle) last_board_wake_us = now_us;
+    ++board_idle_epoch;
+}
+
 static connection_t *active;
 static uint8_t sample_payload[sizeof(telemetry_payload_t)], sample_length;
+static void resume_subscriptions(connection_t *c)
+{
+    if (c->telemetry_epoch == board_idle_epoch) return;
+    // Invalidate cached/backpressured samples and ON_CHANGE baselines even
+    // if the other transport entered and exited idle between our polls.
+    c->telemetry_epoch = board_idle_epoch;
+    for (unsigned i = 0; i < CONNECTION_SUBSCRIPTION_CAPACITY; ++i) {
+        connection_subscription_t *sub = &c->subscriptions[i];
+        sub->last_length = sub->sample_length = 0;
+        sub->next_us = sub->next_read_us = 0;
+        sub->refresh_pending = false;
+    }
+}
 static bool check_heartbeat(connection_t *c);
 
 /** @brief Copy a cached measurement returned by the regular odometry handler. */
@@ -58,6 +86,12 @@ static uint8_t read_sample(connection_t *c, connection_subscription_t *sub)
     active = c;
     uint8_t status = c->handler(&request, capture_sample);
     active = previous;
+    if (!sensor && status == RESPONSE_OK && last_board_wake_us && sample_length >= sizeof(uint64_t)) {
+        uint64_t acquired, wake;
+        memcpy(&acquired, sample_payload, sizeof(acquired));
+        if (time_sync_convert(&c->clock, last_board_wake_us, &wake) && acquired <= wake)
+            return RESPONSE_SAMPLE_NOT_AVAILABLE;
+    }
     if (sensor) {
         sub->sample_length = 0;
         if (status != RESPONSE_OK) return status;
@@ -190,12 +224,61 @@ static bool odometry_command(uint8_t cmd)
  * @param reply Callback that captures an unframed response payload.
  * @return RESPONSE_OK or a generated protocol error code.
  */
+static uint16_t request_wake_barriers;
+uint16_t connection_before_encoder_ready(void) { return request_wake_barriers >> ENCODER_BARRIER_SHIFT; }
+bool connection_before_driver_wake(void) { return (request_wake_barriers & BEFORE_DRIVER_WAKE) != 0; }
+static bool creates_subscription(uint8_t command)
+{
+    return command == SUBSCRIBE || command == SUBSCRIBE_WITH_MODE ||
+           command == SUBSCRIBE_CONFIGURED || command == SUBSCRIBE_ODOMETRY;
+}
 static uint8_t handle(controller_command_t *cmd, protocol_send_fn reply)
 {
     if (active->lost && !safe_after_loss(cmd->commandType)) return RESPONSE_INIT_REQUIRED;
+    if ((request_wake_barriers & (BEFORE_DRIVER_WAKE | BEFORE_BOARD_WAKE)) &&
+        command_requires_awake_drivers(cmd->commandType))
+        return RESPONSE_DRIVERS_ASLEEP;
+    if ((request_wake_barriers & BEFORE_FEEDBACK_READY) &&
+        (cmd->commandType == SET_PLATFORM_POSITION || cmd->commandType == SET_PLATFORM_TARGET_VELOCITY))
+        return RESPONSE_SAMPLE_NOT_AVAILABLE;
     // protocol_dispatch already checked the command, fields and message ID.
     active->last_activity_us = active->now();
+    bool idle = connection_board_idle();
+    bool stale_board_request = (request_wake_barriers & BEFORE_BOARD_WAKE) != 0;
+    bool guarded = creates_subscription(cmd->commandType) || cmd->commandType == SET_DRIVER_SLEEP;
+#if BOARD_HAS_IMU_TRACKING
+    guarded |= cmd->commandType == SET_IMU_TRACKING && cmd->properties.set_imu_tracking.action != IMU_TRACKING_ACTION_STOP;
+#endif
+#if BOARD_HAS_FUSION_EXPERIMENT
+    guarded |= cmd->commandType == SET_FUSION_EXPERIMENT;
+#endif
+    // A delayed board wake may ACK if already active, but cannot cancel a
+    // later explicit idle request after its originating idle episode ended.
+    bool stale_board_wake = stale_board_request && idle && cmd->commandType == SET_BOARD_IDLE &&
+                           !cmd->properties.set_board_idle.idle;
+    if (((idle || stale_board_request) && guarded) || stale_board_wake) {
+        if (!active->clock.initialized) return RESPONSE_INIT_REQUIRED;
+        if (!active->ready_announced) return RESPONSE_CLOCK_NOT_READY;
+        return RESPONSE_BOARD_IDLE;
+    }
     switch (cmd->commandType) {
+    case SET_BOARD_IDLE:
+    case GET_BOARD_IDLE:
+    case SET_IMU_MOUNT: case GET_IMU_MOUNT:
+    case SET_BOARD_MOUNT: case GET_BOARD_MOUNT:
+    case GET_FEEDBACK_SOURCE_HEALTH: case GET_FEEDBACK_IMU_CHANNELS:
+    case SET_FEEDBACK_SOURCE: case GET_FEEDBACK_SOURCE_STATUS: case GET_FEEDBACK_SOURCE_VECTOR:
+    case SET_FEEDBACK_FUSION_MOUNT: case GET_FEEDBACK_FUSION_MOUNT:
+    case SET_IMU_TRACKING: case GET_IMU_TRACKING_STATUS:
+    case GET_IMU_TRACKING_VECTOR: case GET_IMU_TRACKING_CONFIGURATION:
+    case SET_FUSION_EXPERIMENT: case GET_FUSION_STATUS:
+    case GET_FUSION_VECTOR: case GET_FUSION_CONFIGURATION:
+    case SAVE_CONFIGURATION:
+    case GET_DRIVER_SLEEP:
+    case SET_DRIVER_SLEEP:
+    case INITIALIZE_OMNI_PLATFORM_ORIENTED:
+    case INITIALIZE_MECANUM_PLATFORM_ORIENTED:
+    case GET_CONFIGURATION_FIELD:
     case GET_PWM_FREQUENCY:
     case SET_PWM_FREQUENCY:
     case GET_MOTOR_CURRENT_LIMIT:
@@ -308,6 +391,7 @@ static void error_reply(connection_t *c, uint16_t id, uint8_t command, uint8_t e
 void connection_init(connection_t *c, protocol_handler_fn handler, connection_try_send_fn send, uint64_t (*now)(void))
 {
     memset(c, 0, sizeof(*c));
+    c->telemetry_epoch = board_idle_epoch;
     c->handler = handler; c->send = send; c->now = now;
     c->heartbeat.timeout_ms = CONNECTION_HEARTBEAT_DEFAULT_MS;
 }
@@ -386,7 +470,13 @@ const time_sync_t *connection_current_clock(void) { return active ? &active->clo
  */
 void connection_receive(connection_t *c, const uint8_t *data, size_t length)
 {
+    connection_receive_queued(c, data, length, false);
+}
+
+void connection_receive_queued(connection_t *c, const uint8_t *data, size_t length, uint16_t wake_barriers)
+{
     (void)check_heartbeat(c);
+    if (!connection_board_idle()) resume_subscriptions(c);
     if (c->output_length) return;
     c->yield_receive = false;
     uint64_t received_us = c->now();
@@ -408,7 +498,9 @@ void connection_receive(connection_t *c, const uint8_t *data, size_t length)
         }
         // Successful timing replies are consumed, not acknowledged recursively.
     } else {
+        request_wake_barriers = wake_barriers;
         protocol_dispatch(data, length, handle, capture);
+        request_wake_barriers = 0;
     }
     active = NULL;
 }
@@ -416,6 +508,8 @@ void connection_receive(connection_t *c, const uint8_t *data, size_t length)
 /** @brief Send one due event; return -1 on backpressure, 0 if unavailable, 1 if sent. */
 static int publish_sample(connection_t *c, uint64_t now)
 {
+    if (connection_board_idle()) return 0;
+    resume_subscriptions(c);
     // Round-robin sources; at most one telemetry frame per turn. Never queue history.
     const uint8_t start = c->next_subscription;
     for (unsigned offset = 0; offset < CONNECTION_SUBSCRIPTION_CAPACITY; ++offset) {

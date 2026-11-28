@@ -14,11 +14,41 @@ spec.loader.exec_module(g)
 class BoardConfigTests(unittest.TestCase):
     def setUp(self):
         self.boards = g.load_boards(ROOT / "boards")
-        self.v4 = copy.deepcopy(self.boards[3])
+        self.original_v4 = g.select_build_board(self.boards, {"MP_V4"}, "stm32f405vg")
+        self.v4 = copy.deepcopy(self.original_v4)
+
+    def test_imu_tracking_is_optional_boolean_and_exact_v4(self):
+        self.assertTrue(self.v4['capabilities']['imu_tracking'])
+        self.v4['capabilities']['imu_tracking'] = 1
+        self.reject(self.v4, 'imu_tracking')
+        del self.v4['capabilities']['imu_tracking']
+        self.reject(self.v4, 'selector requires')
+        del self.v4['capabilities']['feedback_source_selector']
+        self.reject(self.v4, 'health requires')
+        del self.v4['capabilities']['feedback_source_health']
+        self.reject(self.v4, 'IMU mounting requires')
+        del self.v4['capabilities']['imu_mounting']
+        g.validate(self.v4)
+        v3 = copy.deepcopy(next(b for b in self.boards if b['board']['revision'] == '0.3.0'))
+        v3['capabilities'] = {'fusion_experiment': False, 'imu_tracking': True}
+        self.reject(v3, 'exact v0.4')
 
     def reject(self, board, message):
         with self.assertRaisesRegex(g.ConfigError, message):
             g.validate(board)
+
+    def test_capabilities_validated_before_requiring_geometry(self):
+        for revision in ("0.3.0", "0.4.0"):
+            board = copy.deepcopy(next(b for b in self.boards if b["board"]["revision"] == revision))
+            board.pop("imu_geometry", None)
+            for invalid in ([], None, False, 1, "unsupported"):
+                with self.subTest(revision=revision, capabilities=invalid):
+                    board["capabilities"] = invalid
+                    self.reject(board, "capabilities: expected an object")
+        del self.v4["imu_geometry"]
+        self.reject(self.v4, "imu_mounting requires imu_geometry")
+        self.v4["capabilities"]["imu_mounting"] = False
+        g.validate(self.v4)
 
     def test_current_conversion_requires_valid_reference_and_mirror_ratio(self):
         for key, invalid_values in [('reference_voltage_mv', (0, 1799, 3601, True)),
@@ -44,11 +74,25 @@ class BoardConfigTests(unittest.TestCase):
                 g.generate(output_dir=tmp, check=True)
             self.assertEqual(header.read_text(), "stale")
 
+    def test_imu_geometry_flows_from_board_to_macros_and_public_profile(self):
+        self.assertEqual(self.v4["imu_geometry"]["underside_center_to_imu_um"], [-15373,26953,2075])
+        self.v4["imu_geometry"]["underside_center_to_imu_um"] = [-2200,1350,800]
+        g.validate(self.v4)
+        boards = [self.v4 if b is self.original_v4 else b for b in self.boards]
+        files = g.render(boards)
+        mini = [p["imu_geometry"] for p in json.loads(files["board_profiles.json"])["boards"] if "imu_geometry" in p]
+        self.assertEqual(mini, [self.v4["imu_geometry"]])
+        for axis, value in zip("XYZ", [-2200,1350,800]):
+            self.assertIn(f"#define BOARD_UNDERSIDE_CENTER_TO_IMU_{axis}_UM ({value})",files["board_revision.h"])
+        for invalid in ([0,1], [True,0,0], [0.5,0,0], [0,0,100001], [0,0,50000], [31098,177,0]):
+            self.v4["imu_geometry"]["underside_center_to_imu_um"] = invalid
+            self.reject(self.v4,"imu_geometry")
+
     def test_public_profiles_are_derived_without_wiring_details(self):
         output = g.render(self.boards)
         bundle = json.loads(output["board_profiles.json"])
         self.assertEqual(bundle["schema_version"], 1)
-        self.assertEqual(len(bundle["boards"]), 4)
+        self.assertEqual(len(bundle["boards"]), 5)
         for board, profile in zip(self.boards, bundle["boards"]):
             self.assertEqual(profile["board"], {k: board["board"][k] for k in ("model", "revision")})
             self.assertEqual(profile["resources"]["motors"], len(board["motors"]["channels"]))
@@ -65,13 +109,35 @@ class BoardConfigTests(unittest.TestCase):
             collect(profile)
             self.assertFalse(keys & {"pin", "bus", "buses", "timer", "peripheral", "mcu", "address",
                                      "build_define", "control_model", "chip_select", "sense_resistor_ohm"})
-        v4 = bundle["boards"][3]
+        v4 = next(p for p in bundle["boards"] if p["board"]["revision"] == "0.4.0")
+        self.assertEqual(v4["power"], {"driver_sleep": True, "board_idle": True})
         self.assertEqual(v4["sensors"], {"temperature": [{"id": 0}],
                          "imu": [{"id": 0, "accelerometer": True, "gyroscope": True}]})
         self.assertTrue(all(m["current_sense"] and m["current_limit"] for m in v4["motor_features"]))
-        for profile in bundle["boards"][:3]:
+        for profile in (p for p in bundle["boards"] if p != v4):
+            supported = profile["board"]["revision"] in ("0.3.0", "0.3.1")
+            self.assertEqual(profile["power"], {"driver_sleep": supported, "board_idle": supported})
             self.assertEqual(profile["sensors"], {"temperature": [], "imu": []})
             self.assertTrue(all(not m["current_sense"] and not m["current_limit"] for m in profile["motor_features"]))
+
+    def test_idle_mode_requires_driver_sleep_and_explicit_opt_in(self):
+        legacy = copy.deepcopy(g.select_build_board(self.boards, {"MP_V2"}, "stm32f405rg"))
+        legacy["power"] = {"board_idle": True}
+        self.reject(legacy, "requires explicit motor-driver sleep")
+        self.v4["power"]["board_idle"] = 1
+        self.reject(self.v4, "expected true or false")
+        del self.v4["power"]
+        g.validate(self.v4)
+        self.assertEqual(g.client_profile(self.v4)["power"], {"driver_sleep": True, "board_idle": False})
+
+    def test_nano_keeps_vbus_off_motor_inputs(self):
+        nano = copy.deepcopy(g.select_build_board(self.boards, {"MP_V3_1"}, "stm32f405rg"))
+        self.assertEqual(nano["board"]["revision"], "0.3.1")
+        self.assertEqual(nano["usb_vbus_sense"], "PA9")
+        second_input = nano["motors"]["channels"][3]["pwm2"]
+        self.assertEqual(second_input, dict(pin="PA10", timer="TIM1", channel=3, complementary=False))
+        second_input.update(pin="PA9", channel=2)
+        self.reject(nano, "PA9 is reserved by firmware for USB_OTG_FS_VBUS")
 
     def test_pwm_options(self):
         for board in g.load_boards(ROOT / "boards"):
@@ -106,7 +172,7 @@ class BoardConfigTests(unittest.TestCase):
     def test_unknown_fields_and_schema_fail(self):
         self.v4["motors"]["channels"][0]["enable"]["complimentary"] = True
         self.reject(self.v4, "unknown fields")
-        self.v4 = copy.deepcopy(self.boards[3])
+        self.v4 = copy.deepcopy(self.original_v4)
         self.v4["schema_version"] = 2
         self.reject(self.v4, "schema_version")
 
@@ -117,21 +183,21 @@ class BoardConfigTests(unittest.TestCase):
             self.reject(board, "true or false")
         self.v4["gpio"][1]["id"] = 0
         self.reject(self.v4, "IDs must be")
-        self.v4 = copy.deepcopy(self.boards[3])
+        self.v4 = copy.deepcopy(self.original_v4)
         self.v4["motors"]["pwm_frequency_hz"] = 12345
         self.reject(self.v4, "pwm_frequency_hz")
 
     def test_motor_mode_specific_fields(self):
         self.v4["motors"]["control_model"] = "pwm"
         self.reject(self.v4, "SPI driver/buses")
-        self.v4 = copy.deepcopy(self.boards[3])
+        self.v4 = copy.deepcopy(self.original_v4)
         del self.v4["motors"]["channels"][0]["enable"]
         self.reject(self.v4, "missing fields")
 
     def test_unsupported_and_shared_timer_routes_fail(self):
         self.v4["motors"]["channels"][0]["enable"]["complementary"] = True
         self.reject(self.v4, "unsupported timer/pin route")
-        self.v4 = copy.deepcopy(self.boards[3])
+        self.v4 = copy.deepcopy(self.original_v4)
         self.v4["motors"]["channels"][1]["enable"] = copy.deepcopy(self.v4["motors"]["channels"][0]["enable"])
         self.reject(self.v4, "timer channel already used")
         board = copy.deepcopy(self.boards[2])
@@ -154,7 +220,7 @@ class BoardConfigTests(unittest.TestCase):
     def test_bus_reference_and_package(self):
         self.v4["motors"]["driver"]["bus"] = "missing"
         self.reject(self.v4, "unknown bus")
-        self.v4 = copy.deepcopy(self.boards[3])
+        self.v4 = copy.deepcopy(self.original_v4)
         self.v4["mcu"]["part"] = "STM32F405RGT6"
         self.reject(self.v4, "pin unavailable")
 
@@ -212,10 +278,10 @@ class BoardConfigTests(unittest.TestCase):
                                ({"mode": "latched_shutdown"}, "missing fields.*supported_modes"),
                                ({"supported_modes": ["latched_shutdown"]}, "missing fields.*mode")):
             with self.subTest(value=value):
-                board = copy.deepcopy(self.boards[3])
+                board = copy.deepcopy(self.original_v4)
                 board["motors"]["channels"][0]["overcurrent_protection"] = value
                 self.reject(board, "overcurrent_protection: " + message)
-        board = copy.deepcopy(self.boards[3])
+        board = copy.deepcopy(self.original_v4)
         board["motors"]["channels"][0]["overcurrent_protection"]["enabled"] = True
         self.reject(board, "overcurrent_protection: unknown fields.*enabled")
 
@@ -305,10 +371,10 @@ class BoardConfigTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             for i, board in enumerate(self.boards):
                 (Path(tmp) / f"{i}.json").write_text(json.dumps(board))
-            (Path(tmp) / "copy.json").write_text(json.dumps(self.boards[3]))
+            (Path(tmp) / "copy.json").write_text(json.dumps(self.original_v4))
             with self.assertRaisesRegex(g.ConfigError, "duplicate board.build_define"):
                 g.load_boards(tmp)
-            board = copy.deepcopy(self.boards[3])
+            board = copy.deepcopy(self.original_v4)
             board["board"]["build_define"] = "MP_V5"
             (Path(tmp) / "copy.json").write_text(json.dumps(board))
             with self.assertRaisesRegex(g.ConfigError, "duplicate board model/revision"):
@@ -372,10 +438,10 @@ class BoardConfigTests(unittest.TestCase):
             self.reject(board, message)
         self.v4["motors"]["driver"]["bus"] = "sensor_i2c"
         self.reject(self.v4, "requires SPI3")
-        self.v4 = copy.deepcopy(self.boards[3])
+        self.v4 = copy.deepcopy(self.original_v4)
         self.v4["buses"]["second_i2c"] = copy.deepcopy(self.v4["buses"]["sensor_i2c"])
         self.reject(self.v4, "peripheral already used")
-        self.v4 = copy.deepcopy(self.boards[3])
+        self.v4 = copy.deepcopy(self.original_v4)
         self.v4["gpio"][0]["pin"] = "PA8"
         self.reject(self.v4, "pin PA8 is shared")
 

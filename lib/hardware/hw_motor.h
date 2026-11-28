@@ -52,3 +52,12 @@ uint32_t hw_motor_get_pwm_frequency(void);
 bool hw_motor_pwm_frequency_allowed(uint32_t frequency_hz);
 // Caller must first stop all software controllers. Leaves every motor stopped.
 bool hw_motor_set_pwm_frequency(uint32_t frequency_hz);
+// Release partially restored motor setup while keeping initialized PWM channels disabled.
+void hw_motor_discard_restored_setup(void);
+
+// Volatile board-wide inhibit. The command task cancels motion producers first.
+bool hw_motor_drivers_sleeping(void);
+bool hw_motor_set_driver_sleep(bool sleeping);
+
+// v0.4 configuration interlock. Every initialized DRV8873 must report DISABLE high.
+bool hw_motor_outputs_stopped(void);

@@ -8,11 +8,13 @@ typedef struct {
     double wheel_diameter;
     double length;
     double width;
+    uint8_t roller_orientation;
 } mecanum_platform_settings_t;
 
 typedef struct {
     double wheel_diameter;
     double robot_radius;
+    uint8_t wheel_orientation;
 } omni_platform_settings_t;
 
 typedef struct {
@@ -29,9 +31,19 @@ typedef void (*initialize_platform_odometry_t)();
 typedef platform_odometry_t (*update_platform_odometry_t)(uint8_t* motor_indexes, double* velocities, uint8_t motor_count);
 
 // Platform structure
+typedef enum {
+    PLATFORM_NONE = 0,
+    PLATFORM_DIFFERENTIAL = 1,
+    PLATFORM_OMNI = 2,
+    PLATFORM_MECANUM = 3
+} platform_type_t;
+
 typedef struct {
     uint8_t is_initialized;
     uint8_t is_controller_initialized;
+    platform_type_t type;
+    // Retain the requested direction even when a platform has no encoders fitted.
+    uint8_t encoder_reverse_mask;
 
     // Bit mask (BMOTOR0..BMOTOR3) of the motors this platform actually drives.
     // Used by platform_brake()/platform_coast() so they only affect this

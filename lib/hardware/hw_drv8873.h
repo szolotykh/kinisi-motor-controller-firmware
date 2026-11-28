@@ -6,8 +6,10 @@
 // Configure all control pins safely before any driver is woken.
 bool hw_drv8873_prepare(void);
 uint32_t hw_drv8873_event_sequence(motorIndex index);
-// Wake and verify PH/EN configuration, leaving the bridge disabled.
-bool hw_drv8873_initialize(motorIndex index);
+// Wake and verify PH/EN and the requested current limit with the bridge disabled.
+bool hw_drv8873_wake_disabled(motorIndex index, const hw_motor_current_limit_t *setting);
+// Assert DISABLE and nSLEEP on all four bridges and check the GPIO readback.
+bool hw_drv8873_sleep_all(void);
 // nFAULT is active low. Invalid indices are treated as faulted.
 bool hw_drv8873_fault_active(motorIndex index);
 // Read-only diagnostics; unavailable registers are reported with status_valid=false.

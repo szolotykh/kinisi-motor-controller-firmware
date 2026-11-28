@@ -5,7 +5,8 @@ typedef enum {
     HW_IMU_OK,
     HW_IMU_UNAVAILABLE,
     HW_IMU_NOT_READY,
-    HW_IMU_IO_ERROR
+    HW_IMU_IO_ERROR,
+    HW_IMU_STALE
 } hw_imu_status_t;
 
 typedef struct {
@@ -17,3 +18,28 @@ void hw_imu_init(void);
 // Latest independent accel/gyro samples in sensor axes; no fusion or axis remapping.
 // Call from the serialized command task. Output is unchanged on failure.
 hw_imu_status_t hw_imu_read(uint8_t index, hw_imu_sample_t *sample);
+
+// Independent source times (board us). A cached payload retains its acquisition
+// times. Zero means the producer has yet to observe an event for that channel.
+hw_imu_status_t hw_imu_read_observation(uint8_t index, hw_imu_sample_t *sample,
+                                         uint64_t *accel_us, uint64_t *gyro_us);
+
+// Physical BMI088 backend: a single producer polls both channels. The reader
+// selects a verified pair whose complete acquisition windows precede encoder_us.
+void hw_imu_poll_observations(uint32_t epoch);
+hw_imu_status_t hw_imu_read_before(uint32_t epoch, uint64_t encoder_us, hw_imu_sample_t *sample,
+                                    uint64_t *accel_us, uint64_t *gyro_us);
+
+// One cursor for each independent integrating consumer. Arm it at the start of
+// an episode. The physical producer and other readers never consume this cursor.
+typedef struct {
+    uint32_t epoch, cache_generation, losses, accel_sequence, gyro_sequence;
+} hw_imu_cursor_t;
+void hw_imu_begin_tracking(hw_imu_cursor_t *cursor, uint32_t epoch);
+hw_imu_status_t hw_imu_read_tracking(hw_imu_cursor_t *cursor, uint32_t epoch, uint64_t now,
+                                     hw_imu_sample_t *sample, uint64_t *accel_us, uint64_t *gyro_us);
+
+// Non-consuming monitor. On an unavailable pair, individually observed channel
+// timestamps remain available without implying that the sample payload is usable.
+hw_imu_status_t hw_imu_read_health(uint8_t index, hw_imu_sample_t *sample,
+                                   uint64_t *accel_us, uint64_t *gyro_us);

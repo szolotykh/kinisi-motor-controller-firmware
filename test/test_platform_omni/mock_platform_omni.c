@@ -14,6 +14,8 @@ uint8_t platform_check_motor_initialization(uint8_t mask) { (void)mask; return 1
 // Mock tracking variables
 static motorIndex last_motor = 0;
 static double last_speed = 0;
+static double applied_speed[4];
+double mock_omni_duty(unsigned index) { return applied_speed[index]; }
 static bool last_reversed = false;
 static int initialize_motor_calls = 0;
 static int set_speed_calls = 0;
@@ -74,6 +76,7 @@ static void mock_set_motor_speed(motorIndex motorIndex, double speed) {
     set_speed_calls++;
     last_motor = motorIndex;
     last_speed = speed;
+    applied_speed[motorIndex] = speed;
     printf("After update: last_speed = %f\n", last_speed);
     printf("mock_set_motor_speed called: motorIndex = %d, speed = %f\n", motorIndex, speed);
 }

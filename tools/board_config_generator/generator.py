@@ -14,7 +14,7 @@ FIRMWARE_RESERVED_PINS = {"PA11": "USB_OTG_FS_DM", "PA12": "USB_OTG_FS_DP"}
 # Timer routes used by supported boards. Extend deliberately when adding hardware.
 PWM_PINS = {
     ("TIM1", 1, False): {"PA8"}, ("TIM1", 2, False): {"PA9"},
-    ("TIM1", 4, False): {"PE14"}, ("TIM1", 1, True): {"PE8"},
+    ("TIM1", 3, False): {"PA10"}, ("TIM1", 4, False): {"PE14"}, ("TIM1", 1, True): {"PE8"},
     ("TIM1", 2, True): {"PE10"}, ("TIM1", 3, True): {"PE12"},
     ("TIM2", 1, False): {"PA5", "PA15"}, ("TIM2", 2, False): {"PB3"},
     ("TIM2", 3, False): {"PB10"}, ("TIM2", 4, False): {"PB11"},
@@ -63,7 +63,7 @@ def entries(value, maximum, at, minimum=1):
 
 def validate(board):
     fields(board, ("schema_version", "board", "mcu", "buses", "motors", "encoders", "gpio", "status_leds"),
-           ("shared_pins", "temperature_sensors", "imu_sensors"))
+           ("shared_pins", "temperature_sensors", "imu_sensors", "power", "usb_vbus_sense", "capabilities", "imu_geometry"))
     integer(board["schema_version"], 1, 1, "schema_version")
     identity = board["board"]
     fields(identity, ("model", "revision", "build_define"), at="board")
@@ -71,10 +71,53 @@ def validate(board):
     require(isinstance(identity["revision"], str) and re.fullmatch(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", identity["revision"]),
             "board.revision: expected major.minor.patch")
     require(all(int(v) <= 255 for v in identity["revision"].split(".")), "board.revision: components must fit uint8")
-    require(isinstance(identity["build_define"], str) and re.fullmatch(r"MP_V[1-9][0-9]*", identity["build_define"]),
-            "board.build_define: expected MP_V<number>")
+    require(isinstance(identity["build_define"], str) and re.fullmatch(r"MP_V[1-9][0-9]*(?:_[1-9][0-9]*)?", identity["build_define"]),
+            "board.build_define: expected MP_V<number> with an optional patch suffix")
+    if "imu_geometry" in board:
+        require(identity["model"] == 1 and identity["revision"] == "0.4.0", "imu_geometry requires Mini v0.4")
+        fields(board["imu_geometry"], ("underside_center_to_imu_um",), at="imu_geometry")
+        vector = board["imu_geometry"]["underside_center_to_imu_um"]
+        require(isinstance(vector, list) and len(vector) == 3, "imu_geometry requires three board axes")
+        for value in vector:
+            integer(value, -100000, 100000, "imu_geometry.underside_center_to_imu_um")
+        # Every projected, rounded component must fit the 2.24 GET wire bounds.
+        require(4 * sum(v * v for v in vector) < (2 * 31098 + 1) ** 2,
+                "imu_geometry exceeds the protocol 2.24 cross-reference readback range")
     fields(board["mcu"], ("part",), at="mcu")
     require(board["mcu"]["part"] in ("STM32F405RGT6", "STM32F405VGT6"), "mcu.part: unsupported MCU")
+    if "power" in board:
+        fields(board["power"], ("board_idle",), at="power")
+        boolean(board["power"]["board_idle"], "power.board_idle")
+    if "capabilities" in board:
+        fields(board["capabilities"], ("fusion_experiment",), optional=("imu_tracking", "feedback_source_selector", "feedback_source_health", "imu_mounting"), at="capabilities")
+        boolean(board["capabilities"]["fusion_experiment"], "capabilities.fusion_experiment")
+        if "imu_tracking" in board["capabilities"]:
+            boolean(board["capabilities"]["imu_tracking"], "capabilities.imu_tracking")
+            if board["capabilities"]["imu_tracking"]:
+                require(identity["model"] == 1 and identity["revision"] == "0.4.0", "IMU tracking requires exact v0.4")
+        if "feedback_source_selector" in board["capabilities"]:
+            enabled = board["capabilities"]["feedback_source_selector"]
+            boolean(enabled, "capabilities.feedback_source_selector")
+            if enabled:
+                require(board["capabilities"]["fusion_experiment"] and board["capabilities"].get("imu_tracking"),
+                        "feedback source selector requires fusion and IMU tracking on exact v0.4")
+        if "feedback_source_health" in board["capabilities"]:
+            enabled = board["capabilities"]["feedback_source_health"]
+            boolean(enabled, "capabilities.feedback_source_health")
+            require(not enabled or board["capabilities"].get("feedback_source_selector"),
+                    "feedback source health requires the feedback source selector")
+        if "imu_mounting" in board["capabilities"]:
+            enabled = board["capabilities"]["imu_mounting"]
+            boolean(enabled, "capabilities.imu_mounting")
+            require(not enabled or board["capabilities"].get("feedback_source_health"),
+                    "IMU mounting requires source health on exact v0.4")
+            require(not enabled or "imu_geometry" in board, "imu_mounting requires imu_geometry")
+        if board["capabilities"]["fusion_experiment"]:
+            require(identity["model"] == 1 and identity["revision"] == "0.4.0", "Fusion experiment requires exact v0.4")
+    reserved = dict(FIRMWARE_RESERVED_PINS)
+    if "usb_vbus_sense" in board:
+        require(board["usb_vbus_sense"] == "PA9", "USB FS VBUS sensing requires PA9")
+        reserved["PA9"] = "USB_OTG_FS_VBUS"
     pins, timer_channels, encoder_timers = {}, set(), set()
 
     def pin(value, user):
@@ -82,8 +125,8 @@ def validate(board):
                 f"{user}: invalid pin {value!r}")
         if board["mcu"]["part"] == "STM32F405RGT6":
             require(value[1] in "ABC" or value == "PD2", f"{user}: pin unavailable on STM32F405RGT6")
-        if value in FIRMWARE_RESERVED_PINS:
-            raise ConfigError(f"{user}: pin {value} is reserved by firmware for {FIRMWARE_RESERVED_PINS[value]}")
+        if value in reserved:
+            raise ConfigError(f"{user}: pin {value} is reserved by firmware for {reserved[value]}")
         pins.setdefault(value, []).append(user)
 
     def route(timer, channel, complementary, value, user):
@@ -166,8 +209,8 @@ def validate(board):
         require(type(driver["slew_rate_v_per_us"]) in (int, float) and driver["slew_rate_v_per_us"] in SLEW_RATES,
                 "motors.driver.slew_rate_v_per_us: unsupported DRV8873 slew rate")
         used_buses.add(driver["bus"])
-    else:
-        require("driver" not in motors, "pwm: SPI driver/buses are not supported")
+    elif "driver" in motors:
+        require(motors["driver"] == {"type": "DRV8870"}, "pwm: SPI driver/buses are not supported")
     require(set(board["buses"]) == used_buses, "buses: unused bus definition")
     for motor in entries(motors["channels"], 4, "motors.channels"):
         user = f"motors.{motor['id']}"
@@ -254,6 +297,8 @@ def validate(board):
         declared.add(item["pin"])
     for value, users in pins.items():
         require(len(users) == 1 or value in declared, f"pin {value} is shared by {', '.join(users)}; declare shared_pins explicitly")
+    if board.get("power", {}).get("board_idle"):
+        require(supports_driver_sleep(board), "power.board_idle requires explicit motor-driver sleep")
     return board
 
 
@@ -307,7 +352,11 @@ def pwm(value):
 def client_profile(board):
     """Project hardware definitions into public, language-neutral feature metadata."""
     return {
+        **({"imu_geometry": board["imu_geometry"]} if "imu_geometry" in board else {}),
         "board": {"model": board["board"]["model"], "revision": board["board"]["revision"]},
+        "capabilities": {"fusion_experiment": board.get("capabilities", {}).get("fusion_experiment", False), "imu_tracking": board.get("capabilities", {}).get("imu_tracking", False), "feedback_source_selector": board.get("capabilities", {}).get("feedback_source_selector", False), "feedback_source_health": board.get("capabilities", {}).get("feedback_source_health", False), "imu_mounting": board.get("capabilities", {}).get("imu_mounting", False)},
+        "power": {"driver_sleep": supports_driver_sleep(board),
+                  "board_idle": board.get("power", {}).get("board_idle", False)},
         "resources": {
             "motors": len(board["motors"]["channels"]), "encoders": len(board["encoders"]),
             "gpio": len(board["gpio"]), "status_leds": len(board["status_leds"]),
@@ -333,6 +382,14 @@ def client_profile(board):
     }
 
 
+def supports_driver_sleep(board):
+    motors = board["motors"]
+    if motors.get("driver", {}).get("type") == "DRV8870":
+        return True
+    return (motors.get("driver", {}).get("type") == "DRV8873S"
+            and all("sleep" in channel for channel in motors["channels"]))
+
+
 def render(boards):
     banner = "// Generated by tools/board_config_generator/generator.py. DO NOT EDIT.\n// Source: boards/*.json\n#pragma once\n"
     identity = [banner]
@@ -348,9 +405,21 @@ def render(boards):
                      f'#define KINISI_MCU_PART "{board["mcu"]["part"]}"']
         for key, number in zip(("MAJOR", "MINOR", "PATCH"), board["board"]["revision"].split(".")):
             identity.append(f"#define KINISI_BOARD_VERSION_{key} {number}")
+        identity.append(f"#define KINISI_USB_VBUS_SENSING {int('usb_vbus_sense' in board)}")
+        identity.append(f"#define BOARD_HAS_FUSION_EXPERIMENT {int(board.get('capabilities', {}).get('fusion_experiment', False))}")
+        if "imu_geometry" in board:
+            for axis, value in zip("XYZ", board["imu_geometry"]["underside_center_to_imu_um"]):
+                identity.append(f"#define BOARD_UNDERSIDE_CENTER_TO_IMU_{axis}_UM ({value})")
+        identity.append(f"#define BOARD_HAS_IMU_MOUNTING {int(board.get('capabilities', {}).get('imu_mounting', False))}")
+        identity.append(f"#define BOARD_HAS_FEEDBACK_SOURCE_HEALTH {int(board.get('capabilities', {}).get('feedback_source_health', False))}")
+        identity.append(f"#define BOARD_HAS_FEEDBACK_SOURCE_SELECTOR {int(board.get('capabilities', {}).get('feedback_source_selector', False))}")
+        identity.append(f"#define BOARD_HAS_IMU_TRACKING {int(board.get('capabilities', {}).get('imu_tracking', False))}")
+        identity.append(f"#define BOARD_HAS_BOARD_IDLE {int(board.get('power', {}).get('board_idle', False))}")
         motors = board["motors"]
         model = motors["control_model"].upper()
         hardware += [selection, f"#define MOTOR_CONTROL_MODEL MOTOR_CONTROL_MODEL_{model}",
+                     f"#define BOARD_HAS_DRV8870_SLEEP {int(motors.get('driver', {}).get('type') == 'DRV8870')}",
+                     f"#define BOARD_HAS_DRIVER_SLEEP {int(supports_driver_sleep(board))}",
                      f"#define MOTOR_PWM_FREQUENCY_HZ {motors['pwm_frequency_hz']}U",
                      "static const uint32_t motor_pwm_frequencies_hz[] = {" +
                      ", ".join(str(v) + "U" for v in motors['supported_pwm_frequencies_hz']) + "};"]

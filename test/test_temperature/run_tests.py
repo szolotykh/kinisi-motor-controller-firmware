@@ -21,7 +21,7 @@ with tempfile.TemporaryDirectory() as folder:
             "-Itest/test_temperature/stubs", "-Iinclude", "-Ilib/hardware", "-D" + revision,
             "test/test_temperature/test_temperature.c", "lib/hardware/hw_temperature.c", "-o", str(binary)
         ], cwd=root, check=True)
-        scenarios = ("normal", "wrap", "init_failure", "write_failure", "read_failure", "bad_config", "status_bits") if revision == "MP_V4" else ("absent",)
+        scenarios = ("normal", "wrap", "init_failure", "write_failure", "read_failure", "bad_config", "status_bits", "fram") if revision == "MP_V4" else ("absent",)
         for scenario in scenarios:
             print(revision + ": " + scenario, flush=True)
             subprocess.run([str(binary), scenario], check=True, timeout=10)

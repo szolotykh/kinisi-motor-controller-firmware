@@ -7,6 +7,10 @@
 #include "time_sync.h"
 #include <stdbool.h>
 
+// Shared across transports. Only the serialized command task changes the mode.
+bool connection_board_idle(void);
+void connection_set_board_idle(bool idle, uint64_t now_us);
+
 // Bound how long an unsent command reply can hold the next request in the RX queue.
 #define CONNECTION_REPLY_TIMEOUT_US 1000000ULL
 #define CONNECTION_HEARTBEAT_DEFAULT_MS 500U
@@ -58,6 +62,7 @@ typedef struct {
     // Loss is latched so buffered motion cannot resume without a fresh INIT.
     bool lost;
     connection_subscription_t subscriptions[CONNECTION_SUBSCRIPTION_CAPACITY];
+    uint32_t telemetry_epoch;
     uint8_t next_subscription;
     bool telemetry_before_reply;
 } connection_t;
@@ -94,6 +99,7 @@ bool connection_can_receive(const connection_t *);
  * Successful timing replies have no ACK.
  */
 void connection_receive(connection_t *, const uint8_t *, size_t);
+void connection_receive_queued(connection_t *, const uint8_t *, size_t, uint16_t wake_barriers);
 /**
  * @brief Service pending output, announce READY, or advance periodic synchronization.
  * @note Call frequently on the command task. Stalled replies expire; busy control
@@ -105,3 +111,6 @@ void connection_poll(connection_t *);
  * @return Active session clock, or null outside serialized command dispatch.
  */
 const time_sync_t *connection_current_clock(void);
+// True only during dispatch of a frame begun before a verified driver wake.
+uint16_t connection_before_encoder_ready(void);
+bool connection_before_driver_wake(void);

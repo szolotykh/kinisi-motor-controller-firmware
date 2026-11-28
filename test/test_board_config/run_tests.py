@@ -18,7 +18,7 @@ flags = [compiler, "-std=c11", "-Wall", "-Wextra", "-Werror", "-Wno-unused-const
 with tempfile.TemporaryDirectory() as folder:
     tmp = Path(folder)
     snapshots = []
-    for revision in ("MP_V1", "MP_V2", "MP_V3", "MP_V4"):
+    for revision in ("MP_V1", "MP_V2", "MP_V3", "MP_V3_1", "MP_V4"):
         for source in ("dump_config.c", "test_status_led.c"):
             binary = tmp / (revision + source + ".exe")
             sources = ["test/test_board_config/" + source]
@@ -33,13 +33,14 @@ with tempfile.TemporaryDirectory() as folder:
     expected = (root / "test/test_board_config/expected_mappings.txt").read_text(encoding="utf-8")
     if "".join(snapshots) != expected:
         raise AssertionError("Generated C mappings differ from the pre-generator board mappings")
-    print("All four compiled C configurations match the original pin/timer mappings")
+    print("All five compiled C configurations match the verified pin/timer mappings")
 
     # Test an active-low primary LED and a second LED without changing production profiles.
     boards = test_generator.g.load_boards(root / "boards")
-    boards[3]["status_leds"][0]["active_low"] = True
-    boards[3]["status_leds"].append(dict(id=1, pin="PE0", active_low=True))
-    test_generator.g.validate(boards[3])
+    v4 = test_generator.g.select_build_board(boards, {"MP_V4"}, "stm32f405vg")
+    v4["status_leds"][0]["active_low"] = True
+    v4["status_leds"].append(dict(id=1, pin="PE0", active_low=True))
+    test_generator.g.validate(v4)
     for name, contents in test_generator.g.render(boards).items():
         (tmp / name).write_text(contents, encoding="utf-8")
     binary = tmp / "multiple_leds.exe"

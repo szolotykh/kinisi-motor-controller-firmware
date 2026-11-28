@@ -4,6 +4,7 @@
 //------------------------------------------------------------
 #include "commands_manager.h"
 #include "commands_handler.h"
+#include "controller_configuration.h"
 #include "message_queue.h"
 #include "hardware_i2c.h"
 #include "os_interface.h"
@@ -15,6 +16,10 @@
 #include "connection.h"
 #include "hw_clock.h"
 #include "hw_motor_faults.h"
+#include "hw_motor.h"
+#include "wake_barriers.h"
+#include "platform_fusion.h"
+#include "feedback_source.h"
 #include "controllers_manager.h"
 #include "odometry_manager.h"
 
@@ -58,6 +63,12 @@ static bool period_allowed(uint32_t period_ms)
  * @note IRQ-safe notification; the command task stops motors and invalidates sessions.
  */
 void commands_manager_usb_disconnected(void) { usb_disconnected = 1; }
+
+void commands_manager_usb_quiesce(void)
+{
+    usb_disconnected = 1;
+    stop_on_connection_loss();
+}
 /**
  * @brief Try to copy a frame to USB while protecting against concurrent deinitialization.
  * @return True only when the USB stack accepts the transmission.
@@ -85,15 +96,85 @@ static bool try_i2c(uint8_t *data, uint8_t length)
  * @brief Copy and remove one queued frame while excluding IRQ producers.
  * @return True when a frame was dequeued; length excludes its prefix.
  */
-static bool take_command(message_queue_t *queue, char *buffer, int *length)
+#if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
+static uint32_t feedback_generation[9],dequeued_feedback_generation[9];
+static void fence_encoders(uint16_t affected)
+{
+    uint32_t mask=__get_PRIMASK();
+    __disable_irq();
+    for (unsigned i=0;i<9;i++) if (affected & (1U<<i)) ++feedback_generation[i];
+    uint16_t flags=affected<<ENCODER_BARRIER_SHIFT;
+    mark_pending_frames(&CommandQueue,flags);
+    mark_pending_external_i2c_requests(flags);
+    __set_PRIMASK(mask);
+}
+
+static uint16_t changed_after_dequeue(void)
+{
+    uint32_t mask=__get_PRIMASK();
+    __disable_irq();
+    uint16_t changed=0;
+    for (unsigned i=0;i<9;i++) if (feedback_generation[i]!=dequeued_feedback_generation[i]) changed|=1U<<i;
+    __set_PRIMASK(mask);
+    return changed;
+}
+#endif
+
+static bool take_command(message_queue_t *queue, char *buffer, int *length, uint16_t *barriers)
 {
     // IRQ producers also update queue->count; dequeue must not race their increment.
     uint32_t mask = __get_PRIMASK();
     __disable_irq();
     bool available = !is_queue_empty(queue);
-    if (available) dequeue(queue, buffer, length);
+    if (available) {
+        *barriers = dequeue(queue, buffer, length);
+#if BOARD_HAS_FUSION_EXPERIMENT
+        platform_fusion_dequeued();
+#if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
+        for (unsigned i=0;i<9;i++) dequeued_feedback_generation[i]=feedback_generation[i];
+#endif
+#endif
+    }
     __set_PRIMASK(mask);
     return available;
+}
+
+#if BOARD_HAS_FUSION_EXPERIMENT
+static void fence_feedback_targets(uint32_t *generation)
+{
+    uint32_t mask = __get_PRIMASK();
+    __disable_irq();
+    __atomic_add_fetch(generation, 1, __ATOMIC_RELEASE);
+    mark_pending_frames(&CommandQueue, BEFORE_FEEDBACK_READY);
+    mark_pending_external_i2c_requests(BEFORE_FEEDBACK_READY);
+    __set_PRIMASK(mask);
+}
+#endif
+
+// Both ingress queues can have pending motion (including a fragmented frame)
+// while the other transport completes a wake. Reply to those stale requests
+// with DRIVERS_ASLEEP before allowing fresh motion. A board wake also
+// fences older subscription setup and independent driver-mode requests.
+static void process_queue(connection_t *connection, message_queue_t *queue)
+{
+    if (!connection_can_receive(connection)) return;
+    char buffer[MESSAGE_QUEUE_MAX_STR_LENGTH];
+    int length;
+    uint16_t barriers;
+    if (!take_command(queue, buffer, &length, &barriers)) return;
+    bool was_idle = connection_board_idle();
+    bool was_sleeping = hw_motor_drivers_sleeping();
+    connection_receive_queued(connection, (const uint8_t *)buffer, length, barriers);
+    uint8_t crossed = 0;
+    if (was_idle && !connection_board_idle()) crossed |= BEFORE_BOARD_WAKE;
+    if (was_sleeping && !hw_motor_drivers_sleeping()) crossed |= BEFORE_DRIVER_WAKE;
+    if (crossed) {
+        uint32_t mask = __get_PRIMASK();
+        __disable_irq();
+        mark_pending_frames(&CommandQueue, crossed);
+        mark_pending_external_i2c_requests(crossed);
+        __set_PRIMASK(mask);
+    }
 }
 
 typedef struct commands_manager
@@ -126,7 +207,14 @@ void CommandHandlerTask(void *argument)
     init_queue(&CommandQueue);
     init_queue(&I2CCommandQueue);
 
+#if BOARD_HAS_FUSION_EXPERIMENT
+    platform_fusion_install_ingress_fence(fence_feedback_targets);
+#if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
+    feedback_install_encoder_fence(fence_encoders,changed_after_dequeue);
+#endif
+#endif
     // Initialize USB and I2C interfaces
+    controller_configuration_restore();
     MX_USB_DEVICE_Init();
     initialize_external_i2c();
 
@@ -143,6 +231,7 @@ void CommandHandlerTask(void *argument)
 
     while(1)
     {
+        MX_USB_DEVICE_Process();
         // Maintain the HAL millisecond wrap extension even if both peers stop reading.
         (void)hw_clock_microseconds();
         if (usb_disconnected) {
@@ -158,23 +247,14 @@ void CommandHandlerTask(void *argument)
         // Expire watchdogs before accepting queued commands, including stale motion.
         connection_poll(&usb_connection);
         connection_poll(&i2c_connection);
+#if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
+        feedback_guard_platform_control();
+#endif
         // Handle commands from USB interface
-        if (connection_can_receive(&usb_connection))
-        {
-            char commandBuffer[MESSAGE_QUEUE_MAX_STR_LENGTH];
-            int data_len;
-            if (take_command(&CommandQueue, commandBuffer, &data_len))
-                connection_receive(&usb_connection, (const uint8_t *)commandBuffer, data_len);
-        }
+        process_queue(&usb_connection, &CommandQueue);
 
         // Handle commands from I2C interface
-        if (connection_can_receive(&i2c_connection))
-        {
-            char commandBuffer[MESSAGE_QUEUE_MAX_STR_LENGTH];
-            int data_len;
-            if (take_command(&I2CCommandQueue, commandBuffer, &data_len))
-                connection_receive(&i2c_connection, (const uint8_t *)commandBuffer, data_len);
-        }
+        process_queue(&i2c_connection, &I2CCommandQueue);
         
         connection_poll(&usb_connection);
         connection_poll(&i2c_connection);

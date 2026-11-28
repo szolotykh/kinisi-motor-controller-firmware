@@ -1,8 +1,10 @@
 #include "hw_imu.h"
 #include "hw_config.h"
+#include <stddef.h>
 
 #if NUMBER_IMU_SENSORS > 0
 #include "hw_timers.h"
+#include "hw_clock.h"
 #include <string.h>
 
 // Bosch BMI088 datasheet, rev 1.9, sections 4.1, 5 and 6.1.
@@ -16,6 +18,39 @@
 
 static SPI_HandleTypeDef imu_spi;
 static bool bus_ready;
+static bool spi_in_use;
+typedef struct { uint64_t earliest, latest; double xyz[3]; uint32_t sequence; } axis_event_t;
+typedef struct { axis_event_t events[4]; unsigned next; uint32_t sequence; uint64_t last_earliest; } axis_history_t;
+static struct {
+    uint32_t epoch;
+    uint64_t accel_probe, gyro_probe, verified_at;
+} producer;
+static struct {
+    uint32_t epoch;
+    hw_imu_status_t status;
+    uint32_t generation, losses;
+    axis_history_t accel, gyro;
+} cache;
+
+// Only the cache metadata or one fixed-size sample is touched with IRQs masked.
+// SPI transfers and sensor restart delays run outside this section.
+static void invalidate(uint32_t epoch, hw_imu_status_t status)
+{
+    uint32_t irq = __get_PRIMASK(); __disable_irq();
+    if (cache.epoch != epoch) {
+        ++cache.generation;
+        cache.accel.sequence = cache.gyro.sequence = 0;
+        cache.accel.last_earliest = cache.gyro.last_earliest = 0;
+        cache.losses = status == HW_IMU_IO_ERROR;
+    } else if (status == HW_IMU_IO_ERROR || cache.accel.next || cache.gyro.next) {
+        ++cache.losses;
+    }
+    cache.epoch = epoch;
+    cache.status = status;
+    cache.accel.next = cache.gyro.next = 0;
+    __set_PRIMASK(irq);
+}
+
 static bool configured[NUMBER_IMU_SENSORS];
 static uint32_t configured_at[NUMBER_IMU_SENSORS];
 
@@ -112,6 +147,7 @@ static bool settings_ok(uint8_t index)
 static bool prepare_sensor(uint8_t index)
 {
     if (configured[index]) return true;
+    memset(&producer, 0, sizeof(producer));
     if (!prepare_bus()) return false;
     uint8_t dummy;
     // First accel read selects SPI; its result is deliberately discarded.
@@ -150,7 +186,7 @@ void hw_imu_init(void)
 #endif
 }
 
-hw_imu_status_t hw_imu_read(uint8_t index, hw_imu_sample_t *sample)
+static hw_imu_status_t read_direct(uint8_t index, hw_imu_sample_t *sample)
 {
 #if NUMBER_IMU_SENSORS > 0
     if (index >= NUMBER_IMU_SENSORS || imu_sensor_info[index].type != IMU_SENSOR_BMI088)
@@ -178,4 +214,217 @@ hw_imu_status_t hw_imu_read(uint8_t index, hw_imu_sample_t *sample)
     (void)sample;
     return HW_IMU_UNAVAILABLE;
 #endif
+}
+
+hw_imu_status_t hw_imu_read(uint8_t index, hw_imu_sample_t *sample)
+{
+#if NUMBER_IMU_SENSORS > 0
+    if (__atomic_test_and_set(&spi_in_use, __ATOMIC_ACQUIRE)) return HW_IMU_NOT_READY;
+#endif
+    hw_imu_status_t status = read_direct(index, sample);
+#if NUMBER_IMU_SENSORS > 0
+    if (index == 0 && sample && status == HW_IMU_IO_ERROR) invalidate(producer.epoch, status);
+    __atomic_clear(&spi_in_use, __ATOMIC_RELEASE);
+#endif
+    return status;
+}
+
+#if NUMBER_IMU_SENSORS > 0
+static void note_lost_observation(void)
+{
+    uint32_t irq = __get_PRIMASK(); __disable_irq();
+    ++cache.losses;
+    __set_PRIMASK(irq);
+}
+
+static void publish(axis_history_t *history, uint64_t earliest, uint64_t latest, const uint8_t *data, double scale)
+{
+    // A preempted/late poll provides no tight source time. Leave the previous
+    // verified events eligible only for their original lifetime.
+    if (!earliest || latest < earliest || latest - earliest > 5000) {
+        note_lost_observation();
+        return;
+    }
+    axis_event_t event = {.earliest=earliest, .latest=latest};
+    for (unsigned i = 0; i < 3; ++i) event.xyz[i] = signed_sample(data + 2*i)*scale;
+    uint32_t irq = __get_PRIMASK(); __disable_irq();
+    event.sequence = ++history->sequence;
+    history->last_earliest = earliest;
+    history->events[history->next % 4] = event;
+    if (++history->next == 8) history->next = 4;
+    cache.status = HW_IMU_OK;
+    __set_PRIMASK(irq);
+}
+
+static hw_imu_status_t poll_sensor(uint32_t epoch)
+{
+    if (!prepare_sensor(0)) return HW_IMU_IO_ERROR;
+    if ((uint32_t)(HAL_GetTick()-configured_at[0]) < IMU_SETTLING_MS) return HW_IMU_NOT_READY;
+    uint8_t ready, count, mode, bytes[6];
+    uint64_t now = hw_clock_microseconds();
+    if (producer.epoch != epoch) {
+        invalidate(epoch, HW_IMU_NOT_READY);
+        if (!settings_ok(0) || !write_register(0, false, 0x3E, 0x40) ||
+            !read_registers(0, false, 0x3E, &mode, 1) || mode != 0x40 ||
+            !read_registers(0, true, 0x1D, &ready, 1)) return HW_IMU_IO_ERROR;
+        // Writing the defined FIFO mode both flushes and starts it (Bosch 5.5.16).
+        producer.epoch = epoch;
+        producer.gyro_probe = producer.accel_probe = producer.verified_at = now;
+        return HW_IMU_OK;
+    }
+    if (now - producer.verified_at >= 20000) {
+        if (!settings_ok(0) || !read_registers(0, false, 0x3E, &mode, 1) || mode != 0x40)
+            return HW_IMU_IO_ERROR;
+        producer.verified_at = now;
+    }
+
+    // ACC_INT_STAT_1 clears on read independently of normal GET_IMU data bursts.
+    uint64_t begin = hw_clock_microseconds();
+    if (!read_registers(0, true, 0x1D, &ready, 1)) return HW_IMU_IO_ERROR;
+    uint64_t end = hw_clock_microseconds(), previous = producer.accel_probe;
+    producer.accel_probe = begin;
+    if (ready & 0x80) {
+        if (!read_registers(0, true, 0x12, bytes, 6)) return HW_IMU_IO_ERROR;
+        begin = hw_clock_microseconds();
+        if (!read_registers(0, true, 0x1D, &ready, 1)) return HW_IMU_IO_ERROR;
+        producer.accel_probe = begin;
+        // If another payload arrived while reading, neither event is associated
+        // unambiguously. Consume the indication and wait for a new event.
+        if (!(ready & 0x80)) publish(&cache.accel, previous, end, bytes, 6.0*9.80665/32768.0);
+        else note_lost_observation();
+    }
+
+    begin = hw_clock_microseconds();
+    if (!read_registers(0, false, 0x0E, &count, 1) || count > 8) return HW_IMU_IO_ERROR;
+    end = hw_clock_microseconds(); previous = producer.gyro_probe;
+    producer.gyro_probe = begin;
+    if (count) {
+        if (count > 1) note_lost_observation();
+        // Only remove the frames counted at this inspection. Later frames remain in FIFO.
+        for (unsigned i = 0; i < count; ++i)
+            if (!read_registers(0, false, 0x3F, bytes, 6)) return HW_IMU_IO_ERROR;
+        publish(&cache.gyro, previous, end, bytes, 500.0*0.017453292519943295/32768.0);
+    }
+    return HW_IMU_OK;
+}
+
+static bool newest_before(const axis_history_t *history, uint64_t at, axis_event_t *event)
+{
+    unsigned count = history->next < 4 ? history->next : 4;
+    for (unsigned j = 1; j <= count; ++j) {
+        const axis_event_t *p = &history->events[(history->next-j) % 4];
+        if (p->latest <= at) { *event = *p; return true; }
+    }
+    return false;
+}
+#endif
+
+void hw_imu_poll_observations(uint32_t epoch)
+{
+#if NUMBER_IMU_SENSORS > 0
+    if (!epoch || __atomic_test_and_set(&spi_in_use, __ATOMIC_ACQUIRE)) return;
+    hw_imu_status_t status = poll_sensor(epoch);
+    if (status != HW_IMU_OK) {
+        if (status == HW_IMU_IO_ERROR) configured[0] = false;
+        invalidate(epoch, status);
+    }
+    __atomic_clear(&spi_in_use, __ATOMIC_RELEASE);
+#else
+    (void)epoch;
+#endif
+}
+
+static hw_imu_status_t read_pair(uint32_t epoch, uint64_t at, hw_imu_sample_t *sample,
+                                 uint64_t *accel_us, uint64_t *gyro_us, hw_imu_cursor_t *cursor)
+{
+#if NUMBER_IMU_SENSORS > 0
+    if (!sample || !accel_us || !gyro_us) return HW_IMU_IO_ERROR;
+    axis_event_t a, g;
+    uint32_t irq = __get_PRIMASK(); __disable_irq();
+    hw_imu_status_t status = epoch && cache.epoch == epoch ? cache.status : HW_IMU_NOT_READY;
+    if (cursor && (cursor->epoch != epoch ||
+        (cache.epoch == epoch ? (cursor->cache_generation != cache.generation || cursor->losses != cache.losses) :
+                                cursor->cache_generation != cache.generation + 1u))) {
+        status = status == HW_IMU_IO_ERROR ? status : HW_IMU_STALE;
+    }
+    bool both = status == HW_IMU_OK && newest_before(&cache.accel, at, &a) && newest_before(&cache.gyro, at, &g);
+    __set_PRIMASK(irq);
+    if (!both) return status == HW_IMU_OK ? HW_IMU_NOT_READY : status;
+    // Use the worst possible skew across the full windows, not the separation
+    // between poll start times. Report the older bound for conservative age.
+    if (at-a.earliest > 35000 || at-g.earliest > 35000 ||
+        (a.latest > g.earliest && a.latest-g.earliest > 15000) ||
+        (g.latest > a.earliest && g.latest-a.earliest > 15000)) return HW_IMU_STALE;
+    if (cursor) {
+        if (a.sequence - cursor->accel_sequence > 1u || g.sequence - cursor->gyro_sequence > 1u)
+            return HW_IMU_STALE;
+        cursor->accel_sequence = a.sequence;
+        cursor->gyro_sequence = g.sequence;
+    }
+    *sample = (hw_imu_sample_t){a.xyz[0],a.xyz[1],a.xyz[2],g.xyz[0],g.xyz[1],g.xyz[2]};
+    *accel_us = a.earliest; *gyro_us = g.earliest;
+    return HW_IMU_OK;
+#else
+    (void)epoch; (void)at; (void)sample; (void)accel_us; (void)gyro_us; (void)cursor;
+    return HW_IMU_UNAVAILABLE;
+#endif
+}
+
+hw_imu_status_t hw_imu_read_before(uint32_t epoch, uint64_t at, hw_imu_sample_t *sample,
+                                   uint64_t *accel_us, uint64_t *gyro_us)
+{
+    return read_pair(epoch, at, sample, accel_us, gyro_us, NULL);
+}
+
+void hw_imu_begin_tracking(hw_imu_cursor_t *cursor, uint32_t epoch)
+{
+    *cursor = (hw_imu_cursor_t){.epoch = epoch};
+#if NUMBER_IMU_SENSORS > 0
+    uint32_t irq = __get_PRIMASK(); __disable_irq();
+    cursor->cache_generation = cache.generation;
+    if (cache.epoch == epoch) {
+        cursor->accel_sequence = cache.accel.sequence;
+        cursor->gyro_sequence = cache.gyro.sequence;
+        cursor->losses = cache.losses;
+    } else {
+        ++cursor->cache_generation;
+    }
+    __set_PRIMASK(irq);
+#endif
+}
+
+hw_imu_status_t hw_imu_read_tracking(hw_imu_cursor_t *cursor, uint32_t epoch, uint64_t at,
+                                     hw_imu_sample_t *sample, uint64_t *accel_us, uint64_t *gyro_us)
+{
+    if (!cursor) return HW_IMU_IO_ERROR;
+    return read_pair(epoch, at, sample, accel_us, gyro_us, cursor);
+}
+
+hw_imu_status_t hw_imu_read_observation(uint8_t index, hw_imu_sample_t *sample,
+                                         uint64_t *accel_us, uint64_t *gyro_us)
+{
+#if NUMBER_IMU_SENSORS > 0
+    if (index != 0) return HW_IMU_UNAVAILABLE;
+    uint32_t irq = __get_PRIMASK(); __disable_irq();
+    uint32_t epoch = cache.epoch;
+    __set_PRIMASK(irq);
+    return hw_imu_read_before(epoch, hw_clock_microseconds(), sample, accel_us, gyro_us);
+#else
+    (void)index; (void)sample; (void)accel_us; (void)gyro_us;
+    return HW_IMU_UNAVAILABLE;
+#endif
+}
+
+hw_imu_status_t hw_imu_read_health(uint8_t index, hw_imu_sample_t *sample, uint64_t *a, uint64_t *g)
+{
+    hw_imu_status_t result=hw_imu_read_observation(index,sample,a,g);
+#if NUMBER_IMU_SENSORS > 0
+    if (index==0 && a && g && result!=HW_IMU_OK) {
+        uint32_t irq=__get_PRIMASK(); __disable_irq();
+        *a=cache.accel.last_earliest;
+        *g=cache.gyro.last_earliest;
+        __set_PRIMASK(irq);
+    }
+#endif
+    return result;
 }

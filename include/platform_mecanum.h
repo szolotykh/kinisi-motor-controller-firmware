@@ -2,6 +2,7 @@
 
 #include <stdint.h>
 #include "platform_types.h"
+#include <stdbool.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -21,6 +22,14 @@ void initialize_mecanum_platform(
     double width,
     double wheel_diameter,
     double encoder_resolution);
+
+// Signed yaw lever follows each wheel center and the installed roller slope.
+bool mecanum_geometry_valid(double length, double width, double diameter, double resolution,
+                            uint8_t roller_orientation);
+void initialize_mecanum_platform_oriented(
+    uint8_t reversed0, uint8_t reversed1, uint8_t reversed2, uint8_t reversed3,
+    uint8_t encoder_reversed0, uint8_t encoder_reversed1, uint8_t encoder_reversed2, uint8_t encoder_reversed3,
+    double length, double width, double diameter, double resolution, uint8_t roller_orientation);
 
 // Sets Mecanum platform velocity (PWM units)
 void mecaunm_platform_set_velocity(platform_velocity_t platform_velocity);

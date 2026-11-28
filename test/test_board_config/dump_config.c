@@ -44,8 +44,8 @@ int main(void) {
     assert(NUMBER_IMU_SENSORS == 0);
 #endif
 #endif
-    printf("0.%d.0 motors=%d encoders=%d gpio=%d pwm=%u model=%d\n",
-           KINISI_BOARD_VERSION_MINOR, NUMBER_MOTORS, NUMBER_ENCODERS,
+    printf("%d.%d.%d motors=%d encoders=%d gpio=%d pwm=%u model=%d\n",
+           KINISI_BOARD_VERSION_MAJOR, KINISI_BOARD_VERSION_MINOR, KINISI_BOARD_VERSION_PATCH, NUMBER_MOTORS, NUMBER_ENCODERS,
            NUMBER_GPIO_PINS, MOTOR_PWM_FREQUENCY_HZ, MOTOR_CONTROL_MODEL);
     for (unsigned i = 0; i < NUMBER_MOTORS; ++i) {
         const motor_info_t *m = &motor_info[i];

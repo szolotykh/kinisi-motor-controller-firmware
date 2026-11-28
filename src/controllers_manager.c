@@ -14,6 +14,8 @@
 #include <hw_motor.h>
 #include <hw_encoder.h>
 #include "platform_position.h"
+#include "platform_fusion.h"
+#include "feedback_source.h"
 #include "protocol.h"
 
 // Update interval for PID controller in milliseconds
@@ -28,6 +30,8 @@ typedef struct controller_info_t
     motorIndex mIndex;
     encoder_index_t eIndex;
     pid_controller_t controller;
+    bool feedback_hold;
+    bool binding_assigned;
     uint8_t position_initialized;
     uint8_t position_active;
     position_settings_t position_settings;
@@ -88,6 +92,9 @@ void StartControllerTask(void *argument)
         // effect at runtime (the interval is a shared state variable).
         const TickType_t xPeriod = pdMS_TO_TICKS(controllers_manager_state->update_interval_ms);
         vTaskDelayUntil(&xLastWakeTime, xPeriod);
+#if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
+        feedback_guard_platform_control();
+#endif
         platform_position_update();
 
         // Aquire controller state mutex before updating controller state
@@ -99,9 +106,22 @@ void StartControllerTask(void *argument)
                 controller_info_t* controller_info = &controllers_manager_state->Controller_info[index];
 
                 // Check if controller is running
-                if(controller_info->state == RUN)
+                if(controller_info->state == RUN && !controller_info->feedback_hold)
                 {
                     pid_controller_t* controller = &controller_info->controller;
+#if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
+                    if (!encoder->is_initialized(controller_info->eIndex) ||
+                        !feedback_encoder_sampling(controller_info->eIndex) ||
+                        !(encoder->get_resolution(controller_info->eIndex)>0) ||
+                        !isfinite(encoder->get_resolution(controller_info->eIndex))) {
+                        controller_info->state=STOP;
+                        controller_info->position_active=controller_info->position_initialized=0;
+                        controllers_manager_state->target_motor_speed[index]=0;
+                        pid_controller_reset(controller);
+                        motor->stop(controller_info->mIndex);
+                        continue;
+                    }
+#endif
 
                     // Get current velocity from encoder
                     const uint16_t current_encoder_value = encoder->get_value(controller_info->eIndex);
@@ -147,7 +167,8 @@ void StartControllerTask(void *argument)
             // Set motor speed
             for (int index = 0; index < NUMBER_MOTORS; index++)
             {
-                if( controllers_manager_state->Controller_info[index].state == RUN )
+                if (controllers_manager_state->Controller_info[index].state == RUN &&
+                    !controllers_manager_state->Controller_info[index].feedback_hold)
                 {
                 // Set motor speed
                 motor->set_speed(
@@ -220,6 +241,7 @@ uint8_t controllers_manager_initialize_controller(uint8_t motor_index, uint8_t e
 
     controller_info_t controller_info = {0};
     controller_info.state = RUN;
+    controller_info.binding_assigned=true;
     controller_info.controller = controller;
     controller_info.mIndex = motor_index;
     controller_info.eIndex = encoder_index;
@@ -243,6 +265,15 @@ uint8_t controllers_manager_initialize_controller(uint8_t motor_index, uint8_t e
             return RESPONSE_INTERNAL_ERROR;
         }
         encoder->initialize(controller_info.eIndex, encoder_resolution, is_encoder_reversed);
+#if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
+        if (!encoder->is_initialized(controller_info.eIndex) || !feedback_encoder_sampling(controller_info.eIndex)) {
+            controllers_manager.state.Controller_info[motor_index]=(controller_info_t){0};
+            controllers_manager.state.target_motor_speed[motor_index]=0;
+            motor->stop(motor_index);
+            xSemaphoreGive(controllers_manager.state.controller_state_mutex);
+            return RESPONSE_ENCODER_NOT_INITIALIZED;
+        }
+#endif
         controllers_manager.state.previousEncoderValue[motor_index] = encoder->get_value(encoder_index);
         controllers_manager.state.Controller_info[motor_index] = controller_info;
         controllers_manager.state.target_motor_speed[motor_index] = 0;
@@ -283,6 +314,11 @@ void controllers_manager_initialize_controller_multiple(uint8_t motor_selection,
                 // Building controller info
                 controller_info_t controller_info = {0};
                 controller_info.state = RUN;
+                controller_info.binding_assigned=true;
+#if BOARD_HAS_FUSION_EXPERIMENT
+                controller_info.feedback_hold = platform_fusion_epoch() != 0;
+                if (controller_info.feedback_hold) motor->stop(motor_index);
+#endif
                 controller_info.controller = controller;
                 controller_info.mIndex = motor_index;
                 controller_info.eIndex = motor_index;
@@ -569,6 +605,18 @@ static uint8_t position_lock(uint8_t index)
     return RESPONSE_OK;
 }
 
+#if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
+uint8_t controllers_manager_encoder_mask(uint8_t i)
+{
+    SemaphoreHandle_t lock=controllers_manager.state.controller_state_mutex;
+    if (i>=NUMBER_MOTORS || !lock || !xSemaphoreTake(lock,portMAX_DELAY)) return 0;
+    controller_info_t *info=&controllers_manager.state.Controller_info[i];
+    uint8_t mask=info->binding_assigned ? 1U<<info->eIndex : 0;
+    xSemaphoreGive(lock);
+    return mask;
+}
+#endif
+
 void controllers_manager_stop_encoder(uint8_t encoder_index)
 {
     SemaphoreHandle_t mutex = controllers_manager.state.controller_state_mutex;
@@ -654,3 +702,43 @@ uint8_t controllers_manager_get_position(uint8_t index, double *radians)
     xSemaphoreGive(controllers_manager.state.controller_state_mutex);
     return error;
 }
+
+#if BOARD_HAS_FUSION_EXPERIMENT
+static void set_feedback_hold_locked(uint8_t mask, bool hold)
+{
+    for (uint8_t i = 0; i < NUMBER_MOTORS; ++i) {
+        controller_info_t *c = &controllers_manager.state.Controller_info[i];
+        if (!(mask & (1U << i)) || c->state != RUN || c->feedback_hold == hold) continue;
+        c->feedback_hold = hold;
+        c->position_active = 0;
+        controllers_manager.state.target_motor_speed[i] = 0;
+        pid_controller_reset(&c->controller);
+        controllers_manager.state.previousEncoderValue[i] = encoder->get_value(c->eIndex);
+        if (hold) motor->stop(c->mIndex);
+    }
+}
+
+bool controllers_manager_hold_if_stopped(uint8_t mask)
+{
+    SemaphoreHandle_t mutex = controllers_manager.state.controller_state_mutex;
+    if (!mutex) return hw_motor_outputs_stopped();
+    if (!xSemaphoreTake(mutex, portMAX_DELAY)) return false;
+    bool stopped = hw_motor_outputs_stopped();
+    for (uint8_t i = 0; stopped && i < NUMBER_MOTORS; ++i) {
+        controller_info_t *c = &controllers_manager.state.Controller_info[i];
+        if (c->state == RUN && (controllers_manager.state.target_motor_speed[i] ||
+                               c->controller.motorPWM || c->position_active)) stopped = false;
+    }
+    if (stopped) set_feedback_hold_locked(mask, true);
+    xSemaphoreGive(mutex);
+    return stopped;
+}
+
+void controllers_manager_feedback_hold(uint8_t mask, bool hold)
+{
+    SemaphoreHandle_t mutex = controllers_manager.state.controller_state_mutex;
+    if (!mutex || !xSemaphoreTake(mutex, portMAX_DELAY)) return;
+    set_feedback_hold_locked(mask, hold);
+    xSemaphoreGive(mutex);
+}
+#endif

@@ -6,13 +6,12 @@
 #include "controllers_manager.h"
 #include "odometry_manager.h"
 #include <pid_controller.h>
-#include <cmsis_os.h>
-#include <message_queue.h>
-#include <usbd_cdc_if.h>
 #include <hw_gpio.h>
 #include "platform.h"
+#include "platform_common.h"
 #include "commands_handler.h"
-#include "hardware_i2c.h"
+#include "controller_configuration.h"
+#include "driver_sleep_commands.h"
 #include "hw_temperature.h"
 #include "hw_imu.h"
 #include "hw_current_sense.h"
@@ -24,9 +23,160 @@
 #include "hw_clock.h"
 #include "command_requirements.h"
 #include "platform_position.h"
+#include "platform_fusion.h"
 #include "hw_config.h"
+#if BOARD_HAS_IMU_MOUNTING
+#include "imu_mount_wire.h"
+#endif
+#if BOARD_HAS_IMU_TRACKING
+#include "imu_tracking_internal.h"
+#endif
+#if BOARD_HAS_FEEDBACK_SOURCE_SELECTOR
+#include "feedback_source_internal.h"
+#endif
+#if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
+#include "feedback_health_internal.h"
+#endif
 #if MOTOR_CONTROL_MODEL == MOTOR_CONTROL_MODEL_ENABLE_DIRECTION
 #include "hw_drv8873.h"
+#endif
+
+#if BOARD_HAS_DRIVER_SLEEP
+static uint8_t set_driver_sleep(bool sleeping)
+{
+    bool was_sleeping = hw_motor_drivers_sleeping();
+    if (sleeping && !was_sleeping) {
+        // Drain both controller mutexes before changing any driver pins.
+        platform_stop_velocity_controller();
+        controllers_manager_stop_controller_multiple(BMOTOR0 | BMOTOR1 | BMOTOR2 | BMOTOR3);
+    }
+    bool confirmed = hw_motor_set_driver_sleep(sleeping);
+#if BOARD_HAS_IMU_TRACKING
+    if (!was_sleeping && hw_motor_drivers_sleeping()) imu_tracking_inhibit();
+#if BOARD_HAS_FEEDBACK_SOURCE_SELECTOR
+    if (was_sleeping != hw_motor_drivers_sleeping()) {
+        passive_fusion_reset();
+#if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
+        feedback_health_power_transition();
+#endif
+    }
+#endif
+#endif
+#if BOARD_HAS_FUSION_EXPERIMENT
+    bool now_sleeping = hw_motor_drivers_sleeping();
+    if (now_sleeping != was_sleeping) platform_fusion_driver_transition(now_sleeping);
+#endif
+    return confirmed ? RESPONSE_OK : RESPONSE_INTERNAL_ERROR;
+}
+#endif
+
+#if BOARD_HAS_BOARD_IDLE
+static bool drivers_were_sleeping;
+static uint8_t set_board_idle(bool idle)
+{
+    if (idle) {
+        if (!connection_board_idle()) {
+            drivers_were_sleeping = hw_motor_drivers_sleeping();
+            connection_set_board_idle(true, hw_clock_microseconds());
+        }
+        return set_driver_sleep(true); // Retry unconfirmed pins after a failed entry.
+    }
+    if (!connection_board_idle()) return RESPONSE_OK;
+    uint8_t status = set_driver_sleep(drivers_were_sleeping);
+    if (status == RESPONSE_OK) connection_set_board_idle(false, hw_clock_microseconds());
+    return status;
+}
+#endif
+
+// A platform can run open-loop without encoders. Feedback operations need
+// a live counter and a usable scale for every wheel that the platform owns.
+static bool platform_feedback_ready(const hw_encoder_interface_t *encoder)
+{
+    for (uint8_t i = 0; i < NUMBER_MOTORS; ++i) {
+        if (!platform_owns_motor(i)) continue;
+        if (i >= NUMBER_ENCODERS || !encoder->is_initialized(i)) return false;
+#if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
+        if (!feedback_encoder_sampling(i)) return false;
+#endif
+        double resolution = encoder->get_resolution(i);
+        if (!isfinite(resolution) || resolution <= 0) return false;
+    }
+    return true;
+}
+
+#if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
+static uint8_t monitored_encoders, bad_encoders;
+// Low four bits name shafts, the next four name motor endpoints, and bit 8
+// names the chassis. Motion requests name an endpoint whose shafts can change.
+#define MOTOR_ENDPOINT(i) (1U << (4U+(i)))
+#define PLATFORM_ENDPOINT (1U << 8)
+static uint16_t unavailable_endpoints[4];
+static void (*encoder_ingress_fence)(uint16_t);
+static uint16_t (*dequeued_encoder_barriers)(void);
+
+static uint16_t affected_endpoints(uint8_t shaft)
+{
+    uint16_t endpoints=platform_owns_motor(shaft) ? PLATFORM_ENDPOINT : 0;
+    for (unsigned i=0;i<NUMBER_MOTORS;i++)
+        if (controllers_manager_encoder_mask(i) & (1U<<shaft)) endpoints|=MOTOR_ENDPOINT(i);
+    return endpoints;
+}
+
+bool feedback_counters_available(void) { return !__atomic_load_n(&bad_encoders,__ATOMIC_ACQUIRE); }
+
+void feedback_install_encoder_fence(void (*fence)(uint16_t),uint16_t (*dequeued)(void))
+{
+    encoder_ingress_fence=fence;
+    dequeued_encoder_barriers=dequeued;
+}
+
+void feedback_guard_platform_control(void)
+{
+    const hw_encoder_interface_t *hw=get_encoder_interface();
+    uint8_t present=0,bad=0;
+    for (uint8_t i=0;i<NUMBER_ENCODERS;i++) if (hw->is_initialized(i)) present|=1U<<i;
+    uint8_t monitored=__atomic_or_fetch(&monitored_encoders,present,__ATOMIC_ACQ_REL);
+    for (uint8_t i=0;i<NUMBER_ENCODERS;i++) if ((monitored & (1U<<i)) &&
+        (!(present & (1U<<i)) || !feedback_encoder_sampling(i) ||
+         !isfinite(hw->get_resolution(i)) || hw->get_resolution(i)<=0)) bad|=1U<<i;
+    uint8_t changed=bad ^ __atomic_exchange_n(&bad_encoders,bad,__ATOMIC_ACQ_REL);
+    // The recovery edge fences commands submitted while unavailable, even after
+    // the controller was stopped and no further invalid target was dispatched.
+    if (changed) {
+        uint16_t barriers=changed;
+        for (unsigned i=0;i<NUMBER_ENCODERS;i++) if (changed & (1U<<i)) {
+            if (bad & (1U<<i)) {
+                uint16_t endpoints=affected_endpoints(i);
+                __atomic_fetch_or(&unavailable_endpoints[i],endpoints,__ATOMIC_ACQ_REL);
+                barriers|=endpoints;
+            } else {
+                barriers|=__atomic_exchange_n(&unavailable_endpoints[i],0,__ATOMIC_ACQ_REL);
+            }
+        }
+        if (encoder_ingress_fence) encoder_ingress_fence(barriers);
+        odometry_counter_transition(changed);
+    }
+    if (platform_is_controller_running() && (bad & platform.motor_mask)) platform_stop_velocity_controller();
+    for (uint8_t i=0;i<NUMBER_ENCODERS;i++) if (bad & (1U<<i)) controllers_manager_stop_encoder(i);
+}
+
+static uint16_t guarded_encoders(const controller_command_t *cmd)
+{
+    uint8_t motor;
+    switch (cmd->commandType) {
+    case START_PLATFORM_CONTROLLER: case SET_PLATFORM_TARGET_VELOCITY:
+    case INITIALIZE_PLATFORM_POSITION_CONTROLLER: case INITIALIZE_PLATFORM_POSITION_PID_CONTROLLER:
+    case SET_PLATFORM_POSITION: return PLATFORM_ENDPOINT | platform.motor_mask;
+    case INITIALIZE_MOTOR_CONTROLLER: return MOTOR_ENDPOINT(cmd->properties.initialize_motor_controller.motor_index) |
+        (1U<<cmd->properties.initialize_motor_controller.encoder_index);
+    case SET_MOTOR_TARGET_SPEED: motor=cmd->properties.set_motor_target_speed.motor_index;break;
+    case INITIALIZE_MOTOR_POSITION_CONTROLLER: motor=cmd->properties.initialize_motor_position_controller.motor_index;break;
+    case INITIALIZE_MOTOR_POSITION_PID_CONTROLLER: motor=cmd->properties.initialize_motor_position_pid_controller.motor_index;break;
+    case SET_MOTOR_POSITION: motor=cmd->properties.set_motor_position.motor_index;break;
+    default: return 0;
+    }
+    return MOTOR_ENDPOINT(motor) | controllers_manager_encoder_mask(motor);
+}
 #endif
 
 /**
@@ -36,12 +186,21 @@
  * @return RESPONSE_OK for accepted operations, or a generated protocol error code.
  * @note Called serially inside a connection dispatch; ACK/error framing is handled above.
  */
-uint8_t command_handler(controller_command_t* cmd, void (*command_callback)(uint8_t*, uint8_t))
+static uint8_t dispatch_controller_command(controller_command_t* cmd, void (*command_callback)(uint8_t*, uint8_t))
 {
+#if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
+    health_init();
+    feedback_guard_platform_control();
+#endif
+
     const gpio_interface_t* gpio = get_gpio_interface();
     const hw_motor_interface_t* motor = get_motor_interface();
     const hw_encoder_interface_t* encoder = get_encoder_interface();
 
+#if BOARD_HAS_DRIVER_SLEEP
+    if (hw_motor_drivers_sleeping() && command_requires_awake_drivers(cmd->commandType))
+        return RESPONSE_DRIVERS_ASLEEP;
+#endif
     const command_resources_t resources = {
         .motor_owned = platform_owns_motor,
         .motor_initialized = motor->is_initialized,
@@ -52,6 +211,13 @@ uint8_t command_handler(controller_command_t* cmd, void (*command_callback)(uint
     };
     uint8_t prerequisite = command_requirements_check(cmd, &resources);
     if (prerequisite != RESPONSE_OK) return prerequisite;
+#if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
+    uint16_t required=guarded_encoders(cmd);
+    if (required & __atomic_load_n(&bad_encoders,__ATOMIC_ACQUIRE)) return RESPONSE_ENCODER_NOT_INITIALIZED;
+    uint16_t blocked=connection_before_encoder_ready();
+    if (dequeued_encoder_barriers) blocked|=dequeued_encoder_barriers();
+    if (required & blocked) return RESPONSE_SAMPLE_NOT_AVAILABLE;
+#endif
 
     switch(cmd->commandType)
     {
@@ -305,9 +471,20 @@ uint8_t command_handler(controller_command_t* cmd, void (*command_callback)(uint
 
         // Platform commands
         case INITIALIZE_MECANUM_PLATFORM:
+        case INITIALIZE_MECANUM_PLATFORM_ORIENTED: {
+            // The command union members have an identical common initial sequence.
+            uint8_t orientation = MECANUM_ROLLER_STANDARD;
+            if (cmd->commandType == INITIALIZE_MECANUM_PLATFORM_ORIENTED) {
+                orientation = cmd->properties.initialize_mecanum_platform_oriented.roller_orientation;
+                if (!mecanum_geometry_valid(cmd->properties.initialize_mecanum_platform.length,
+                    cmd->properties.initialize_mecanum_platform.width,
+                    cmd->properties.initialize_mecanum_platform.wheels_diameter,
+                    cmd->properties.initialize_mecanum_platform.encoder_resolution,
+                    orientation)) return RESPONSE_INVALID_ARGUMENT;
+            }
             platform_stop_velocity_controller();
             platform_stop_odometry();
-            initialize_mecanum_platform(
+            initialize_mecanum_platform_oriented(
                 cmd->properties.initialize_mecanum_platform.is_reversed_0,
                 cmd->properties.initialize_mecanum_platform.is_reversed_1,
                 cmd->properties.initialize_mecanum_platform.is_reversed_2,
@@ -319,10 +496,34 @@ uint8_t command_handler(controller_command_t* cmd, void (*command_callback)(uint
                 cmd->properties.initialize_mecanum_platform.length,
                 cmd->properties.initialize_mecanum_platform.width,
                 cmd->properties.initialize_mecanum_platform.wheels_diameter,
-                cmd->properties.initialize_mecanum_platform.encoder_resolution
+                cmd->properties.initialize_mecanum_platform.encoder_resolution, orientation
             );
             if (!platform_is_initialized()) return RESPONSE_INTERNAL_ERROR;
         break;
+        }
+
+        case INITIALIZE_OMNI_PLATFORM_ORIENTED: {
+            const uint8_t orientation = cmd->properties.initialize_omni_platform_oriented.wheel_orientation;
+            // Shared initial fields of the legacy and oriented command union members.
+            if (!omni_geometry_valid(cmd->properties.initialize_omni_platform.wheels_diameter,
+                cmd->properties.initialize_omni_platform.robot_radius,
+                cmd->properties.initialize_omni_platform.encoder_resolution, orientation))
+                return RESPONSE_INVALID_ARGUMENT;
+            platform_stop_velocity_controller();
+            platform_stop_odometry();
+            initialize_omni_platform_oriented(
+                cmd->properties.initialize_omni_platform.is_reversed_0,
+                cmd->properties.initialize_omni_platform.is_reversed_1,
+                cmd->properties.initialize_omni_platform.is_reversed_2,
+                cmd->properties.initialize_omni_platform.is_encoder_reversed_0,
+                cmd->properties.initialize_omni_platform.is_encoder_reversed_1,
+                cmd->properties.initialize_omni_platform.is_encoder_reversed_2,
+                cmd->properties.initialize_omni_platform.wheels_diameter,
+                cmd->properties.initialize_omni_platform.robot_radius,
+                cmd->properties.initialize_omni_platform.encoder_resolution, orientation);
+            if (!platform_is_initialized()) return RESPONSE_INTERNAL_ERROR;
+            break;
+        }
 
         case INITIALIZE_OMNI_PLATFORM:
             platform_stop_velocity_controller();
@@ -370,6 +571,7 @@ uint8_t command_handler(controller_command_t* cmd, void (*command_callback)(uint
         case START_PLATFORM_CONTROLLER:
             if (!pid_controller_settings_valid(cmd->properties.start_platform_controller.kp, cmd->properties.start_platform_controller.ki, cmd->properties.start_platform_controller.kd, cmd->properties.start_platform_controller.integral_limit))
                 return RESPONSE_INVALID_ARGUMENT;
+            if (!platform_feedback_ready(encoder)) return RESPONSE_ENCODER_NOT_INITIALIZED;
             {
             plaform_controller_settings_t plaform_controller_settings = {
                 .kp = cmd->properties.start_platform_controller.kp,
@@ -379,6 +581,12 @@ uint8_t command_handler(controller_command_t* cmd, void (*command_callback)(uint
             };
 
             platform_start_velocity_controller(plaform_controller_settings);
+#if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
+            if (!platform_feedback_ready(encoder)) {
+                platform_stop_velocity_controller();
+                return RESPONSE_ENCODER_NOT_INITIALIZED;
+            }
+#endif
             }
         break;
 
@@ -407,12 +615,13 @@ uint8_t command_handler(controller_command_t* cmd, void (*command_callback)(uint
                 .y = cmd->properties.set_platform_target_velocity.y,
                 .t = cmd->properties.set_platform_target_velocity.t
             };
-            platform_set_target_velocity(platform_target_velocity);
+            return platform_set_target_velocity(platform_target_velocity);
         }
         break;
         
         case START_PLATFORM_ODOMETRY:
         {
+            if (!platform_feedback_ready(encoder)) return RESPONSE_ENCODER_NOT_INITIALIZED;
             platform_position_cancel();
             platform_start_odometry();
         }
@@ -509,6 +718,128 @@ uint8_t command_handler(controller_command_t* cmd, void (*command_callback)(uint
                 cmd->properties.set_platform_position.x,
                 cmd->properties.set_platform_position.y,
                 cmd->properties.set_platform_position.t});
+        case SET_IMU_MOUNT:
+#if BOARD_HAS_IMU_MOUNTING
+        {
+            imu_mount_config_t mount = {
+                .roll_cdeg = cmd->properties.set_imu_mount.roll_cdeg,
+                .pitch_cdeg = cmd->properties.set_imu_mount.pitch_cdeg,
+                .yaw_cdeg = cmd->properties.set_imu_mount.yaw_cdeg,
+                .x_um = cmd->properties.set_imu_mount.x_um,
+                .y_um = cmd->properties.set_imu_mount.y_um,
+                .z_um = cmd->properties.set_imu_mount.z_um,
+                .configured = true
+            };
+            return imu_mount_set(&mount);
+        }
+#else
+            return RESPONSE_SENSOR_NOT_AVAILABLE;
+#endif
+        case GET_IMU_MOUNT:
+#if BOARD_HAS_IMU_MOUNTING
+        {
+            imu_mount_configuration mount = imu_mount_pack(imu_mount_get());
+            command_callback((uint8_t *)&mount, sizeof(mount));
+            return RESPONSE_OK;
+        }
+#else
+            return RESPONSE_SENSOR_NOT_AVAILABLE;
+#endif
+        case SET_BOARD_MOUNT:
+#if BOARD_HAS_IMU_MOUNTING
+        {
+            imu_mount_config_t mount = {
+                .roll_cdeg = cmd->properties.set_board_mount.roll_cdeg,
+                .pitch_cdeg = cmd->properties.set_board_mount.pitch_cdeg,
+                .yaw_cdeg = cmd->properties.set_board_mount.yaw_cdeg,
+                .x_um = cmd->properties.set_board_mount.x_um,
+                .y_um = cmd->properties.set_board_mount.y_um,
+                .z_um = cmd->properties.set_board_mount.z_um,
+                .configured = true
+            };
+            return board_mount_set(&mount);
+        }
+#else
+            return RESPONSE_SENSOR_NOT_AVAILABLE;
+#endif
+        case GET_BOARD_MOUNT:
+#if BOARD_HAS_IMU_MOUNTING
+        {
+            imu_mount_config_t applied = board_mount_get();
+            board_mount_configuration mount = {applied.roll_cdeg,applied.pitch_cdeg,applied.yaw_cdeg,
+                applied.x_um,applied.y_um,applied.z_um,applied.configured};
+            command_callback((uint8_t *)&mount, sizeof(mount));
+            return RESPONSE_OK;
+        }
+#else
+            return RESPONSE_SENSOR_NOT_AVAILABLE;
+#endif
+        case GET_FEEDBACK_SOURCE_HEALTH: case GET_FEEDBACK_IMU_CHANNELS:
+#if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
+            return feedback_health_read(cmd->commandType,cmd->commandType==GET_FEEDBACK_SOURCE_HEALTH ?
+                    cmd->properties.get_feedback_source_health.source : 0,command_callback);
+#else
+            return RESPONSE_SENSOR_NOT_AVAILABLE;
+#endif
+        case SET_FEEDBACK_SOURCE: case GET_FEEDBACK_SOURCE_STATUS: case GET_FEEDBACK_SOURCE_VECTOR:
+        case SET_FEEDBACK_FUSION_MOUNT: case GET_FEEDBACK_FUSION_MOUNT:
+#if BOARD_HAS_FEEDBACK_SOURCE_SELECTOR
+            if (cmd->commandType == SET_FEEDBACK_SOURCE)
+                return feedback_select(cmd->properties.set_feedback_source.source);
+            if (cmd->commandType == SET_FEEDBACK_FUSION_MOUNT) {
+                if (!feedback_switch_safe()) return RESPONSE_SOURCE_SWITCH_UNSAFE;
+                uint8_t result=passive_fusion_mount(cmd->properties.set_feedback_fusion_mount.mounting_yaw_rad);
+#if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
+                if (result==RESPONSE_OK) feedback_health_mount(cmd->properties.set_feedback_fusion_mount.mounting_yaw_rad);
+#endif
+                return result;
+            }
+            if (cmd->commandType == GET_FEEDBACK_FUSION_MOUNT) {
+                feedback_fusion_mount mount = passive_fusion_get_mount();
+                command_callback((uint8_t *)&mount,sizeof(mount));
+                return RESPONSE_OK;
+            }
+            return feedback_read(cmd->commandType, cmd->commandType == GET_FEEDBACK_SOURCE_VECTOR ?
+                                 cmd->properties.get_feedback_source_vector.kind : 0,
+                                 cmd->commandType == GET_FEEDBACK_SOURCE_VECTOR ? cmd->properties.get_feedback_source_vector.origin_id : 0,
+                                 cmd->commandType == GET_FEEDBACK_SOURCE_VECTOR ? cmd->properties.get_feedback_source_vector.sequence : 0,
+                                 command_callback);
+#else
+            return RESPONSE_SENSOR_NOT_AVAILABLE;
+#endif
+        case SET_IMU_TRACKING:
+#if BOARD_HAS_IMU_TRACKING
+        {
+            uint8_t power_error = connection_board_idle() ? RESPONSE_BOARD_IDLE :
+                (hw_motor_drivers_sleeping() || connection_before_driver_wake()) ? RESPONSE_DRIVERS_ASLEEP : RESPONSE_OK;
+            return tracking_configure(cmd->properties.set_imu_tracking.action,
+                cmd->properties.set_imu_tracking.stationary_mount_confirmed,
+                cmd->properties.set_imu_tracking.mounting_yaw_rad, power_error);
+        }
+#else
+            return RESPONSE_SENSOR_NOT_AVAILABLE;
+#endif
+        case GET_IMU_TRACKING_STATUS: case GET_IMU_TRACKING_VECTOR: case GET_IMU_TRACKING_CONFIGURATION:
+#if BOARD_HAS_IMU_TRACKING
+            return tracking_read(cmd->commandType,cmd->commandType==GET_IMU_TRACKING_VECTOR ?
+                cmd->properties.get_imu_tracking_vector.kind : 0,command_callback);
+#else
+            return RESPONSE_SENSOR_NOT_AVAILABLE;
+#endif
+        case SET_FUSION_EXPERIMENT:
+#if BOARD_HAS_FUSION_EXPERIMENT
+            return platform_fusion_configure(cmd->properties.set_fusion_experiment.mode,
+                                            cmd->properties.set_fusion_experiment.mounting_yaw_rad);
+#else
+            return RESPONSE_SENSOR_NOT_AVAILABLE;
+#endif
+        case GET_FUSION_STATUS: case GET_FUSION_VECTOR: case GET_FUSION_CONFIGURATION:
+#if BOARD_HAS_FUSION_EXPERIMENT
+            return platform_fusion_read(cmd->commandType, cmd->commandType == GET_FUSION_VECTOR ?
+                                        cmd->properties.get_fusion_vector.kind : 0, command_callback);
+#else
+            return RESPONSE_SENSOR_NOT_AVAILABLE;
+#endif
         case GET_IMU: {
             hw_imu_sample_t sample;
             switch (hw_imu_read(cmd->properties.get_imu.sensor_index, &sample)) {
@@ -524,6 +855,47 @@ uint8_t command_handler(controller_command_t* cmd, void (*command_callback)(uint
             };
             command_callback((uint8_t *)&response, sizeof(response));
             return RESPONSE_OK;
+        }
+        case SET_BOARD_IDLE:
+        case GET_BOARD_IDLE: {
+#if BOARD_HAS_BOARD_IDLE
+            if (cmd->commandType == GET_BOARD_IDLE) {
+                uint8_t idle = connection_board_idle();
+                command_callback(&idle, sizeof(idle));
+                return RESPONSE_OK;
+            }
+            if (cmd->properties.set_board_idle.idle > 1) return RESPONSE_INVALID_ARGUMENT;
+            return set_board_idle(cmd->properties.set_board_idle.idle != 0);
+#else
+            return RESPONSE_SENSOR_NOT_AVAILABLE;
+#endif
+        }
+        case SET_DRIVER_SLEEP:
+        case GET_DRIVER_SLEEP: {
+#if BOARD_HAS_DRIVER_SLEEP
+            if (cmd->commandType == GET_DRIVER_SLEEP) {
+                uint8_t sleeping = hw_motor_drivers_sleeping();
+                command_callback(&sleeping, sizeof(sleeping));
+                return RESPONSE_OK;
+            }
+            if (cmd->properties.set_driver_sleep.sleeping > 1) return RESPONSE_INVALID_ARGUMENT;
+            if (connection_board_idle()) return RESPONSE_BOARD_IDLE;
+            bool sleeping = cmd->properties.set_driver_sleep.sleeping != 0;
+            if (!sleeping && hw_motor_drivers_sleeping() && connection_before_driver_wake())
+                return RESPONSE_DRIVERS_ASLEEP;
+            return set_driver_sleep(sleeping);
+#else
+            return RESPONSE_SENSOR_NOT_AVAILABLE;
+#endif
+        }
+        case SAVE_CONFIGURATION:
+            return controller_configuration_save();
+        case GET_CONFIGURATION_FIELD: {
+            double value;
+            uint8_t error = controller_configuration_read(cmd->properties.get_configuration_field.field,
+                cmd->properties.get_configuration_field.index, &value);
+            if (error == RESPONSE_OK) command_callback((uint8_t *)&value, sizeof(value));
+            return error;
         }
         case SET_PWM_FREQUENCY: {
             uint32_t frequency = cmd->properties.set_pwm_frequency.frequency_hz;
@@ -612,4 +984,47 @@ uint8_t command_handler(controller_command_t* cmd, void (*command_callback)(uint
         default: return RESPONSE_UNKNOWN_COMMAND;
     }
     return RESPONSE_OK;
+}
+
+uint8_t command_handler(controller_command_t *cmd, void (*reply)(uint8_t *,uint8_t))
+{
+    uint8_t result=dispatch_controller_command(cmd,reply);
+#if BOARD_HAS_FEEDBACK_SOURCE_HEALTH
+    // A higher-priority observer can report loss and repair after the initial
+    // admission test while this request is waiting for a controller mutex.
+    if (result==RESPONSE_OK && dequeued_encoder_barriers) {
+        uint16_t crossed=guarded_encoders(cmd) & dequeued_encoder_barriers();
+        if (crossed) {
+            if (platform_is_controller_running() && (crossed & (PLATFORM_ENDPOINT | platform.motor_mask)))
+                platform_stop_velocity_controller();
+            for (uint8_t i=0;i<NUMBER_ENCODERS;i++) if (crossed & (1U<<i)) controllers_manager_stop_encoder(i);
+            for (uint8_t i=0;i<NUMBER_MOTORS;i++) if (crossed & MOTOR_ENDPOINT(i))
+                controllers_manager_stop_controller_multiple(1U<<i);
+            return RESPONSE_SAMPLE_NOT_AVAILABLE;
+        }
+
+        // Rebinding off a still-failed shaft closes this endpoint's old
+        // lifetime before the successful configuration ACK. New commands for
+        // this healthy binding need not wait for the unrelated shaft to repair.
+        uint16_t renewed=0;
+        uint8_t required=0;
+        if (cmd->commandType==INITIALIZE_MOTOR_CONTROLLER) {
+            renewed=MOTOR_ENDPOINT(cmd->properties.initialize_motor_controller.motor_index);
+            required=1U<<cmd->properties.initialize_motor_controller.encoder_index;
+        } else if (cmd->commandType==INITIALIZE_DIFFERENTIAL_PLATFORM ||
+                   cmd->commandType==INITIALIZE_OMNI_PLATFORM || cmd->commandType==INITIALIZE_MECANUM_PLATFORM ||
+                   cmd->commandType==INITIALIZE_MECANUM_PLATFORM_ORIENTED ||
+                   cmd->commandType==INITIALIZE_OMNI_PLATFORM_ORIENTED) {
+            renewed=PLATFORM_ENDPOINT;
+            required=platform.motor_mask;
+        }
+        if (renewed) {
+            uint16_t transition=0;
+            for (uint8_t i=0;i<NUMBER_ENCODERS;i++) if (!(required & (1U<<i)))
+                transition|=__atomic_fetch_and(&unavailable_endpoints[i],(uint16_t)~renewed,__ATOMIC_ACQ_REL) & renewed;
+            if (transition && encoder_ingress_fence) encoder_ingress_fence(transition);
+        }
+    }
+#endif
+    return result;
 }

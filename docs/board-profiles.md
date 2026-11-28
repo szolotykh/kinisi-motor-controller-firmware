@@ -12,6 +12,17 @@ The bundle has `schema_version: 1` and a `boards` array. Each profile contains:
 
 - `board`: model number and complete hardware revision.
 - `resources`: motor, encoder, GPIO and status LED counts.
+- `power.driver_sleep`: whether every motor driver has supported explicit sleep control.
+  Treat an absent flag as unavailable. The public commands require a ready session
+  on protocol 2.15 or later for model 1 v0.4.0, or 2.17 or later for model 1
+  v0.3.0 and Nano v0.3.1. These gates apply within protocol major 2.
+- `power.board_idle`: support for communication-preserving idle. Require a true flag
+  on the exact model 1 profile and a READY connection. The minimum 2.x minor is
+  18 on original v0.3.0 and Nano v0.3.1, and 16 on v0.4.0.
+  Earlier bundles may omit this field. See [board idle](board-idle.md).
+- `capabilities.fusion_experiment`: volatile encoder/IMU experiment support.
+  Requires READY, exact model 1 v0.4.0 and protocol 2.19+. Missing is false.
+  See [fusion experiment](fusion-experiment.md).
 - `motor_features`: per-motor IDs, current-sense/current-limit/fault-reporting flags,
   and optional `current_limit_options` with discrete thresholds in milliamps and `can_disable`.
 - `sensors`: temperature sensor IDs and IMU IDs with accelerometer/gyroscope flags.
@@ -34,6 +45,7 @@ The currently generated resource counts are:
 | 0.1.0 | 4 | 1 | 4 | 1 | 0 | 0 |
 | 0.2.0 | 4 | 4 | 4 | 1 | 0 | 0 |
 | 0.3.0 | 4 | 4 | 10 | 1 | 0 | 0 |
+| 0.3.1 (Nano) | 4 | 4 | 10 | 1 | 0 | 0 |
 | 0.4.0 | 4 | 4 | 8 | 1 | 1 | 1 |
 
 ## Library integration
@@ -84,3 +96,8 @@ respectively; a default 32-byte AVR Wire buffer supports temperature only.
 
 Board-wide `pwm_frequency` exposes `default_hz` and `supported_hz`. See
 [motor PWM frequency](motor-pwm-frequency.md) for command behavior and lifetime.
+See [motor-driver sleep](driver-sleep.md) for the board-wide inhibit and wake behavior.
+
+## Mini IMU geometry
+
+The Mini v0.4 public profile includes `imu_geometry.underside_center_to_imu_um`, a three-element signed array in board X, Y, Z order. Its values come from the Mini board configuration. Applications can rotate this vector to display U601 relative to the center of the PCB underside. Protocol 2.24 installers supply the board-center pose through the board-mount commands. [Installation reference](imu-mounting.md)

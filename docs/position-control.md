@@ -19,6 +19,47 @@ contribution limits and position tolerances. It runs at the shared controller fr
 - Platform velocity limits: translation magnitude in m/s and rotation in rad/s.
   Limits apply to requested velocity, not measured overshoot or acceleration.
 
+## Three-wheel Omni orientation
+
+Protocol 2.26 supports a single wheel at the rear or at the front of a 120-degree chassis.
+Measure the radius from the chassis center to a wheel center. Supply the radius and
+wheel diameter in meters. Keep each motor and encoder port paired with its physical wheel.
+
+| Layout | W0 (M0/E0) | W1 (M1/E1) | W2 (M2/E2) | Forward command | Left command | Positive yaw |
+| --- | --- | --- | --- | --- | --- | --- |
+| REAR (0, default) | Front right | Front left | Rear | +, -, 0 | +, +, - | +, +, + |
+| FRONT (1) | Rear left | Rear right | Front | -, +, 0 | -, -, + | +, +, + |
+
+The signs give logical rolling directions in W0, W1, W2 order. For a pure left
+command W0 and W1 each have half the magnitude of W2. Set motor and encoder reversals
+independently to match the wiring. M3/E3 remains available for separate use.
+
+Use `INITIALIZE_OMNI_PLATFORM_ORIENTED` and append the orientation byte to the
+original initializer fields. The complete request is 35 bytes. Reading
+`GET_CONFIGURATION_FIELD(8, 0)` returns the current Omni orientation on any
+2.26 board running that preset. The original `INITIALIZE_OMNI_PLATFORM` selects
+REAR. On v0.4, `SAVE_CONFIGURATION` persists the selected layout across restarts.
+Earlier saved Omni configurations restore as REAR.
+
+## Mecanum roller orientation
+
+Protocol 2.25 supports both 45° layouts through `INITIALIZE_MECANUM_PLATFORM_ORIENTED`.
+Use motor and encoder indices 0 (front right), 1 (rear right), 2 (rear left), and 3 (front left).
+In STANDARD, a leftward command drives wheels 0 and 2 forward and 1 and 3 backward. In MIRRORED
+all four roller slopes and those lateral contributions reverse. Configure motor and encoder polarity
+separately. The legacy `INITIALIZE_MECANUM_PLATFORM` always selects STANDARD.
+
+Measure length and width between wheel centers in meters. The signed yaw lever for wheel 0 is
+`(width + length)/2` in STANDARD and `(width - length)/2` in MIRRORED. Equal spacing gives
+MIRRORED zero yaw authority. The oriented command rejects that setup before stopping or replacing
+the current platform. Near-equal spacing reduces yaw authority and magnifies encoder yaw error.
+Velocity control and encoder odometry use the same lever. Open-loop yaw uses its sign for the
+requested duty direction.
+
+Read the running layout with `GET_CONFIGURATION_FIELD(7, 0)` on any protocol 2.25 board with a
+configured mecanum platform. An explicit `SAVE_CONFIGURATION` on v0.4 also saves the layout.
+Configurations saved by earlier firmware restore as STANDARD.
+
 ## Motor commands
 
 | Command | ID | Payload in order |

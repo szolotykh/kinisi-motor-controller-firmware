@@ -29,3 +29,6 @@ TickType_t xTaskGetTickCount(void);
 void vTaskDelayUntil(TickType_t *last, TickType_t period);
 #define pdMS_TO_TICKS(ms) (ms)
 #define portMAX_DELAY UINT32_MAX
+
+void vTaskSuspendAll(void);
+int xTaskResumeAll(void);

@@ -23,7 +23,93 @@ type_to_size_map = {
 
 
 
+
+FUSION_CATALOGS = [
+    ('fusion_modes', 'FusionMode', 'FUSION_MODE', ['LEGACY_ENCODER', 'ENCODER_CORRECTION', 'FUSED']),
+    ('fusion_health', 'FusionHealth', 'FUSION_HEALTH', ['DISABLED', 'WAITING', 'HEALTHY', 'FAULT']),
+    ('fusion_faults', 'FusionFault', 'FUSION_FAULT', ['NONE', 'MOUNT_INVALID', 'ENCODER_UNAVAILABLE', 'IMU_UNAVAILABLE', 'STALE', 'TIMESTAMP', 'SATURATION', 'BIAS_NOT_READY', 'DISCONTINUITY', 'INHIBITED']),
+    ('fusion_flags', 'FusionFlag', 'FUSION_FLAG', ['ESTIMATE_VALID', 'BIAS_READY', 'FRESH_TARGET_REQUIRED', 'CORRECTION_ACTIVE']),
+    ('fusion_vectors', 'FusionVectorKind', 'FUSION_VECTOR', ['ENCODER_POSE', 'ENCODER_TWIST', 'FUSED_POSE', 'FUSED_TWIST', 'BIAS']),
+]
+
+IMU_TRACKING_CATALOGS = [('imu_tracking_actions', 'ImuTrackingAction', 'IMU_TRACKING_ACTION', ['START', 'STOP', 'RESET', 'RECALIBRATE']), ('imu_tracking_states', 'ImuTrackingState', 'IMU_TRACKING_STATE', ['STOPPED', 'CALIBRATING', 'TRACKING', 'FAULT', 'EXPIRED']), ('imu_tracking_faults', 'ImuTrackingFault', 'IMU_TRACKING_FAULT', ['NONE', 'NOT_STATIONARY', 'IMU_UNAVAILABLE', 'STALE', 'TIMESTAMP', 'SATURATION', 'BIAS_NOT_READY', 'WINDOW_EXPIRED', 'INHIBITED', 'MOUNT_INVALID']), ('imu_tracking_flags', 'ImuTrackingFlag', 'IMU_TRACKING_FLAG', ['ESTIMATE_VALID', 'BIAS_READY', 'RESTART_REQUIRED', 'MOUNT_CONFIRMED']), ('imu_tracking_vectors', 'ImuTrackingVectorKind', 'IMU_TRACKING_VECTOR', ['POSE', 'TWIST', 'BIAS'])]
+
+FEEDBACK_CATALOGS = [
+    ('feedback_sources', 'FeedbackSource', 'FEEDBACK_SOURCE', ['ENCODER', 'IMU_ONLY', 'FUSED', 'NONE']),
+    ('feedback_source_reasons', 'FeedbackSourceReason', 'FEEDBACK_REASON',
+     ['OK', 'NOT_STARTED', 'CALIBRATING', 'UNAVAILABLE', 'STALE', 'EXPIRED', 'FAULT', 'INHIBITED', 'WAITING_SAMPLE', 'MOUNT_REQUIRED']),
+    ('feedback_source_vectors', 'FeedbackSourceVectorKind', 'FEEDBACK_VECTOR', ['POSE', 'TWIST']),
+]
+
+MECANUM_CATALOGS = [('mecanum_roller_orientations', 'MecanumRollerOrientation', 'MECANUM_ROLLER', ['STANDARD', 'MIRRORED'])]
+
+OMNI_CATALOGS = [('omni_wheel_orientations', 'OmniWheelOrientation', 'OMNI_WHEEL', ['REAR', 'FRONT'])]
+
+HEALTH_CATALOGS = [
+    ('feedback_source_health_states', 'FeedbackSourceHealthState', 'FEEDBACK_HEALTH', ['HEALTHY', 'SUSPECT', 'UNAVAILABLE', 'INDETERMINATE']),
+    ('feedback_source_health_flags', 'FeedbackSourceHealthFlag', 'FEEDBACK_HEALTH_FLAG', ['PROVENANCE', 'FRESH', 'DISAGREEMENT', 'COMPARISON_AVAILABLE', 'RECOVERING', 'RESTART_REQUIRED', 'TIMESTAMP_FAULT', 'SATURATION']),
+]
+
+def validate_feedback_source(schema):
+    commands = {c['command'] for c in schema.get('commands', [])}
+    health_commands = {'GET_FEEDBACK_SOURCE_HEALTH', 'GET_FEEDBACK_IMU_CHANNELS'}
+    if commands & health_commands or any(k in schema for k, *_ in HEALTH_CATALOGS):
+        if not health_commands <= commands or 'GET_FEEDBACK_SOURCE_STATUS' not in commands:
+            raise ValueError('Incomplete feedback health command family')
+        for key, _, _, names in HEALTH_CATALOGS:
+            expected = [(1 << i if key.endswith('_flags') else i, n) for i,n in enumerate(names)]
+            if [(v['id'],v['name']) for v in schema.get(key, [])] != expected:
+                raise ValueError('Invalid ' + key + ' catalog')
+    required = {'SET_FEEDBACK_SOURCE', 'GET_FEEDBACK_SOURCE_STATUS', 'GET_FEEDBACK_SOURCE_VECTOR', 'SET_FEEDBACK_FUSION_MOUNT', 'GET_FEEDBACK_FUSION_MOUNT'}
+    if not commands & required and not any(key in schema for key, *_ in FEEDBACK_CATALOGS):
+        return
+    if not required <= commands:
+        raise ValueError('Incomplete feedback source command family')
+    for key, _, _, names in FEEDBACK_CATALOGS:
+        expected = [(255 if name == 'NONE' else i, name) for i, name in enumerate(names)]
+        values = schema.get(key, [])
+        if [(v.get('id'), v.get('name')) for v in values] != expected or any(type(v.get('id')) is not int for v in values):
+            raise ValueError('Invalid ' + key + ' catalog')
+
+
+def validate_imu_tracking(schema):
+    commands = {c["command"] for c in schema.get("commands", [])}
+    required = {"SET_IMU_TRACKING", "GET_IMU_TRACKING_STATUS", "GET_IMU_TRACKING_VECTOR", "GET_IMU_TRACKING_CONFIGURATION"}
+    if not commands & required and not any(key in schema for key, *_ in IMU_TRACKING_CATALOGS):
+        return
+    if not required <= commands:
+        raise ValueError("Incomplete IMU tracking command family")
+    for key, _, _, names in IMU_TRACKING_CATALOGS:
+        ids = [1, 2, 4, 8] if key.endswith("_flags") else list(range(len(names)))
+        values = schema.get(key, [])
+        if [(v.get("id"), v.get("name")) for v in values] != list(zip(ids, names)) or any(type(v.get("id")) is not int for v in values):
+            raise ValueError("Invalid " + key + " catalog")
+
+def validate_fusion(schema):
+    commands = {c['command'] for c in schema.get('commands', [])}
+    required = {'SET_FUSION_EXPERIMENT', 'GET_FUSION_STATUS', 'GET_FUSION_VECTOR', 'GET_FUSION_CONFIGURATION'}
+    if not commands & required and not any(key in schema for key, *_ in FUSION_CATALOGS):
+        return
+    if not required <= commands:
+        raise ValueError('Incomplete fusion command family')
+    for key, _, _, names in FUSION_CATALOGS:
+        ids = [1, 2, 4, 8] if key == 'fusion_flags' else list(range(len(names)))
+        values = schema.get(key, [])
+        if [(v.get('id'), v.get('name')) for v in values] != list(zip(ids, names)) or any(type(v.get('id')) is not int for v in values):
+            raise ValueError('Invalid ' + key + ' catalog')
+
 def validate_pwm_frequency(schema):
+    validate_fusion(schema)
+    validate_imu_tracking(schema)
+    validate_feedback_source(schema)
+    if any(c['command'] == 'INITIALIZE_MECANUM_PLATFORM_ORIENTED' for c in schema['commands']):
+        values = schema.get('mecanum_roller_orientations', [])
+        if [(v.get('id'), v.get('name')) for v in values] != [(0, 'STANDARD'), (1, 'MIRRORED')] or any(type(v.get('id')) is not int for v in values):
+            raise ValueError('Invalid mecanum roller orientation catalog')
+    if any(c['command'] == 'INITIALIZE_OMNI_PLATFORM_ORIENTED' for c in schema['commands']):
+        values = schema.get('omni_wheel_orientations', [])
+        if [(v.get('id'), v.get('name')) for v in values] != [(0, 'REAR'), (1, 'FRONT')] or any(type(v.get('id')) is not int for v in values):
+            raise ValueError('Invalid Omni wheel orientation catalog')
     values = schema.get('pwm_frequencies', [])
     expected = [(v, 'KHZ_' + str(v // 1000)) for v in (10000, 20000, 25000, 50000, 100000)]
     if [(v.get('id'), v.get('name')) for v in values] != expected or any(type(v.get('id')) is not int for v in values):
@@ -496,6 +582,9 @@ def generate_c_header_file(commands_data):
             for item in commands_data[key]:
                 result += f"    {prefix}_{item['name']} = {item['id']},\n"
             result += f'}} {typename};\n\n'
+    for key, _, prefix, _ in FUSION_CATALOGS + IMU_TRACKING_CATALOGS + FEEDBACK_CATALOGS + HEALTH_CATALOGS + MECANUM_CATALOGS + OMNI_CATALOGS:
+        for item in commands_data.get(key, []):
+            result += f"#define {prefix}_{item['name']} {item['id']}U\n"
     topics = commands_data.get('topics', [])
     if topics:
         result += "// Stable topic IDs. Wire fields use uint8_t, not native enum storage.\ntypedef enum {\n"
