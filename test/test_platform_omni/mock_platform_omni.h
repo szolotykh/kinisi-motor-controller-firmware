@@ -23,6 +23,7 @@ void mock_encoder_odometry_reset(void);
 // Mock state getters for verification
 motorIndex mock_get_last_motor(void);
 double mock_get_last_speed(void);
+double mock_omni_duty(unsigned index);
 bool mock_get_last_reversed(void);
 int mock_get_initialize_motor_calls(void);
 int mock_get_set_speed_calls(void);

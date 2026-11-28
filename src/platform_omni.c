@@ -1,5 +1,6 @@
 #include "platform_omni.h"
 #include "platform_common.h"
+#include "commands.h"
 #include "controllers_manager.h"
 #include "hw_motor.h"
 #include "hw_encoder.h"
@@ -12,8 +13,27 @@
 static struct {
     double wheel_radius;     // R = wheel_diameter/2
     double robot_radius;     // L = distance from center to wheels
+    uint8_t wheel_orientation;
     uint8_t is_initialized;
 } omni_config = {0};
+
+bool omni_geometry_valid(double wheel_diameter, double robot_radius, double encoder_resolution,
+                         uint8_t orientation)
+{
+    return orientation <= OMNI_WHEEL_FRONT && isfinite(wheel_diameter) && wheel_diameter > 0 &&
+           isfinite(2.0 / wheel_diameter) && isfinite(robot_radius) && robot_radius > 0 &&
+           isfinite(1.0 / robot_radius) && isfinite(encoder_resolution) && encoder_resolution >= 0;
+}
+
+// Rotating the entire triangle by pi reverses both translation axes.
+// Each wheel keeps its port and positive rolling direction around the chassis.
+static void transform_translation(double *x, double *y)
+{
+    if (omni_config.wheel_orientation == OMNI_WHEEL_FRONT) {
+        *x = -*x;
+        *y = -*y;
+    }
+}
 
 void set_omni_platform_velocity(platform_velocity_t platform_velocity)
 {
@@ -21,6 +41,7 @@ void set_omni_platform_velocity(platform_velocity_t platform_velocity)
         return;
     }
 
+    transform_translation(&platform_velocity.x, &platform_velocity.y);
     // Frame convention (REP-103): +x forward, +y strafe left, +t rotate CCW.
     double V1 = sqrt(3.0)/2.0 * platform_velocity.x + 0.5 * platform_velocity.y + platform_velocity.t;
     double V2 = -sqrt(3.0)/2.0 * platform_velocity.x + 0.5 * platform_velocity.y + platform_velocity.t;
@@ -70,6 +91,7 @@ void omni_platform_set_target_velocity(platform_velocity_t platform_target_veloc
         return;
     }
 
+    transform_translation(&platform_target_velocity.x, &platform_target_velocity.y);
     // Frame convention (REP-103): +x forward, +y strafe left, +t rotate CCW.
     double V1 = 1.0 / omni_config.wheel_radius * 
         (sqrt(3.0)/2.0 * platform_target_velocity.x + 
@@ -110,6 +132,7 @@ platform_odometry_t omni_platform_update_odometry(uint8_t* motor_indexes, double
     // Forward kinematics matches the inverse convention above (+y strafe left).
     odometry.x = omni_config.wheel_radius * (1/sqrt(3.0) * v1 - 1/sqrt(3.0) * v2);
     odometry.y = omni_config.wheel_radius/3.0 * (v1 + v2 - 2.0 * v3);
+    transform_translation(&odometry.x, &odometry.y);
     odometry.t = omni_config.wheel_radius/(3.0 * omni_config.robot_radius) * (v1 + v2 + v3);
 
     return odometry;
@@ -127,7 +150,7 @@ void initialize_omni_platform_odometry()
     odometry->start(MOTOR2);
 }
 
-void initialize_omni_platform(
+static void apply_omni_platform(
     uint8_t isReversed0,
     uint8_t isReversed1,
     uint8_t isReversed2,
@@ -136,7 +159,7 @@ void initialize_omni_platform(
     uint8_t isEncoderReversed2,
     double wheel_diameter,
     double robot_radius,
-    double encoder_resolution)
+    double encoder_resolution, uint8_t orientation)
 {
     // Re-initialization is allowed: calling this again re-applies motor/encoder
     // reverse flags, resolution and dimensions without a board reset. The
@@ -163,6 +186,7 @@ void initialize_omni_platform(
 
     omni_config.wheel_radius = wheel_diameter / 2.0;
     omni_config.robot_radius = robot_radius;
+    omni_config.wheel_orientation = orientation;
     omni_config.is_initialized = 1;
 
     // Register this platform's operations into the global platform dispatcher.
@@ -182,5 +206,19 @@ void initialize_omni_platform(
         (isEncoderReversed2 << 2);
     platform.properties.omni.wheel_diameter = wheel_diameter;
     platform.properties.omni.robot_radius = robot_radius;
+    platform.properties.omni.wheel_orientation = orientation;
     platform.is_initialized = 1;
+}
+
+void initialize_omni_platform(uint8_t m0, uint8_t m1, uint8_t m2, uint8_t e0, uint8_t e1, uint8_t e2,
+                              double diameter, double radius, double resolution)
+{
+    apply_omni_platform(m0,m1,m2,e0,e1,e2,diameter,radius,resolution,OMNI_WHEEL_REAR);
+}
+
+void initialize_omni_platform_oriented(uint8_t m0, uint8_t m1, uint8_t m2, uint8_t e0, uint8_t e1, uint8_t e2,
+                                       double diameter, double radius, double resolution, uint8_t orientation)
+{
+    if (omni_geometry_valid(diameter,radius,resolution,orientation))
+        apply_omni_platform(m0,m1,m2,e0,e1,e2,diameter,radius,resolution,orientation);
 }

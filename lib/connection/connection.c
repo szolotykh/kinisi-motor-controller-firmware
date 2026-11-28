@@ -276,6 +276,7 @@ static uint8_t handle(controller_command_t *cmd, protocol_send_fn reply)
     case SAVE_CONFIGURATION:
     case GET_DRIVER_SLEEP:
     case SET_DRIVER_SLEEP:
+    case INITIALIZE_OMNI_PLATFORM_ORIENTED:
     case INITIALIZE_MECANUM_PLATFORM_ORIENTED:
     case GET_CONFIGURATION_FIELD:
     case GET_PWM_FREQUENCY:

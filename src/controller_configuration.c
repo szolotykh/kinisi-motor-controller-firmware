@@ -3,12 +3,14 @@
 #include "protocol.h"
 #include "platform_common.h"
 
-static uint8_t read_mecanum_orientation(uint8_t index, double *value)
+static uint8_t read_platform_orientation(uint8_t field, uint8_t index, double *value)
 {
     if (index || !value) return RESPONSE_INVALID_ARGUMENT;
-    if (!platform.is_initialized || platform.type != PLATFORM_MECANUM)
+    platform_type_t type = field == 7 ? PLATFORM_MECANUM : PLATFORM_OMNI;
+    if (!platform.is_initialized || platform.type != type)
         return RESPONSE_PLATFORM_NOT_INITIALIZED;
-    *value = platform.properties.mecanum.roller_orientation;
+    *value = type == PLATFORM_MECANUM ? platform.properties.mecanum.roller_orientation :
+                                       platform.properties.omni.wheel_orientation;
     return RESPONSE_OK;
 }
 
@@ -30,7 +32,7 @@ typedef struct {
     uint32_t frequency;
     uint8_t type, motors, motor_reverse, encoders, encoder_reverse;
     uint8_t feedback_preference, payload_revision; // Both bytes were reserved zero in v1.
-    uint8_t roller_orientation, mount_reference, reserved[3]; // Reserved zero through v4.
+    uint8_t orientation, mount_reference, reserved[3]; // Reserved zero through v4.
 } saved_setup_t;
 _Static_assert(sizeof(saved_setup_t) == 72 && sizeof(double) == 8, "v1 configuration payload layout");
 typedef struct {
@@ -38,10 +40,15 @@ typedef struct {
     imu_mount_configuration mount;
 } mounted_setup_t;
 // Store only defined bytes. Keep the old prefix and avoid trailing ABI padding.
-enum { SETUP_ORIENTED = 5, MOUNT_NONE = 0, MOUNT_CHIP = 1, MOUNT_BOARD = 2 };
+enum { SETUP_MECANUM_ORIENTED = 5, SETUP_OMNI_ORIENTED = 6, MOUNT_NONE = 0, MOUNT_CHIP = 1, MOUNT_BOARD = 2 };
 enum { MOUNTED_LENGTH = sizeof(saved_setup_t) + sizeof(imu_mount_configuration) };
 _Static_assert(offsetof(mounted_setup_t, mount) == 72 && MOUNTED_LENGTH == 91,
                "v3 configuration payload layout");
+
+static bool has_mount_reference(uint8_t revision)
+{
+    return revision == SETUP_MECANUM_ORIENTED || revision == SETUP_OMNI_ORIENTED;
+}
 
 static uint8_t bit(uint8_t mask, unsigned index)
 {
@@ -61,12 +68,13 @@ static void capture(saved_setup_t *setup)
         case PLATFORM_OMNI:
             setup->diameter = platform.properties.omni.wheel_diameter;
             setup->width_or_radius = platform.properties.omni.robot_radius;
+            setup->orientation = platform.properties.omni.wheel_orientation;
             break;
         case PLATFORM_MECANUM:
             setup->diameter = platform.properties.mecanum.wheel_diameter;
             setup->track_or_length = platform.properties.mecanum.length;
             setup->width_or_radius = platform.properties.mecanum.width;
-            setup->roller_orientation = platform.properties.mecanum.roller_orientation;
+            setup->orientation = platform.properties.mecanum.roller_orientation;
             break;
         default: break;
         }
@@ -113,14 +121,18 @@ static bool valid(const saved_setup_t *s)
     if (s->payload_revision == 0) {
         if (s->feedback_preference != FEEDBACK_SOURCE_ENCODER) return false;
     } else if ((s->payload_revision != 2 && s->payload_revision != 3 && s->payload_revision != 4 &&
-                s->payload_revision != SETUP_ORIENTED) ||
+                !has_mount_reference(s->payload_revision)) ||
                s->feedback_preference > FEEDBACK_SOURCE_FUSED) return false;
-    if (s->payload_revision == SETUP_ORIENTED) {
-        if (s->type != PLATFORM_MECANUM || s->roller_orientation != MECANUM_ROLLER_MIRRORED ||
+    if (s->payload_revision == SETUP_MECANUM_ORIENTED) {
+        if (s->type != PLATFORM_MECANUM || s->orientation != MECANUM_ROLLER_MIRRORED ||
             s->mount_reference > MOUNT_BOARD ||
             !mecanum_geometry_valid(s->track_or_length, s->width_or_radius, s->diameter, 0,
-                                    s->roller_orientation)) return false;
-    } else if (s->roller_orientation || s->mount_reference) return false;
+                                    s->orientation)) return false;
+    } else if (s->payload_revision == SETUP_OMNI_ORIENTED) {
+        if (s->type != PLATFORM_OMNI || s->orientation != OMNI_WHEEL_FRONT ||
+            s->mount_reference > MOUNT_BOARD ||
+            !omni_geometry_valid(s->diameter, s->width_or_radius, 0, s->orientation)) return false;
+    } else if (s->orientation || s->mount_reference) return false;
     for (unsigned i = 0; i < sizeof(s->reserved); ++i) if (s->reserved[i]) return false;
     if (!hw_motor_pwm_frequency_allowed(s->frequency)) return false;
     uint8_t wheels = platform_motors(s->type);
@@ -154,12 +166,12 @@ uint8_t controller_configuration_save(void)
         setup.mount = imu_mount_pack(mount);
         length = MOUNTED_LENGTH;
     }
-    // Standard configurations retain their original record format. V5 uses two
-    // previously reserved bytes and explicitly identifies the mount reference.
-    if (setup.base.roller_orientation == MECANUM_ROLLER_MIRRORED) {
+    // Keep existing record formats for every previously supported layout.
+    // The front-wheel Omni record shares the v5 offsets, tagged separately.
+    if (setup.base.orientation) {
         if (mount.configured)
             setup.base.mount_reference = saved.reference == IMU_MOUNT_BOARD_UNDERSIDE ? MOUNT_BOARD : MOUNT_CHIP;
-        setup.base.payload_revision = SETUP_ORIENTED;
+        setup.base.payload_revision = setup.base.type == PLATFORM_OMNI ? SETUP_OMNI_ORIENTED : SETUP_MECANUM_ORIENTED;
     }
     if (!valid(&setup.base)) return RESPONSE_INVALID_ARGUMENT;
     return config_store_save(&setup, length) ? RESPONSE_OK : RESPONSE_INTERNAL_ERROR;
@@ -167,7 +179,7 @@ uint8_t controller_configuration_save(void)
 
 uint8_t controller_configuration_read(uint8_t field, uint8_t index, double *value)
 {
-    if (field == 7) return read_mecanum_orientation(index, value);
+    if (field == 7 || field == 8) return read_platform_orientation(field, index, value);
     if (!value || field > 6 || (field < 4 ? index != 0 : index >= 4)) return RESPONSE_INVALID_ARGUMENT;
     saved_setup_t setup;
     capture(&setup);
@@ -191,9 +203,9 @@ void controller_configuration_restore(void)
     saved_setup_t s = record.base;
     imu_mount_config_t mount = {0};
     bool mounted = s.payload_revision == 3 || s.payload_revision == 4 ||
-                   (s.payload_revision == SETUP_ORIENTED && s.mount_reference != MOUNT_NONE);
+                   (has_mount_reference(s.payload_revision) && s.mount_reference != MOUNT_NONE);
     bool board_reference = s.payload_revision == 4 ||
-                           (s.payload_revision == SETUP_ORIENTED && s.mount_reference == MOUNT_BOARD);
+                           (has_mount_reference(s.payload_revision) && s.mount_reference == MOUNT_BOARD);
     if (length == MOUNTED_LENGTH && mounted) {
         mount = imu_mount_unpack(record.mount);
         if (record.mount.configured != 1 || !imu_mount_valid(&mount)) return;
@@ -218,13 +230,17 @@ void controller_configuration_restore(void)
             s.diameter, s.track_or_length, 0);
         break;
     case PLATFORM_OMNI:
-        initialize_omni_platform(bit(m,0), bit(m,1), bit(m,2), bit(e,0), bit(e,1), bit(e,2),
-            s.diameter, s.width_or_radius, 0);
+        if (s.orientation == OMNI_WHEEL_FRONT)
+            initialize_omni_platform_oriented(bit(m,0), bit(m,1), bit(m,2), bit(e,0), bit(e,1), bit(e,2),
+                s.diameter, s.width_or_radius, 0, s.orientation);
+        else
+            initialize_omni_platform(bit(m,0), bit(m,1), bit(m,2), bit(e,0), bit(e,1), bit(e,2),
+                s.diameter, s.width_or_radius, 0);
         break;
     case PLATFORM_MECANUM:
         initialize_mecanum_platform_oriented(bit(m,0), bit(m,1), bit(m,2), bit(m,3),
             bit(e,0), bit(e,1), bit(e,2), bit(e,3), s.track_or_length, s.width_or_radius, s.diameter, 0,
-            s.roller_orientation);
+            s.orientation);
         break;
     }
     if ((s.type != PLATFORM_NONE && !platform.is_initialized) ||
@@ -255,7 +271,7 @@ void controller_configuration_restore(void) {}
 uint8_t controller_configuration_save(void) { return RESPONSE_SENSOR_NOT_AVAILABLE; }
 uint8_t controller_configuration_read(uint8_t field, uint8_t index, double *value)
 {
-    if (field == 7) return read_mecanum_orientation(index, value);
+    if (field == 7 || field == 8) return read_platform_orientation(field, index, value);
     return RESPONSE_SENSOR_NOT_AVAILABLE;
 }
 #endif

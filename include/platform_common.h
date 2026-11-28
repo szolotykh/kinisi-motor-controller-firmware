@@ -14,6 +14,7 @@ typedef struct {
 typedef struct {
     double wheel_diameter;
     double robot_radius;
+    uint8_t wheel_orientation;
 } omni_platform_settings_t;
 
 typedef struct {

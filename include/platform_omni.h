@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <stdbool.h>
 #include "platform.h" // for platform_velocity_t, plaform_controller_settings_t, etc.
 
 #ifdef __cplusplus
@@ -18,6 +19,13 @@ void initialize_omni_platform(
     double wheel_diameter,
     double robot_radius,
     double encoder_resolution);
+
+bool omni_geometry_valid(double wheel_diameter, double robot_radius, double encoder_resolution,
+                         uint8_t wheel_orientation);
+void initialize_omni_platform_oriented(
+    uint8_t reversed0, uint8_t reversed1, uint8_t reversed2,
+    uint8_t encoder_reversed0, uint8_t encoder_reversed1, uint8_t encoder_reversed2,
+    double wheel_diameter, double robot_radius, double encoder_resolution, uint8_t wheel_orientation);
 
 // Sets the Omni platform velocity (PWM units)
 void set_omni_platform_velocity(platform_velocity_t platform_velocity);

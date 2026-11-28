@@ -64,13 +64,20 @@ with tempfile.TemporaryDirectory() as folder:
         def run(mode, image, platform):
             subprocess.run([str(binary), mode, str(image), str(platform)], check=True, timeout=10)
 
+        run("omni-policy", out/"unconfigured.fram", 0)
         run("roller-policy", out/"unconfigured.fram", 0)
         if revision == 4:
             for mount_reference in (0,1,2):
                 image = out / f"mirrored-{mount_reference}.fram"
                 run("roller-save", image, mount_reference)
                 run("roller-restore", image, mount_reference)
-            print("PASS mirrored mecanum cold restore with no mount, chip reference and board reference")
+                image = out / f"omni-front-{mount_reference}.fram"
+                run("omni-front-save", image, mount_reference)
+                run("omni-front-restore", image, mount_reference)
+            legacy = root / "test/test_configuration/fixtures"
+            run("roller-restore", legacy / "v25-mirrored-board-mount.fram", 2)
+            run("v25-omni-rear", legacy / "v25-omni-rear.fram", 0)
+            print("PASS oriented mecanum and Omni cold restore with no mount, both mount references and actual 2.25 records")
             run("board-reference-guard", out/"unconfigured.fram", 0)
             run("centered-board-turn", out/"unconfigured.fram", 0)
             for index in range(5):

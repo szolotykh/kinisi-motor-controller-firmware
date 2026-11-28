@@ -1,5 +1,6 @@
 // File: test_platform_omni.c
 // Verify omni platform behavior through recorded hardware-interface calls.
+#include "commands.h"
 #include "unity.h"
 #include "platform_omni.h"
 #include "mock_platform_omni.h"
@@ -46,9 +47,46 @@ void test_initialize_omni_platform(void) {
     TEST_ASSERT_EQUAL(1000.0, mock_get_last_encoder_resolution());
 }
 
-void test_set_omni_platform_velocity(void) {
-    // TODO: Implement this test case
-    TEST_IGNORE_MESSAGE("Test not implemented yet.");
+// Compute rolling speeds by projecting the rigid-body velocity at each
+// independently specified wheel center onto its positive (CCW) tangent.
+static void check_layout(uint8_t orientation)
+{
+    const double radius = 0.16, wheel_radius = 0.045;
+    initialize_omni_platform_oriented(0,0,0,0,0,0,2*wheel_radius,radius,512,orientation);
+    double sign = orientation == OMNI_WHEEL_FRONT ? -1.0 : 1.0;
+    double x[] = {sign*radius/2, sign*radius/2, -sign*radius};
+    double y[] = {-sign*sqrt(3.0)*radius/2, sign*sqrt(3.0)*radius/2, 0};
+    const platform_velocity_t commands[] = {{.x=1},{.y=1},{.t=1},{.x=-.31,.y=.48,.t=-.72},{0}};
+    for (unsigned n=0; n<sizeof(commands)/sizeof(commands[0]); ++n) {
+        platform_velocity_t v = commands[n];
+        double omega[3], target[3], duty[3], max_duty=100;
+        uint8_t ports[3];
+        int count=0;
+        omni_platform_set_target_velocity(v);
+        mock_get_last_target_speeds(ports,target,&count);
+        TEST_ASSERT_EQUAL_INT(3,count);
+        for (unsigned i=0;i<3;++i) {
+            double tx=-y[i]/radius, ty=x[i]/radius;
+            omega[i]=(tx*(v.x-v.t*y[i])+ty*(v.y+v.t*x[i]))/wheel_radius;
+            duty[i]=100*(tx*v.x+ty*v.y+v.t);
+            max_duty=fmax(max_duty,fabs(duty[i]));
+            TEST_ASSERT_EQUAL_UINT8(i,ports[i]);
+            TEST_ASSERT_DOUBLE_WITHIN(1e-10,omega[i],target[i]);
+        }
+        set_omni_platform_velocity((platform_velocity_t){100*v.x,100*v.y,100*v.t});
+        for (unsigned i=0;i<3;++i)
+            TEST_ASSERT_DOUBLE_WITHIN(1e-10,100*duty[i]/max_duty,mock_omni_duty(i));
+        platform_odometry_t pose=omni_platform_update_odometry(ports,omega,3);
+        TEST_ASSERT_DOUBLE_WITHIN(1e-10,v.x,pose.x);
+        TEST_ASSERT_DOUBLE_WITHIN(1e-10,v.y,pose.y);
+        TEST_ASSERT_DOUBLE_WITHIN(1e-10,v.t,pose.t);
+    }
+}
+
+void test_set_omni_platform_velocity(void)
+{
+    check_layout(OMNI_WHEEL_REAR);
+    check_layout(OMNI_WHEEL_FRONT);
 }
 
 void test_initialize_omni_platform_odometry(void) {

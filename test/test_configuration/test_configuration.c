@@ -300,10 +300,46 @@ static void roller_policy(void)
     assert(field(7,0)==MECANUM_ROLLER_STANDARD);
 }
 
+static controller_command_t oriented_omni(void)
+{
+    return (controller_command_t){.commandType=INITIALIZE_OMNI_PLATFORM_ORIENTED,
+        .properties.initialize_omni_platform_oriented={1,0,1,0,1,0,.09,.155,720,OMNI_WHEEL_FRONT}};
+}
+
+static void omni_policy(void)
+{
+    controller_command_t read={.commandType=GET_CONFIGURATION_FIELD,.properties.get_configuration_field={8,0}};
+    request(read,RESPONSE_PLATFORM_NOT_INITIALIZED);
+    read.properties.get_configuration_field.index=1;
+    request(read,RESPONSE_INVALID_ARGUMENT);
+    controller_command_t init=oriented_omni();
+    assert(command_request_size(init.commandType)==34 && command_request_size(INITIALIZE_OMNI_PLATFORM)==33);
+    request(init,RESPONSE_OK);
+    assert(field(8,0)==OMNI_WHEEL_FRONT && platform.motor_mask==7 && !motor_enabled[3]);
+    request((controller_command_t){.commandType=GET_CONFIGURATION_FIELD,.properties.get_configuration_field={7,0}},
+            RESPONSE_PLATFORM_NOT_INITIALIZED);
+    request((controller_command_t){.commandType=START_PLATFORM_CONTROLLER,
+        .properties.start_platform_controller={.kp=1,.integral_limit=10}},RESPONSE_OK);
+    request((controller_command_t){.commandType=START_PLATFORM_ODOMETRY},RESPONSE_OK);
+    init.properties.initialize_omni_platform_oriented.wheel_orientation=2;
+    request(init,RESPONSE_INVALID_ARGUMENT);
+    init=oriented_omni();
+    init.properties.initialize_omni_platform_oriented.robot_radius=0;
+    request(init,RESPONSE_INVALID_ARGUMENT);
+    init=oriented_omni();
+    init.properties.initialize_omni_platform_oriented.encoder_resolution=-1;
+    request(init,RESPONSE_INVALID_ARGUMENT);
+    assert(field(8,0)==OMNI_WHEEL_FRONT && platform_is_controller_running() && platform_is_odometry_enabled());
+    request((controller_command_t){.commandType=INITIALIZE_OMNI_PLATFORM,
+        .properties.initialize_omni_platform={0,0,0,0,0,0,.09,.155,720}}, RESPONSE_OK);
+    assert(field(8,0)==OMNI_WHEEL_REAR);
+}
+
 static void verify(int type)
 {
     assert(field(0,0) == type);
     if (type==PLATFORM_MECANUM) assert(field(7,0)==MECANUM_ROLLER_STANDARD);
+    if (type==PLATFORM_OMNI) assert(field(8,0)==OMNI_WHEEL_REAR);
     assert(field(1,0) == (type == 3 ? 0.11 : 0.09));
     assert(field(2,0) == (type == 1 ? 0.25 : type == 2 ? 0 : 0.4));
     assert(field(3,0) == (type == 1 ? 0 : type == 2 ? 0.155 : 0.29));
@@ -377,7 +413,7 @@ static void sleep_policy(bool board)
         INITIALIZE_MOTOR, SET_MOTOR_SPEED, BRAKE_MOTOR, INITIALIZE_MOTOR_CONTROLLER, SET_MOTOR_TARGET_SPEED,
         INITIALIZE_MOTOR_POSITION_CONTROLLER, INITIALIZE_MOTOR_POSITION_PID_CONTROLLER, SET_MOTOR_POSITION,
         INITIALIZE_DIFFERENTIAL_PLATFORM, INITIALIZE_OMNI_PLATFORM, INITIALIZE_MECANUM_PLATFORM,
-        INITIALIZE_MECANUM_PLATFORM_ORIENTED,
+        INITIALIZE_MECANUM_PLATFORM_ORIENTED, INITIALIZE_OMNI_PLATFORM_ORIENTED,
         SET_PLATFORM_VELOCITY, START_PLATFORM_CONTROLLER, BRAKE_PLATFORM, SET_PLATFORM_TARGET_VELOCITY,
         INITIALIZE_PLATFORM_POSITION_CONTROLLER, INITIALIZE_PLATFORM_POSITION_PID_CONTROLLER, SET_PLATFORM_POSITION,
         GET_MOTOR_CURRENT_LIMIT, SET_MOTOR_CURRENT_LIMIT, CLEAR_MOTOR_FAULTS,
@@ -505,26 +541,32 @@ int main(int argc, char **argv)
     assert(!tasks_started && !motion_writes && !fram_writes);
     for (int i = 0; i < 4; ++i) assert(output[i] == 0);
     connect();
+    if (!strcmp(mode,"omni-policy")) { omni_policy(); return 0; }
     if (!strcmp(mode,"roller-policy")) { roller_policy(); return 0; }
 #if BOARD_HAS_IMU_MOUNTING
-    if (!strcmp(mode,"roller-save")) {
+    if (!strcmp(mode,"v25-omni-rear")) { verify(PLATFORM_OMNI); return 0; }
+    if (!strcmp(mode,"roller-save") || !strcmp(mode,"omni-front-save")) {
+        bool omni=!strcmp(mode,"omni-front-save");
         if (type) {
             controller_command_t mount = {.commandType = type == 1 ? SET_IMU_MOUNT : SET_BOARD_MOUNT};
             if (type == 1) mount.properties.set_imu_mount.x_um = 12345;
             else mount.properties.set_board_mount.x_um = 12345;
             request(mount,RESPONSE_OK);
         }
-        request(oriented_mecanum(.4,.29),RESPONSE_OK);
+        request(omni ? oriented_omni() : oriented_mecanum(.4,.29),RESPONSE_OK);
         request((controller_command_t){.commandType=SAVE_CONFIGURATION},RESPONSE_OK);
         uint8_t record[CONFIG_STORE_MAX_PAYLOAD];
         assert(config_store_load_latest(record,sizeof(record)) == (type ? 91 : 72));
-        assert(record[66]==5 && record[67]==MECANUM_ROLLER_MIRRORED && record[68]==type);
-        assert(field(7,0)==MECANUM_ROLLER_MIRRORED);
+        assert(record[66]==(omni ? 6 : 5) && record[67]==1 && record[68]==type);
+        assert(field(omni ? 8 : 7,0)==1);
         file=fopen(path,"wb"); assert(file && fwrite(fram,1,sizeof(fram),file)==sizeof(fram)); fclose(file);
         return 0;
     }
-    if (!strcmp(mode,"roller-restore")) {
-        assert(field(7,0)==MECANUM_ROLLER_MIRRORED && field(2,0)==.4 && field(3,0)==.29);
+    if (!strcmp(mode,"roller-restore") || !strcmp(mode,"omni-front-restore")) {
+        if (!strcmp(mode,"roller-restore"))
+            assert(field(7,0)==MECANUM_ROLLER_MIRRORED && field(2,0)==.4 && field(3,0)==.29);
+        else
+            assert(field(8,0)==OMNI_WHEEL_FRONT && field(1,0)==.09 && field(3,0)==.155);
         assert(field(5,1)==1 && field(6,0)==1 && !platform_is_controller_running());
         if (type==1) assert(read_mount().configured && read_mount().x_um==12345);
         if (type==2) assert(read_board_mount().configured && read_board_mount().x_um==12345);

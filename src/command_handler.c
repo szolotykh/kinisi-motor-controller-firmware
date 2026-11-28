@@ -502,6 +502,29 @@ static uint8_t dispatch_controller_command(controller_command_t* cmd, void (*com
         break;
         }
 
+        case INITIALIZE_OMNI_PLATFORM_ORIENTED: {
+            const uint8_t orientation = cmd->properties.initialize_omni_platform_oriented.wheel_orientation;
+            // Shared initial fields of the legacy and oriented command union members.
+            if (!omni_geometry_valid(cmd->properties.initialize_omni_platform.wheels_diameter,
+                cmd->properties.initialize_omni_platform.robot_radius,
+                cmd->properties.initialize_omni_platform.encoder_resolution, orientation))
+                return RESPONSE_INVALID_ARGUMENT;
+            platform_stop_velocity_controller();
+            platform_stop_odometry();
+            initialize_omni_platform_oriented(
+                cmd->properties.initialize_omni_platform.is_reversed_0,
+                cmd->properties.initialize_omni_platform.is_reversed_1,
+                cmd->properties.initialize_omni_platform.is_reversed_2,
+                cmd->properties.initialize_omni_platform.is_encoder_reversed_0,
+                cmd->properties.initialize_omni_platform.is_encoder_reversed_1,
+                cmd->properties.initialize_omni_platform.is_encoder_reversed_2,
+                cmd->properties.initialize_omni_platform.wheels_diameter,
+                cmd->properties.initialize_omni_platform.robot_radius,
+                cmd->properties.initialize_omni_platform.encoder_resolution, orientation);
+            if (!platform_is_initialized()) return RESPONSE_INTERNAL_ERROR;
+            break;
+        }
+
         case INITIALIZE_OMNI_PLATFORM:
             platform_stop_velocity_controller();
             platform_stop_odometry();
@@ -990,7 +1013,8 @@ uint8_t command_handler(controller_command_t *cmd, void (*reply)(uint8_t *,uint8
             required=1U<<cmd->properties.initialize_motor_controller.encoder_index;
         } else if (cmd->commandType==INITIALIZE_DIFFERENTIAL_PLATFORM ||
                    cmd->commandType==INITIALIZE_OMNI_PLATFORM || cmd->commandType==INITIALIZE_MECANUM_PLATFORM ||
-                   cmd->commandType==INITIALIZE_MECANUM_PLATFORM_ORIENTED) {
+                   cmd->commandType==INITIALIZE_MECANUM_PLATFORM_ORIENTED ||
+                   cmd->commandType==INITIALIZE_OMNI_PLATFORM_ORIENTED) {
             renewed=PLATFORM_ENDPOINT;
             required=platform.motor_mask;
         }

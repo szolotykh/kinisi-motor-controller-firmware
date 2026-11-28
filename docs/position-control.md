@@ -19,6 +19,28 @@ contribution limits and position tolerances. It runs at the shared controller fr
 - Platform velocity limits: translation magnitude in m/s and rotation in rad/s.
   Limits apply to requested velocity, not measured overshoot or acceleration.
 
+## Three-wheel Omni orientation
+
+Protocol 2.26 supports a single wheel at the rear or at the front of a 120-degree chassis.
+Measure the radius from the chassis center to a wheel center. Supply the radius and
+wheel diameter in meters. Keep each motor and encoder port paired with its physical wheel.
+
+| Layout | W0 (M0/E0) | W1 (M1/E1) | W2 (M2/E2) | Forward command | Left command | Positive yaw |
+| --- | --- | --- | --- | --- | --- | --- |
+| REAR (0, default) | Front right | Front left | Rear | +, -, 0 | +, +, - | +, +, + |
+| FRONT (1) | Rear left | Rear right | Front | -, +, 0 | -, -, + | +, +, + |
+
+The signs give logical rolling directions in W0, W1, W2 order. For a pure left
+command W0 and W1 each have half the magnitude of W2. Set motor and encoder reversals
+independently to match the wiring. M3/E3 remains available for separate use.
+
+Use `INITIALIZE_OMNI_PLATFORM_ORIENTED` and append the orientation byte to the
+original initializer fields. The complete request is 35 bytes. Reading
+`GET_CONFIGURATION_FIELD(8, 0)` returns the current Omni orientation on any
+2.26 board running that preset. The original `INITIALIZE_OMNI_PLATFORM` selects
+REAR. On v0.4, `SAVE_CONFIGURATION` persists the selected layout across restarts.
+Earlier saved Omni configurations restore as REAR.
+
 ## Mecanum roller orientation
 
 Protocol 2.25 supports both 45° layouts through `INITIALIZE_MECANUM_PLATFORM_ORIENTED`.

@@ -43,6 +43,8 @@ FEEDBACK_CATALOGS = [
 
 MECANUM_CATALOGS = [('mecanum_roller_orientations', 'MecanumRollerOrientation', 'MECANUM_ROLLER', ['STANDARD', 'MIRRORED'])]
 
+OMNI_CATALOGS = [('omni_wheel_orientations', 'OmniWheelOrientation', 'OMNI_WHEEL', ['REAR', 'FRONT'])]
+
 HEALTH_CATALOGS = [
     ('feedback_source_health_states', 'FeedbackSourceHealthState', 'FEEDBACK_HEALTH', ['HEALTHY', 'SUSPECT', 'UNAVAILABLE', 'INDETERMINATE']),
     ('feedback_source_health_flags', 'FeedbackSourceHealthFlag', 'FEEDBACK_HEALTH_FLAG', ['PROVENANCE', 'FRESH', 'DISAGREEMENT', 'COMPARISON_AVAILABLE', 'RECOVERING', 'RESTART_REQUIRED', 'TIMESTAMP_FAULT', 'SATURATION']),
@@ -104,6 +106,10 @@ def validate_pwm_frequency(schema):
         values = schema.get('mecanum_roller_orientations', [])
         if [(v.get('id'), v.get('name')) for v in values] != [(0, 'STANDARD'), (1, 'MIRRORED')] or any(type(v.get('id')) is not int for v in values):
             raise ValueError('Invalid mecanum roller orientation catalog')
+    if any(c['command'] == 'INITIALIZE_OMNI_PLATFORM_ORIENTED' for c in schema['commands']):
+        values = schema.get('omni_wheel_orientations', [])
+        if [(v.get('id'), v.get('name')) for v in values] != [(0, 'REAR'), (1, 'FRONT')] or any(type(v.get('id')) is not int for v in values):
+            raise ValueError('Invalid Omni wheel orientation catalog')
     values = schema.get('pwm_frequencies', [])
     expected = [(v, 'KHZ_' + str(v // 1000)) for v in (10000, 20000, 25000, 50000, 100000)]
     if [(v.get('id'), v.get('name')) for v in values] != expected or any(type(v.get('id')) is not int for v in values):
@@ -576,7 +582,7 @@ def generate_c_header_file(commands_data):
             for item in commands_data[key]:
                 result += f"    {prefix}_{item['name']} = {item['id']},\n"
             result += f'}} {typename};\n\n'
-    for key, _, prefix, _ in FUSION_CATALOGS + IMU_TRACKING_CATALOGS + FEEDBACK_CATALOGS + HEALTH_CATALOGS + MECANUM_CATALOGS:
+    for key, _, prefix, _ in FUSION_CATALOGS + IMU_TRACKING_CATALOGS + FEEDBACK_CATALOGS + HEALTH_CATALOGS + MECANUM_CATALOGS + OMNI_CATALOGS:
         for item in commands_data.get(key, []):
             result += f"#define {prefix}_{item['name']} {item['id']}U\n"
     topics = commands_data.get('topics', [])

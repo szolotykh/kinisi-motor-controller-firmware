@@ -1,6 +1,6 @@
 # Kinisi motor controller commands
 
-**Protocol 2.25.0** · Generated from [commands.json](commands.json)
+**Protocol 2.26.0** · Generated from [commands.json](commands.json)
 
 [Command index](#command-index) · [Wire format](#wire-format) · [Error codes](#error-codes)
 
@@ -113,6 +113,7 @@
 | [`SET_BOARD_MOUNT`](#set_board_mount-0x85) | `0x85` | Client → controller | ACK |
 | [`GET_BOARD_MOUNT`](#get_board_mount-0x86) | `0x86` | Client → controller | `board_mount_configuration` |
 | [`INITIALIZE_MECANUM_PLATFORM_ORIENTED`](#initialize_mecanum_platform_oriented-0x87) | `0x87` | Client → controller | ACK |
+| [`INITIALIZE_OMNI_PLATFORM_ORIENTED`](#initialize_omni_platform_oriented-0x88) | `0x88` | Client → controller | ACK |
 
 ## Command lifecycle
 
@@ -1091,7 +1092,7 @@ This command initializes a mecanum (4-wheel) platform and prepares it for use. I
 
 **Client → controller** · **Payload:** 30 bytes
 
-This command initializes an omni (3-wheel) platform and prepares it for use. It uses motor and encoder indices 0, 1 and 2 (one per wheel), which correspond to the is_reversed_0..2 and is_encoder_reversed_0..2 parameters. Motor index 3 is not used by this platform and stays free for other purposes.
+This command initializes an omni (3-wheel) platform and prepares it for use. It uses motor and encoder indices 0, 1 and 2 (one per wheel), which correspond to the is_reversed_0..2 and is_encoder_reversed_0..2 parameters. Motor index 3 is not used by this platform and stays free for other purposes. Selects the single-rear-wheel (REAR) orientation.
 
 #### Parameters
 
@@ -2382,13 +2383,13 @@ No payload parameters.
 
 **Client → controller** · **Payload:** 2 bytes
 
-Read a running configuration field. Fields 0 through 6 require v0.4. Field 7 is available on all boards with protocol 2.25 and a configured mecanum platform. Use GET_PWM_FREQUENCY for the board-wide switching frequency.
+Read a running configuration field. Fields 0 through 6 require v0.4. Field 7 is available on all boards with protocol 2.25 and a configured mecanum platform. Field 8 is available on all boards with protocol 2.26 and a configured Omni platform. Use GET_PWM_FREQUENCY for the board-wide switching frequency.
 
 #### Parameters
 
 | Parameter | Type | Bytes | Description |
 | --- | --- | ---: | --- |
-| `field` | `uint8_t` | 1 | 0 platform type (0 unconfigured, 1 differential, 2 omni, 3 mecanum), 1 wheel diameter, 2 track or length, 3 width or radius, 4 encoder resolution, 5 encoder reversed, 6 motor reversed, 7 mecanum roller orientation (0 STANDARD, 1 MIRRORED). |
+| `field` | `uint8_t` | 1 | 0 platform type (0 unconfigured, 1 differential, 2 omni, 3 mecanum), 1 wheel diameter, 2 track or length, 3 width or radius, 4 encoder resolution, 5 encoder reversed, 6 motor reversed, 7 mecanum roller orientation (0 STANDARD, 1 MIRRORED), 8 Omni single-wheel orientation (0 REAR, 1 FRONT). |
 | `index` | `uint8_t` | 1 | Zero for platform fields. For fields 4 through 6, use the zero-based channel index. |
 
 #### Response
@@ -3135,6 +3136,39 @@ Initialize four mecanum wheels with an explicit 45-degree roller layout. Require
 #### Errors
 
 [`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`BOARD_IDLE`](#error-board-idle) (20) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7)
+
+[Back to command index](#command-index)
+
+---
+
+### INITIALIZE_OMNI_PLATFORM_ORIENTED (0x88)
+
+**Client → controller** · **Payload:** 31 bytes
+
+Initialize a 120-degree, three-wheel Omni platform in the marked chassis frame (+X forward, +Y left, positive yaw counterclockwise). Requires READY and protocol 2.26. REAR places W0 front right, W1 front left and W2 rear. FRONT rotates the complete triangle 180 degrees: W0 rear left, W1 rear right and W2 front. Motor and encoder indices stay attached to those wheels, with independent reversal flags. Dimensions must be positive and encoder resolution nonnegative. Invalid requests leave the running setup unchanged.
+
+#### Parameters
+
+| Parameter | Type | Bytes | Range | Description |
+| --- | --- | ---: | --- | --- |
+| `is_reversed_0` | `bool` | 1 | — | Determines if motor 0 is reversed. |
+| `is_reversed_1` | `bool` | 1 | — | Determines if motor 1 is reversed. |
+| `is_reversed_2` | `bool` | 1 | — | Determines if motor 2 is reversed. |
+| `is_encoder_reversed_0` | `bool` | 1 | — | Reverses encoder 0 counting direction, independently of motor 0's is_reversed_0. Set so the closed-loop feedback is negative (flip if the wheel runs away when given a target speed). |
+| `is_encoder_reversed_1` | `bool` | 1 | — | Reverses encoder 1 counting direction, independently of motor 1's is_reversed_1. Set so the closed-loop feedback is negative (flip if the wheel runs away when given a target speed). |
+| `is_encoder_reversed_2` | `bool` | 1 | — | Reverses encoder 2 counting direction, independently of motor 2's is_reversed_2. Set so the closed-loop feedback is negative (flip if the wheel runs away when given a target speed). |
+| `wheels_diameter` | `double` | 8 | — | Diameter of the robot wheels in meters. |
+| `robot_radius` | `double` | 8 | — | Distance from the robot center to each wheel center in meters. |
+| `encoder_resolution` | `double` | 8 | — | Encoder resolution in ticks per revolution. The value can not be negative. If platform does not have encoders, the value should be set to zero. |
+| `wheel_orientation` | `uint8_t` | 1 | 0 to 1 | Position of single wheel W2: REAR (0) or FRONT (1). |
+
+#### Response
+
+**ACK** — empty payload; echoes the command and message ID.
+
+#### Errors
+
+[`DRIVERS_ASLEEP`](#error-drivers-asleep) (19) · [`INVALID_LENGTH`](#error-invalid-length) (4) · [`INVALID_ARGUMENT`](#error-invalid-argument) (2) · [`INTERNAL_ERROR`](#error-internal-error) (6) · [`INIT_REQUIRED`](#error-init-required) (15) · [`CLOCK_NOT_READY`](#error-clock-not-ready) (7)
 
 [Back to command index](#command-index)
 
